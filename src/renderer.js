@@ -1,0 +1,379 @@
+// Der Video-Renderer.
+// Zeichnet Bilder (mit langsamem Zoom = "Ken-Burns-Effekt"), Untertitel und
+// einen Titel auf ein unsichtbares 9:16-Zeichenfeld (Canvas) und nimmt das
+// zusammen mit der Sprachspur als Video auf. Auf dem iPhone (Safari)
+// entsteht dabei direkt eine MP4-Datei (H.264 + AAC).
+
+const FPS = 30;
+
+export function pickMimeType() {
+  const candidates = [
+    'video/mp4;codecs="avc1.640028,mp4a.40.2"',
+    'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+    'video/mp4;codecs=avc1,mp4a',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+  ];
+  if (typeof MediaRecorder === 'undefined') return null;
+  return candidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
+}
+
+export class VideoRenderer {
+  constructor({ width, height, images, scenes, sceneTimes, subtitles, title, audio }) {
+    this.W = width;
+    this.H = height;
+    this.images = images;
+    this.scenes = scenes;
+    this.sceneTimes = sceneTimes;
+    this.subtitles = subtitles;
+    this.title = title;
+    this.audio = audio;
+    this.duration = audio.duration;
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.g = this.canvas.getContext('2d', { alpha: false });
+    this.font = '"Arial Black", "Helvetica Neue", Helvetica, system-ui, sans-serif';
+    // Ab wann jede Szene im Bild ist (leicht vor dem Sprechbeginn).
+    this.sceneStarts = sceneTimes.map((st, i) => (i === 0 ? 0 : Math.max(0, st.start - 0.12)));
+  }
+
+  // ------------------------------------------------------------ Zeichnen --
+
+  drawFrame(t) {
+    const { g, W, H } = this;
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, W, H);
+
+    const i = this.sceneIndexAt(t);
+    const fade = 0.35;
+    const sceneStart = this.sceneStarts[i];
+    this.drawScene(i, t, 1);
+    // Weiche Überblendung von der vorherigen Szene
+    if (i > 0 && t - sceneStart < fade) {
+      this.drawScene(i - 1, t, 1 - (t - sceneStart) / fade);
+    }
+
+    // Abdunkeln unten (bessere Lesbarkeit der Untertitel) und oben
+    const grad = g.createLinearGradient(0, H * 0.45, 0, H);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.72)');
+    g.fillStyle = grad;
+    g.fillRect(0, H * 0.45, W, H * 0.55);
+    const top = g.createLinearGradient(0, 0, 0, H * 0.2);
+    top.addColorStop(0, 'rgba(0,0,0,0.5)');
+    top.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = top;
+    g.fillRect(0, 0, W, H * 0.2);
+
+    this.drawTitle(t);
+    this.drawSubtitle(t);
+    this.drawProgress(t);
+  }
+
+  sceneIndexAt(t) {
+    let i = 0;
+    while (i + 1 < this.sceneStarts.length && t >= this.sceneStarts[i + 1]) i++;
+    return i;
+  }
+
+  drawScene(i, t, alpha) {
+    const { g, W, H } = this;
+    const img = this.images[i];
+    if (!img || alpha <= 0) return;
+    const start = this.sceneStarts[i];
+    const end = i + 1 < this.sceneStarts.length ? this.sceneStarts[i + 1] : this.duration;
+    const p = Math.min(1, Math.max(0, (t - start) / Math.max(0.1, end - start)));
+    const ease = p * p * (3 - 2 * p) * 0.6 + p * 0.4;
+    const iw = img.width;
+    const ih = img.height;
+    const cover = Math.max(W / iw, H / ih);
+    // Abwechselnd hinein- und herauszoomen, mit leichtem Schwenk
+    const zoomIn = i % 2 === 0;
+    const z = zoomIn ? 1.04 + 0.14 * ease : 1.18 - 0.14 * ease;
+    const s = cover * z;
+    const dw = iw * s;
+    const dh = ih * s;
+    const dir = [1, -1, 0.5, -0.5][i % 4];
+    const panX = (dw - W) * 0.5 * dir * (ease - 0.5);
+    const panY = (dh - H) * 0.3 * (ease - 0.5);
+    g.globalAlpha = alpha;
+    g.drawImage(img, (W - dw) / 2 + panX, (H - dh) / 2 + panY, dw, dh);
+    g.globalAlpha = 1;
+  }
+
+  drawTitle(t) {
+    const show = 3.2;
+    if (t > show + 0.4) return;
+    const { g, W, H } = this;
+    const a = t < show ? Math.min(1, t / 0.25) : 1 - (t - show) / 0.4;
+    const pop = t < 0.25 ? 0.85 + 0.15 * (t / 0.25) : 1;
+    g.save();
+    g.globalAlpha = Math.max(0, a);
+    g.translate(W / 2, H * 0.17);
+    g.scale(pop, pop);
+    const size = Math.round(W * 0.058);
+    g.font = `900 ${size}px ${this.font}`;
+    const lines = wrap(g, this.title, W * 0.8);
+    const lh = size * 1.25;
+    const boxH = lines.length * lh + size * 0.9;
+    const boxW = Math.min(W * 0.9, Math.max(...lines.map((l) => g.measureText(l).width)) + size * 1.4);
+    g.fillStyle = 'rgba(255, 214, 10, 0.96)';
+    roundRect(g, -boxW / 2, -boxH / 2, boxW, boxH, size * 0.45);
+    g.fill();
+    g.fillStyle = '#111';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    lines.forEach((l, k) => g.fillText(l, 0, -((lines.length - 1) * lh) / 2 + k * lh));
+    g.restore();
+  }
+
+  drawSubtitle(t) {
+    const chunk = this.subtitles.find((c) => t >= c.start && t < c.end);
+    if (!chunk) return;
+    const { g, W, H } = this;
+    const age = t - chunk.start;
+    const pop = age < 0.12 ? 0.82 + 0.18 * (age / 0.12) : 1;
+    let size = Math.round(W * 0.088);
+    const maxW = W * 0.88;
+    const words = chunk.words.map((w) => w.word);
+    g.font = `900 ${size}px ${this.font}`;
+    const spaceW = () => g.measureText(' ').width;
+    let total = g.measureText(words.join(' ')).width;
+    while (total > maxW && size > W * 0.06) {
+      size -= 2;
+      g.font = `900 ${size}px ${this.font}`;
+      total = g.measureText(words.join(' ')).width;
+    }
+    // Zeilen bilden (meist 1 Zeile)
+    const lines = [];
+    let cur = [];
+    for (let k = 0; k < chunk.words.length; k++) {
+      const test = [...cur, chunk.words[k]].map((w) => w.word).join(' ');
+      if (cur.length && g.measureText(test).width > maxW) {
+        lines.push(cur);
+        cur = [];
+      }
+      cur.push(chunk.words[k]);
+    }
+    lines.push(cur);
+
+    g.save();
+    g.translate(W / 2, H * 0.7);
+    g.scale(pop, pop);
+    g.textBaseline = 'middle';
+    g.textAlign = 'left';
+    g.lineJoin = 'round';
+    const lh = size * 1.2;
+    lines.forEach((line, li) => {
+      const text = line.map((w) => w.word).join(' ');
+      const lw = g.measureText(text).width;
+      let x = -lw / 2;
+      const y = -((lines.length - 1) * lh) / 2 + li * lh;
+      for (const w of line) {
+        const active = t >= w.start && t < w.end + 0.05;
+        g.lineWidth = size * 0.2;
+        g.strokeStyle = '#000';
+        g.strokeText(w.word, x, y);
+        g.fillStyle = active ? '#FFD60A' : '#FFFFFF';
+        g.fillText(w.word, x, y);
+        x += g.measureText(w.word).width + spaceW();
+      }
+    });
+    g.restore();
+  }
+
+  drawProgress(t) {
+    const { g, W } = this;
+    const h = Math.max(4, Math.round(W * 0.007));
+    g.fillStyle = 'rgba(255,255,255,0.25)';
+    g.fillRect(0, 0, W, h);
+    g.fillStyle = '#FFD60A';
+    g.fillRect(0, 0, W * Math.min(1, t / this.duration), h);
+  }
+
+  // ----------------------------------------------------------- Aufnahme --
+
+  async record(ctx, { music = true, monitor = true, onProgress, mimeType } = {}) {
+    const mt = mimeType ?? pickMimeType();
+    if (mt === null || typeof this.canvas.captureStream !== 'function') {
+      throw new Error('Dein Browser kann keine Videos aufnehmen. Bitte Safari (iOS 15+) oder Chrome verwenden.');
+    }
+    if (ctx.state !== 'running') await ctx.resume();
+
+    const dest = ctx.createMediaStreamDestination();
+    const master = ctx.createGain();
+    master.gain.value = 1;
+    master.connect(dest);
+    if (monitor) master.connect(ctx.destination);
+
+    const voice = ctx.createBufferSource();
+    voice.buffer = this.audio;
+    voice.connect(master);
+
+    let stopMusic = () => {};
+    if (music) stopMusic = startAmbientMusic(ctx, master, this.duration, this.sceneStarts);
+
+    this.drawFrame(0);
+    const videoStream = this.canvas.captureStream(FPS);
+    const stream = new MediaStream([...videoStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+    const opts = { videoBitsPerSecond: this.W >= 1080 ? 8_000_000 : 5_000_000, audioBitsPerSecond: 128_000 };
+    if (mt) opts.mimeType = mt;
+    const rec = new MediaRecorder(stream, opts);
+    const chunks = [];
+    rec.ondataavailable = (e) => e.data && e.data.size && chunks.push(e.data);
+    const stopped = new Promise((resolve, reject) => {
+      rec.onstop = resolve;
+      rec.onerror = (e) => reject(e.error || new Error('Aufnahmefehler'));
+    });
+
+    rec.start(1000);
+    const t0 = ctx.currentTime + 0.15;
+    voice.start(t0);
+
+    await new Promise((resolve) => {
+      const tick = () => {
+        const t = ctx.currentTime - t0;
+        this.drawFrame(Math.max(0, Math.min(t, this.duration)));
+        onProgress?.(Math.max(0, Math.min(1, t / this.duration)));
+        if (t >= this.duration + 0.25) resolve();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+    rec.stop();
+    stopMusic();
+    await stopped;
+    videoStream.getTracks().forEach((tr) => tr.stop());
+    try {
+      voice.disconnect();
+      master.disconnect();
+    } catch {
+      /* egal */
+    }
+    const type = (rec.mimeType || mt || 'video/mp4').split(';')[0];
+    return new Blob(chunks, { type });
+  }
+}
+
+// Leiser, selbst erzeugter Hintergrund-Sound (keine Urheberrechtsprobleme):
+// ein sphärischer Klangteppich plus "Whoosh" bei jedem Szenenwechsel.
+function startAmbientMusic(ctx, out, duration, sceneStarts) {
+  const now = ctx.currentTime + 0.15;
+  const bus = ctx.createGain();
+  bus.gain.setValueAtTime(0, now);
+  bus.gain.linearRampToValueAtTime(0.05, now + 2);
+  bus.gain.setValueAtTime(0.05, now + duration - 1.5);
+  bus.gain.linearRampToValueAtTime(0, now + duration);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 900;
+  lp.Q.value = 0.7;
+  lp.connect(bus);
+  bus.connect(out);
+
+  const nodes = [];
+  // A-Moll-Akkordfolge, langsam wechselnd
+  const chords = [
+    [110, 130.81, 164.81],
+    [87.31, 130.81, 174.61],
+    [98, 123.47, 146.83],
+    [82.41, 123.47, 164.81],
+  ];
+  const step = 6;
+  for (let v = 0; v < 3; v++) {
+    for (const detune of [-6, 6]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.detune.value = detune;
+      for (let k = 0; k * step < duration + step; k++) {
+        o.frequency.setTargetAtTime(chords[k % chords.length][v], now + k * step, 0.8);
+      }
+      const og = ctx.createGain();
+      og.gain.value = 0.22;
+      o.connect(og);
+      og.connect(lp);
+      o.start(now);
+      o.stop(now + duration + 0.5);
+      nodes.push(o);
+    }
+  }
+  // Langsame Filterbewegung
+  const lfo = ctx.createOscillator();
+  const lfoGain = ctx.createGain();
+  lfo.frequency.value = 0.08;
+  lfoGain.gain.value = 400;
+  lfo.connect(lfoGain);
+  lfoGain.connect(lp.frequency);
+  lfo.start(now);
+  lfo.stop(now + duration + 0.5);
+  nodes.push(lfo);
+
+  // Whoosh-Effekt bei Szenenwechseln
+  const noise = ctx.createBuffer(1, ctx.sampleRate * 1, ctx.sampleRate);
+  const d = noise.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  sceneStarts.slice(1).forEach((s) => {
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 1.2;
+    const at = now + s - 0.25;
+    bp.frequency.setValueAtTime(300, at);
+    bp.frequency.exponentialRampToValueAtTime(3000, at + 0.45);
+    const wg = ctx.createGain();
+    wg.gain.setValueAtTime(0, at);
+    wg.gain.linearRampToValueAtTime(0.09, at + 0.25);
+    wg.gain.linearRampToValueAtTime(0, at + 0.55);
+    src.connect(bp);
+    bp.connect(wg);
+    wg.connect(out);
+    src.start(at);
+    src.stop(at + 0.6);
+    nodes.push(src);
+  });
+
+  return () => {
+    nodes.forEach((n) => {
+      try {
+        n.stop();
+      } catch {
+        /* schon gestoppt */
+      }
+    });
+    try {
+      bus.disconnect();
+    } catch {
+      /* egal */
+    }
+  };
+}
+
+function wrap(g, text, maxW) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    const test = cur ? `${cur} ${w}` : w;
+    if (cur && g.measureText(test).width > maxW) {
+      lines.push(cur);
+      cur = w;
+    } else cur = test;
+  }
+  if (cur) lines.push(cur);
+  return lines.slice(0, 4);
+}
+
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
