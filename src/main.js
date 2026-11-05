@@ -615,7 +615,7 @@ async function onSelfTest() {
       const images = buildAnimVisuals(test, visualMode);
       const sup = settings.exportMode !== 'realtime' ? await segmentedSupported(720, 1280, (t) => setStatus(`Test ${run}/2: ${t}`, 0.3)) : { ok: false, why: 'Echtzeit eingestellt' };
       setStatus(`Test ${run}/2: Video wird erstellt …`, 0.35);
-      if (!sup.ok) say(`Durchlauf ${run}: Szene-für-Szene nicht möglich (${sup.why}) → Echtzeit-Aufnahme`, 'warn');
+      if (!sup.ok) say(`Durchlauf ${run}: Echtzeit-Aufnahme (${sup.why})`);
       const job = sup.ok ? await startJob({ W: 720, H: 1280, music: false, script: test, sceneTimes, subtitles, duration: 10, visualMode, at: Date.now() }) : null;
       const t0 = performance.now();
       const res = await produceVideo({ sc: test, images, width: 720, height: 1280, sceneTimes, subtitles, buffer: buf, duration: 10, job, ctx, onStatus: (text, p) => setStatus(`Test ${run}/2: ${text}`, p) });
@@ -1017,8 +1017,9 @@ $('btnDeviceCheck').onclick = async () => {
   const out = $('deviceCheck');
   out.classList.remove('hidden');
   out.textContent = 'Prüfe …';
-  let txt = await runDeviceCheck();
-  const { findVideoConfig } = await import('./exporter.js');
+  const { findVideoConfig, isIOS } = await import('./exporter.js');
+  // Auf dem iPhone die Encoder NICHT anfassen (hängen und blockieren danach die Aufnahme)
+  let txt = isIOS() ? `Browser: ${navigator.userAgent}\nMediaRecorder mp4: ${typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('video/mp4')}` : await runDeviceCheck();
   const fv = await findVideoConfig(720, 1280);
   txt += `\nSzene-für-Szene-Export: ${fv.cfg ? `JA (${fv.cfg.codec})` : `nein – ${fv.why}`}`;
   out.textContent = `${txt}\n\n(Text wurde kopiert – einfach dem Entwickler schicken.)`;
