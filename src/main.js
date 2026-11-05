@@ -222,7 +222,7 @@ function vereinNames() {
 }
 
 function buildAnimVisuals(sc, visualMode) {
-  if (visualMode === 'verein') return createVereinVisuals(sc.scenes, { fans: settings.vereinFans, names: vereinNames() });
+  if (visualMode === 'verein') return createVereinVisuals(sc.scenes, { fans: settings.vereinFans, names: vereinNames(), nets: !!settings.vereinNets });
   const n = sc.scenes.length;
   let gotUp = false;
   let prevShot = null;
@@ -820,6 +820,7 @@ function openSettings() {
   $('sVisual').value = settings.visualMode;
   $('sFans').value = String(settings.vereinFans || 0);
   $('sNames').value = settings.vereinNames || '';
+  $('sNets').checked = !!settings.vereinNets;
   $('sQuality').value = settings.quality;
   $('sMusic').checked = settings.music;
   $('sMood').value = settings.musicMood;
@@ -845,6 +846,7 @@ function readSettingsForm() {
     visualMode: $('sVisual').value,
     vereinFans: Math.max(0, parseInt(String($('sFans').value).replace(/\D/g, ''), 10) || 0),
     vereinNames: $('sNames').value.trim(),
+    vereinNets: $('sNets').checked,
     quality: $('sQuality').value,
     music: $('sMusic').checked,
     musicMood: $('sMood').value,

@@ -343,9 +343,15 @@ export function drawStand(g, t, fans = 0, fanPop = [], opts = {}) {
   }
   // Namensschilder (Namen aus den Kommentaren)
   const names = opts.names || [];
-  names.slice(0, seats.length).forEach((n, i) => {
+  names.slice(0, vis).forEach((n, i) => {
     const s = seats[(i * 7) % seats.length];
-    nameTag(g, s.x, s.y + 12, n);
+    const pop = Math.min(1, fanPop[i] ?? 1);
+    if (pop <= 0.05) return;
+    g.save();
+    g.translate(s.x, s.y - 80);
+    g.scale(easeOutBack(pop), easeOutBack(pop));
+    nameTag(g, 0, 0, n);
+    g.restore();
   });
   if (opts.nameTag) {
     const s = seats[(names.length * 7 + 3) % seats.length];
@@ -477,7 +483,7 @@ export function drawCooler(g, t, lid = 0) {
 }
 
 // Fußballtor (schief, rostig, Netz kaputt) – hit: Wackeln nach Balltreffer
-export function drawGoal(g, t, side = 'L', hit = 0) {
+export function drawGoal(g, t, side = 'L', hit = 0, fixed = false) {
   const pl = side === 'L' ? PLACES.goalL : PLACES.goalR;
   const { x, base } = pl;
   const w = 300;
@@ -488,15 +494,18 @@ export function drawGoal(g, t, side = 'L', hit = 0) {
   g.rotate(side === 'L' ? 0.03 : -0.04);
   // Netz (hinten)
   g.save();
-  g.globalAlpha = 0.7;
-  for (let i = -w / 2 + 10; i < w / 2; i += 20) line(g, [[i, -h + 10], [i * 0.85, -12]], 2, '#ddd');
-  for (let j = -h + 20; j < -10; j += 20) line(g, [[-w / 2 + 10, j], [w / 2 - 10, j]], 2, '#ddd');
+  g.globalAlpha = fixed ? 0.95 : 0.7;
+  const nc = fixed ? '#ffffff' : '#ddd';
+  for (let i = -w / 2 + 10; i < w / 2; i += fixed ? 16 : 20) line(g, [[i, -h + 10], [i * 0.85, -12]], fixed ? 2.5 : 2, nc);
+  for (let j = -h + 20; j < -10; j += fixed ? 16 : 20) line(g, [[-w / 2 + 10, j], [w / 2 - 10, j]], fixed ? 2.5 : 2, nc);
   g.restore();
-  // Loch im Netz (flattert)
-  const fl = Math.sin(t * 5) * 6;
-  P(g, C.gravel, 3, ell(40, -70, 34 + fl * 0.3, 26));
-  line(g, [[18, -50], [10 + fl, -30]], 2, '#ddd');
-  line(g, [[60, -90], [76 + fl, -100]], 2, '#ddd');
+  if (!fixed) {
+    // Loch im Netz (flattert)
+    const fl = Math.sin(t * 5) * 6;
+    P(g, '#cbb892', 3, ell(40, -70, 34 + fl * 0.3, 26));
+    line(g, [[18, -50], [10 + fl, -30]], 2, '#ddd');
+    line(g, [[60, -90], [76 + fl, -100]], 2, '#ddd');
+  }
   // Pfosten + Latte (ein Pfosten schief)
   P(g, '#f4f4f4', 6, poly([[-w / 2 - 8, 0], [-w / 2 + 8, 0], [-w / 2 + 14, -h], [-w / 2 - 2, -h]]));
   P(g, '#f4f4f4', 6, poly([[w / 2 - 8, 0], [w / 2 + 8, 0], [w / 2 + 2, -h + 6], [w / 2 - 14, -h + 6]]));
