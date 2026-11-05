@@ -365,7 +365,9 @@ function openSettings() {
   $('sMusic').checked = settings.music;
   $('sKey').value = settings.geminiKey;
   $('sPolKey').value = settings.pollinationsKey;
+  document.documentElement.classList.add('modal-open');
   $('settings').showModal();
+  $('settings').querySelector('.settings').scrollTop = 0;
 }
 
 function readSettingsForm() {
@@ -434,7 +436,10 @@ $('btnNew').onclick = () => {
   show('stepTopic');
 };
 $('btnSettings').onclick = openSettings;
-$('settings').addEventListener('close', readSettingsForm);
+$('settings').addEventListener('close', () => {
+  document.documentElement.classList.remove('modal-open');
+  readSettingsForm();
+});
 $('sSpeed').oninput = (e) => ($('sSpeedVal').textContent = `${Number(e.target.value).toFixed(2)}×`);
 $('btnTestVoice').onclick = onTestVoice;
 $('topic').addEventListener('keydown', (e) => {

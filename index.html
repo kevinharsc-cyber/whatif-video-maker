@@ -83,7 +83,11 @@
     <!-- Einstellungen -->
     <dialog id="settings">
       <form method="dialog" class="settings">
-        <h2>Einstellungen</h2>
+        <div class="settings-head">
+          <h2>Einstellungen</h2>
+          <button class="icon-btn" value="close" aria-label="Schließen">✕</button>
+        </div>
+        <p class="small">👆 Mit dem Finger <b>im Fenster</b> nach oben wischen, um alle Einstellungen zu sehen.</p>
 
         <label class="lbl" for="sVoice">Stimme</label>
         <select id="sVoice"></select>
@@ -127,7 +131,7 @@
           → Bereich „Keys“ → einen <b>Secret Key (sk_…)</b> erstellen. Den Schlüssel niemandem zeigen.
         </p>
 
-        <button class="primary" value="ok">Speichern</button>
+        <div class="settings-save"><button class="primary" value="ok">Speichern</button></div>
       </form>
     </dialog>
 
