@@ -2,8 +2,11 @@ import './style.css';
 import { loadSettings, saveSettings } from './settings.js';
 import { generateScript, normalizeTopic } from './script.js';
 import { buildOwnScript } from './ownscript.js';
+import { parseMp4, qualityReport, remuxToProgressive } from './mp4tools.js';
+import { runDeviceCheck } from './devicecheck.js';
 import { loadSceneImages } from './images.js';
 import { createAnimVisual, normalizeAnim, guessAnim, guessShot, shotSpec } from './anim/scene.js';
+import { createAnim3DVisual, webglAvailable } from './three/lowpoly.js';
 import { synthesize, VOICES, speechWeight, releaseVoices } from './tts.js';
 import { buildSubtitles, toSrt } from './subtitles.js';
 import { VideoRenderer, pickMimeType, tryResume } from './renderer.js';
@@ -246,6 +249,8 @@ async function onCreateVideo() {
       const n = script.scenes.length;
       let gotUp = false;
       let prevShot = null;
+      const use3d = settings.visualMode === '3d' && webglAvailable();
+      if (settings.visualMode === '3d' && !use3d) log('3D wird von diesem Gerät nicht unterstützt – nutze 2D-Animation.', 'warn');
       images = script.scenes.map((sc, i) => {
         if (sc.black) return createAnimVisual({ place: 'black', time: 'night', props: [], actors: [], crowd: { count: 0, action: 'idle' }, effect: 'none' });
         // 1) Film-Einstellung (von Gemini gewählt oder aus dem Satz erkannt)
@@ -263,6 +268,8 @@ async function onCreateVideo() {
           if (gotUp) a0.action = 'walk';
           gotUp = true;
         } else if (a0 && a0.action === 'sleep' && gotUp) a0.action = 'think';
+        // Low-Poly-3D (Grafikchip) – Rückfall auf 2D, falls WebGL fehlt
+        if (use3d) return createAnim3DVisual(spec, shot);
         return createAnimVisual(spec);
       });
       script.credits = [];
@@ -388,10 +395,32 @@ async function onCreateVideo() {
     } catch {
       /* egal */
     }
+    // Endkontrolle: Datei prüfen und – falls nötig – in eine normale MP4 umpacken
+    // (fragmentierte Echtzeit-Aufnahmen können auf TikTok stockenden Ton haben).
+    let qc = null;
+    if (blob.type.includes('mp4')) {
+      setStatus('Video wird geprüft und für TikTok optimiert …', 0.99);
+      try {
+        let parsed = await parseMp4(blob);
+        const before = qualityReport(parsed, buffer.duration);
+        if (parsed.info.isFragmented || !before.checks.find((c) => c.name.startsWith('Index'))?.ok) {
+          const fixed = await remuxToProgressive(parsed);
+          parsed = null;
+          const after = await parseMp4(fixed);
+          qc = qualityReport(after, buffer.duration);
+          qc.remuxed = true;
+          blob = fixed;
+        } else {
+          qc = before;
+        }
+      } catch (e) {
+        qc = { ok: false, checks: [{ name: 'Prüfung', ok: false, detail: e.message }], facts: {} };
+      }
+    }
     setStatus('Fertig!', 1);
 
     const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
-    lastVideo = { blob, subtitles, ext, duration: buffer.duration, method };
+    lastVideo = { blob, subtitles, ext, duration: buffer.duration, method, qc };
     showResult();
   } catch (e) {
     console.error(e);
@@ -448,6 +477,26 @@ function showResult() {
     info += ' – Dein Browser kann kein MP4 aufnehmen. Auf dem iPhone mit Safari entsteht automatisch MP4.';
   }
   $('resultInfo').textContent = info;
+  // Ergebnis der automatischen Qualitätskontrolle
+  const box = $('qc');
+  box.innerHTML = '';
+  const qc = lastVideo.qc;
+  if (qc) {
+    const head = document.createElement('div');
+    head.className = qc.ok ? 'qc-ok' : 'qc-warn';
+    head.textContent = qc.ok
+      ? `✅ Qualitätskontrolle bestanden${qc.remuxed ? ' (für TikTok neu verpackt)' : ''}`
+      : `⚠️ Qualitätskontrolle: ${qc.checks.filter((c) => !c.ok).length} Punkt(e) auffällig`;
+    box.append(head);
+    const ul = document.createElement('ul');
+    for (const c of qc.checks) {
+      const li = document.createElement('li');
+      li.textContent = `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`;
+      if (!c.ok) li.className = 'bad';
+      ul.append(li);
+    }
+    box.append(ul);
+  }
   show('stepResult');
 }
 
@@ -696,6 +745,18 @@ $('settings').addEventListener('close', () => {
 });
 $('sSpeed').oninput = (e) => ($('sSpeedVal').textContent = `${Number(e.target.value).toFixed(2)}×`);
 $('btnTestVoice').onclick = onTestVoice;
+$('btnDeviceCheck').onclick = async () => {
+  const out = $('deviceCheck');
+  out.classList.remove('hidden');
+  out.textContent = 'Prüfe …';
+  const txt = await runDeviceCheck();
+  out.textContent = `${txt}\n\n(Text wurde kopiert – einfach dem Entwickler schicken.)`;
+  try {
+    await navigator.clipboard.writeText(txt);
+  } catch {
+    out.textContent = `${txt}\n\n(Bitte Screenshot machen und dem Entwickler schicken.)`;
+  }
+};
 $('sFollowFile').addEventListener('change', onAvatarFile);
 $('sFollowRemove').onclick = () => {
   settings.followImage = '';

@@ -470,6 +470,14 @@ export const SHOTS = {
   stars: { place: 'meadow', time: 'night', actors: [{ action: 'look_up' }] },
   miss_people: { place: 'window_view', time: 'night', actors: [{ action: 'sad', from: 'left' }] },
   earth_view: { place: 'earth', props: [], actors: [] },
+  look_ocean: { place: 'beach', props: [{ type: 'clouds' }], actors: [{ action: 'look_out', from: 'center' }] },
+  park_walk: { place: 'meadow', props: [{ type: 'clouds' }, { type: 'birds' }], actors: [{ action: 'walk', from: 'left', to: 'right' }] },
+  park_bench: { place: 'meadow', actors: [{ action: 'sit' }] },
+  enter_supermarket: { place: 'street', props: [{ type: 'shop', label: 'SUPERMARKT' }], actors: [{ action: 'walk', from: 'left', to: 'center' }] },
+  bank: { place: 'street', props: [{ type: 'shop', label: 'BANK' }], actors: [{ action: 'walk', from: 'right', to: 'center' }] },
+  money: { place: 'street', props: [{ type: 'shop', label: 'BANK' }, { type: 'money' }], actors: [{ action: 'cheer' }] },
+  forest_walk: { place: 'forest', actors: [{ action: 'walk', from: 'left', to: 'right' }] },
+  animals_return: { place: 'empty_city', time: 'sunset', props: [{ type: 'animals' }], actors: [{ action: 'look_up' }] },
   black: { place: 'black', actors: [] },
 };
 export const SHOT_LIST = Object.keys(SHOTS);
@@ -492,16 +500,26 @@ empty_city (leere Stadt, Hochhäuser), silence (Stille, keine Geräusche), shout
 drive_car (Auto fahren), enter_house (in ein fremdes Haus gehen), travel (um die Welt reisen), freedom (Freiheit, keine Regeln, Spaß),
 party_alone (allein feiern/tanzen), rooftop_alone (allein auf einem Hochhausdach), talk_to_self (mit sich selbst reden),
 days_pass (Zeit vergeht, Tage/Wochen), night_alone (nachts allein in der Stadt), stars (Sternenhimmel), miss_people (Menschen vermissen, Einsamkeit),
-earth_view (die Erde von oben, "stell dir vor"), black (schwarzer Bildschirm).
+earth_view (die Erde von oben, "stell dir vor"), look_ocean (aufs Meer schauen), park_walk (durch den Park gehen),
+park_bench (auf einer Parkbank sitzen), enter_supermarket (zum Supermarkt gehen/hineingehen), bank (zur Bank gehen),
+money (Geld, reich sein), forest_walk (durch den Wald gehen), animals_return (Tiere in der Stadt), black (schwarzer Bildschirm).
 Passt keine Einstellung (z. B. bei anderen Themen wie Explosionen), setze "shot": null und beschreibe die Szene stattdessen mit "anim".`;
 
 const SHOT_RULES = [
   [/fenster/, 'look_window'],
+  [/(meer|ozean|strand|wellen|küste)/, 'look_ocean'],
+  [/(\bbank\b|banken|geldautomat|tresor)/, 'bank'],
+  [/(geld|euro|million|milliard|reich)/, 'money'],
+  [/(parkbank|auf einer bank|setzt dich)/, 'park_bench'],
+  [/(\bpark\b|spaziergang|spazierst)/, 'park_walk'],
+  [/(wald|bäume)/, 'forest_walk'],
+  [/(tiere|rehe|wölfe|hirsch)/, 'animals_return'],
   [/(rufst .*an|anruf|anrufen|telefonier|geht ran|niemand nimmt ab)/, 'phone_call'],
   [/(handy|whatsapp|nachricht|instagram|smartphone|tiktok)/, 'check_phone'],
   [/(aufwach|wachst .*auf|aufstehst|stehst .*auf|wecker|im bett)/, 'wake_up'],
   [/(schreist|brüllst|rufst laut|hallo)/, 'shout'],
   [/(haustür|vor die tür|nach draußen|gehst raus|rausgehst|verlässt das haus)/, 'leave_house'],
+  [/(betrittst|gehst in einen supermarkt|zum supermarkt)/, 'enter_supermarket'],
   [/(supermarkt|regal|nimmst dir|nehmen, was|einkauf)/, 'supermarket'],
   [/(steigst in .*auto|fährst|sportwagen|autobahn|jedes auto)/, 'drive_car'],
   [/(jedes haus|in .*häuser|fremde wohnung)/, 'enter_house'],

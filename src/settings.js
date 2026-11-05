@@ -10,7 +10,7 @@ export const DEFAULTS = {
   speed: 1.0,
   quality: '1080',
   imageStyle: 'cinematic',
-  visualMode: 'animation',
+  visualMode: '3d',
   followEnabled: true,
   followName: '',
   followImage: '',
@@ -26,6 +26,10 @@ export function loadSettings() {
     const raw = localStorage.getItem(KEY);
     const s = { ...DEFAULTS, ...(raw ? JSON.parse(raw) : {}) };
     // Stabiler Weg (Echtzeit-Aufnahme) wieder als Standard – einmalige Umstellung
+    if (!s.lowpolyV1) {
+      s.visualMode = '3d'; // neuer Standard: Low-Poly-3D
+      s.lowpolyV1 = true;
+    }
     if (!s.stableV1) {
       s.exportMode = 'realtime';
       s.stableV1 = true;
