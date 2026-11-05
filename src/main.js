@@ -428,7 +428,7 @@ async function onCreateVideo() {
     // 2) Stimme (läuft in einem eigenen Prozess, der danach beendet wird)
     setTask('voice', 'active');
     markPhase('voice');
-    const { buffer, sceneTimes } = await synthesize(
+    const { buffer, sceneTimes, used: voiceUsed, why: voiceWhy } = await synthesize(
       ctx,
       script.scenes,
       settings,
@@ -444,6 +444,7 @@ async function onCreateVideo() {
       log,
     );
     setTask('voice', 'done');
+    if (voiceWhy) log(`⚠️ Stimme: ${voiceUsed} – ${voiceWhy}`, 'warn');
     await releaseVoices();
 
     // 3) Untertitel
@@ -870,9 +871,12 @@ async function onTestVoice() {
   const old = btn.textContent;
   btn.disabled = true;
   try {
-    const { buffer } = await synthesize(
+    const info = $('voiceInfo');
+    info.classList.add('hidden');
+    const sample = settings.visualMode === 'verein' ? 'Hallo zusammen, ich bin Rudi Kiesel vom SV Kieselbach! Heute wird es richtig gut!' : 'Was wäre, wenn die Erde plötzlich stehen bleibt? Die Antwort wird dich überraschen.';
+    const { buffer, used, why } = await synthesize(
       ctx,
-      [{ text: 'Was wäre, wenn die Erde plötzlich stehen bleibt? Die Antwort wird dich überraschen.' }],
+      [{ text: sample }],
       settings,
       (p) => {
         btn.textContent =
@@ -884,6 +888,10 @@ async function onTestVoice() {
     src.buffer = buffer;
     src.connect(ctx.destination);
     src.start();
+    // Anzeigen, welche Stimme WIRKLICH spielt (und warum ggf. die Ersatzstimme)
+    info.textContent = why ? `⚠️ Gespielt: ${used}. Grund: ${why}` : `✅ Gespielt: ${used}`;
+    info.style.color = why ? '#fbbf24' : '';
+    info.classList.remove('hidden');
     btn.textContent = '🔊 Spielt … (Stummschalter am iPhone aus?)';
     await new Promise((r) => (src.onended = r));
   } catch (e) {

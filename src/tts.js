@@ -44,32 +44,47 @@ const SCENE_GAP = 0.22; // Pause zwischen Szenen in Sekunden
  * Erzeugt die Sprachspur für alle Szenen.
  * Ergebnis: { buffer: AudioBuffer, sceneTimes: [{start, end}] }
  */
+/** Verständliche Erklärung, warum Gemini nicht ging */
+export function explainGeminiError(msg) {
+  const m = String(msg || '');
+  if (/\b429\b|quota|RESOURCE_EXHAUSTED|rate/i.test(m)) return 'Tageskontingent von Google aufgebraucht (Gratis-Tarif). Morgen geht es wieder – oder in Google AI Studio die Abrechnung aktivieren.';
+  if (/\b40[013]\b|api key|permission|unauth/i.test(m)) return 'Gemini-Schlüssel ungültig oder ohne Berechtigung.';
+  if (/\b404\b|not found/i.test(m)) return 'Google hat das Stimm-Modell geändert (404).';
+  if (/fetch|network|Zeitüberschreitung|timeout/i.test(m)) return 'Keine Verbindung zu Google.';
+  return m.slice(0, 120);
+}
+
 export async function synthesize(ctx, scenes, settings, onProgress, log) {
   const [kind, name] = settings.voice.split(':');
+  const piperName = { 'de_DE-thorsten-medium': 'Thorsten (kostenlos)', 'de_DE-thorsten-high': 'Thorsten HD (kostenlos)' };
+  const withInfo = async (p, used, why = null) => Object.assign(await p, { used, why });
   if (kind === 'gemini') {
+    let why = null;
     if (!settings.geminiKey) {
+      why = 'kein Gemini-Schlüssel eingetragen';
       log('Für Gemini-Stimmen fehlt der API-Schlüssel – nutze kostenlose Piper-Stimme.', 'warn');
     } else {
       try {
-        return await geminiTTS(ctx, scenes, settings, name, onProgress);
+        return await withInfo(geminiTTS(ctx, scenes, settings, name, onProgress), `Gemini „${name}“`);
       } catch (e) {
-        log(`Gemini-Stimme fehlgeschlagen (${e.message}) – nutze kostenlose Piper-Stimme.`, 'warn');
+        why = explainGeminiError(e.message);
+        log(`Gemini-Stimme „${name}“ nicht möglich: ${why} – nutze kostenlose Piper-Stimme.`, 'warn');
       }
     }
-    return piperTTS(ctx, scenes, settings, 'de_DE-thorsten-medium', onProgress, log);
+    return withInfo(piperTTS(ctx, scenes, settings, 'de_DE-thorsten-medium', onProgress, log), 'Thorsten (kostenlose Ersatzstimme)', why);
   }
   // Lange Skripte + Gemini-Schlüssel: Gemini-Stimme nehmen. Die kostenlose Piper-
   // Stimme läuft auf dem iPhone und braucht dort sehr viel Arbeitsspeicher.
   if (settings.geminiKey && scenes.length > 12 && settings.autoGeminiVoice !== false) {
+    const auto = settings.visualMode === 'verein' ? 'Puck' : 'Charon';
     try {
-      const auto = settings.visualMode === 'verein' ? 'Puck' : 'Charon';
       log(`Langes Skript: nutze die Gemini-Stimme „${auto}“ (braucht auf dem iPhone kaum Speicher) …`);
-      return await geminiTTS(ctx, scenes, settings, auto, onProgress);
+      return await withInfo(geminiTTS(ctx, scenes, settings, auto, onProgress), `Gemini „${auto}“`);
     } catch (e) {
-      log(`Gemini-Stimme fehlgeschlagen (${e.message}) – nutze kostenlose Piper-Stimme.`, 'warn');
+      log(`Gemini-Stimme fehlgeschlagen (${explainGeminiError(e.message)}) – nutze kostenlose Piper-Stimme.`, 'warn');
     }
   }
-  return piperTTS(ctx, scenes, settings, name, onProgress, log);
+  return withInfo(piperTTS(ctx, scenes, settings, name, onProgress, log), piperName[name] || name);
 }
 
 // ---------------------------------------------------------------- Piper ---
