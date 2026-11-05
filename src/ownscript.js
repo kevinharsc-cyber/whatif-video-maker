@@ -2,7 +2,7 @@
 // Überschriften ("😨 Teil 2 – …"), Tipps und Regieanweisungen werden erkannt
 // und NICHT vorgelesen. "(mit Pause und schwarzem Bildschirm)" wird umgesetzt.
 
-import { fetchWithTimeout } from './util.js';
+import { geminiFetch, fetchWithTimeout } from './util.js';
 import { ANIM_PROMPT_HELP, SHOT_PROMPT_HELP, SHOT_LIST } from './anim/scene.js';
 import { parseJson, normalizeTopic } from './script.js';
 
@@ -109,16 +109,13 @@ Szenen:
 ${scenes.map((s, i) => `${i + 1}. ${s.text}`).join('\n')}
 
 Antworte NUR mit JSON: {"scenes":[{"shot":"look_window","anim":null,"popups":[],"thought":null,"label":null}]}`;
-  const res = await fetchWithTimeout(
+  const res = await geminiFetch(
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    key,
     {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: 'application/json', temperature: 0.7 },
-      }),
-    },
+      },
     90000,
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

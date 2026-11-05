@@ -7,7 +7,7 @@
 // Variante B (optional, kostenloses Kontingent): Google Gemini TTS – sehr
 //   natürliche Stimme, braucht deinen Gemini-API-Schlüssel.
 
-import { fetchWithTimeout, base64ToBytes, sleep } from './util.js';
+import { geminiFetch, fetchWithTimeout, base64ToBytes, sleep } from './util.js';
 import { createPiperPhonemize } from './vendor/piper-phonemize.js';
 
 export const VOICES = [
@@ -381,12 +381,10 @@ export function cleanForSpeech(text) {
 
 async function geminiSpeak(text, settings, voiceName) {
   const pace = settings.speed > 1.05 ? 'zügig und ' : settings.speed < 0.97 ? 'langsam, ruhig und ' : '';
-  const res = await fetchWithTimeout(
+  const res = await geminiFetch(
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent',
+    settings.geminiKey,
     {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': settings.geminiKey },
-      body: JSON.stringify({
         contents: [
           {
             parts: [
@@ -400,8 +398,7 @@ async function geminiSpeak(text, settings, voiceName) {
           responseModalities: ['AUDIO'],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
         },
-      }),
-    },
+      },
     120000,
   );
   if (!res.ok) throw new Error(`HTTP ${res.status} ${(await res.text()).slice(0, 120)}`);

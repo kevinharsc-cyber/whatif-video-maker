@@ -37,3 +37,32 @@ export function hashString(str) {
   }
   return h >>> 0;
 }
+
+// Anfrage an die Gemini-API. Google hat verschiedene Schlüssel-Formate
+// ("AIza…" und neuere "AQ.…"). Wir probieren die möglichen Übergabe-Wege
+// nacheinander und merken uns den, der funktioniert.
+let geminiWay = 0;
+export async function geminiFetch(url, key, body, ms = 60000) {
+  const k = String(key || '').trim();
+  const ways = [
+    () => [url, { 'Content-Type': 'application/json', 'x-goog-api-key': k }],
+    () => [`${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(k)}`, { 'Content-Type': 'application/json' }],
+    () => [url, { 'Content-Type': 'application/json', Authorization: `Bearer ${k}` }],
+  ];
+  let last = null;
+  for (let n = 0; n < ways.length; n++) {
+    const idx = (geminiWay + n) % ways.length;
+    const [u, headers] = ways[idx]();
+    const res = await fetchWithTimeout(u, { method: 'POST', headers, body: JSON.stringify(body) }, ms);
+    if (res.ok) {
+      geminiWay = idx;
+      return res;
+    }
+    last = res;
+    // Nur bei Schlüssel-/Anmeldeproblemen den nächsten Weg probieren
+    if (![400, 401, 403].includes(res.status)) return res;
+    const txt = await res.clone().text();
+    if (!/api[ _-]?key|unauthenticated|credential|permission|invalid.*key|authorization/i.test(txt)) return res;
+  }
+  return last;
+}
