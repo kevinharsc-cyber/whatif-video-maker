@@ -3,11 +3,11 @@
 
 import { actionPose, drawFigure, seg, emotionFor } from './figure.js';
 import { seededRandom } from '../util.js';
-import { PLACES, drawSkyProps, drawGroundProps, drawEffect, effectSkyDarkness, cameraShake } from './world.js';
+import { PLACES, drawSportsCar, drawSkyProps, drawGroundProps, drawEffect, effectSkyDarkness, cameraShake } from './world.js';
 
 // Das Labor wirkte unverständlich und wird nicht mehr verwendet
 export const PLACE_LIST = Object.keys(PLACES).filter((pl) => pl !== 'lab');
-export const ACTIONS = ['phone', 'idle', 'walk', 'run', 'sit', 'sleep', 'get_up', 'scared', 'flee', 'look_up', 'wave', 'shiver', 'fall', 'cheer', 'think', 'sad', 'point', 'swim', 'jump', 'float'];
+export const ACTIONS = ['drive', 'phone', 'idle', 'walk', 'run', 'sit', 'sleep', 'get_up', 'scared', 'flee', 'look_up', 'wave', 'shiver', 'fall', 'cheer', 'think', 'sad', 'point', 'swim', 'jump', 'float'];
 export const PROPS = ['animals', 'shop', 'sun', 'moon', 'earth', 'clouds', 'birds', 'plane', 'rocket', 'meteor', 'cars', 'bees', 'dinosaur', 'trees', 'house', 'money'];
 export const PROP_STATES = ['normal', 'explode', 'vanish', 'grow', 'dim', 'stop', 'fall', 'big', 'red_giant', 'dead', 'storm'];
 export const EFFECTS = ['none', 'explosion', 'flash', 'darkness', 'fire', 'flood', 'quake', 'rain', 'storm', 'snow', 'freeze', 'heat'];
@@ -21,6 +21,7 @@ export const ANIM_PROMPT_HELP = `"anim" beschreibt die Strichmännchen-Animation
 - "props": Liste von {"type": ${PROPS.join('|')}, "state": ${PROP_STATES.join('|')}} – "shop" ist eine Ladenfront, dazu "label" mit dem Schildtext (z. B. "BURGER", "SUPERMARKT")
 - "actors": 1-2 Figuren {"action": ${ACTIONS.join('|')}, "from": left|center|right|offleft|offright, "to": left|center|right|offleft|offright}. Die erste Figur ist "du" (Hauptfigur mit roter Kappe).
 - "crowd": {"count": 0-4, "action": eine Aktion} für weitere Menschen
+- "empty": true, wenn die Stadt menschenleer/ohne Licht sein soll (z. B. beim Ort rooftop)
 - "effect": ${EFFECTS.join(', ')} (Ereignisse wie Explosionen passieren bei ca. 30 % der Szene; Figuren mit "scared"/"flee"/"fall" reagieren genau dann)
 Beispiele: Aufwachen = {"place":"bedroom","actors":[{"action":"get_up"}]}; Sonne explodiert = {"place":"meadow","props":[{"type":"sun","state":"explode"}],"actors":[{"action":"flee"}],"crowd":{"count":3,"action":"scared"},"effect":"explosion"}`;
 
@@ -44,6 +45,7 @@ export function normalizeAnim(a) {
       .slice(0, 2),
     crowd: { count: Math.max(0, Math.min(4, Number(a.crowd?.count) || 0)), action: pick(a.crowd?.action, ACTIONS, 'idle') },
     effect: pick(a.effect, EFFECTS, 'none'),
+    empty: a.empty === true,
   };
   if (!spec.place) return null;
   return spec;
@@ -68,7 +70,11 @@ export function guessAnim(text, topic = '', index = 0, count = 1) {
   else if (has(t, /(labor|wissenschaftler|forscher|nasa|experte)/)) spec.place = 'city';
   else if (has(t, /(fernseh|internet|handy|smartphone|zuhause|sofa|wohnung|strom)/)) spec.place = 'living_room';
   else if (has(all, /(letzte mensch|leer|verlassen|niemand|keine menschen|ausgestorben|ruinen)/)) spec.place = 'empty_city';
-  else if (has(t, /(verkehr|auto|straße|strasse|stau)/)) spec.place = 'street';
+  else if (has(t, /(dach|wolkenkratzer|hochhaus|über der stadt|aussicht)/)) spec.place = 'rooftop';
+  else if (has(t, /(sportwagen|ferrari|lamborghini|rast|fährst|autobahn)/)) {
+    spec.place = 'street';
+    action = 'drive';
+  } else if (has(t, /(verkehr|auto|straße|strasse|stau)/)) spec.place = 'street';
   else if (has(t, /(stadt|städte|gebäude|hochhaus)/)) spec.place = 'city';
   else if (has(t, /(meer|strand|ozean|welle|insel|küste|meeresspiegel)/)) spec.place = 'beach';
   else if (has(t, /(wüste|dürre|trocken|verdurst)/)) spec.place = 'desert';
@@ -164,7 +170,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
   const ev = 0.3;
   const effect = spec.effect;
   const sunProp = spec.props.find((x) => x.type === 'sun');
-  const darkPlace = spec.place === 'space' || spec.place === 'earth';
+  const darkPlace = spec.place === 'space' || spec.place === 'earth' || spec.place === 'black';
   const c = {
     W, H, t, p, dur, ev,
     groundY: H * (darkPlace ? 0.62 : 0.7),
@@ -174,6 +180,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
     moonPos: { x: W * 0.25, y: H * 0.16 },
     hasProp: (type) => spec.props.some((x) => x.type === type),
     alarm: effect === 'alarm',
+    empty: !!spec.empty,
     flicker: true,
   };
   const skyProps = spec.props.filter((x) => ['sun', 'moon', 'earth', 'clouds', 'birds', 'plane', 'rocket', 'meteor'].includes(x.type));
@@ -252,13 +259,18 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
       groundY = c.bed.top;
       fromX = toX = (c.bed.x + c.bed.w * 0.62) / W;
     }
-    if (st.seated && c.seatY && a.action !== 'get_up') groundY = c.seatY + S * 0.235;
+    let seatX = null;
+    if (st.seated && c.seatY && a.action !== 'get_up' && a.action !== 'drive') {
+      groundY = c.seatY + a.size * 0.235;
+      // Hauptfigur setzt sich auf Sofa/Bank (statt daneben in die Luft)
+      if (a.main && c.seatX && !a.from) seatX = c.seatX;
+    }
     const needsStool = st.seated && a.action !== 'get_up' && (spec.place === 'lab' || !c.seatY);
     if (a.action === 'float') groundY = H * 0.55;
     if (a.action === 'swim') groundY = c.groundY - H * 0.03;
 
     const k = st.move ?? 0;
-    let x = (fromX + (toX - fromX) * k) * W;
+    let x = seatX ?? (fromX + (toX - fromX) * k) * W;
     // Figuren nicht übereinander stellen
     if (!moving) {
       const minGap = a.size * 0.55;
@@ -271,6 +283,16 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
     if (['look_up', 'point', 'scared'].includes(a.action) && origin) dir = origin.x >= x ? 1 : -1;
     if (a.action === 'scared' && p > ev) dir = origin.x >= x ? 1 : -1;
 
+    if (a.action === 'drive') {
+      // Sportwagen: Figur sitzt drin, Auto fährt durchs Bild
+      const carS = W * 0.62;
+      const cx = (0.28 + 0.4 * p) * W;
+      const cy = c.groundY + H * 0.06 + Math.sin(t * 22) * H * 0.002;
+      const seat = cy - carS * 0.2;
+      drawFigure(g, { x: cx + carS * 0.02, groundY: seat + a.size * 0.235, size: a.size * 0.8, dir: 1, pose: st.pose, color: stroke, fill, t: t + idx, look: a.main ? LOOK_MAIN : LOOK_OTHER, emotion: emotionFor(a.action, p, ev, 0) });
+      drawSportsCar(g, cx, cy, carS, t);
+      return;
+    }
     if (needsStool) {
       const seat = st.seated && c.seatY ? c.seatY : c.groundY - S * 0.235;
       if (!c.seatY) groundY = c.groundY;
@@ -313,7 +335,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
 
 // Vordergrund-Ebene: dunkle, unscharfe Silhouetten an den Rändern (Tiefe + Parallaxe)
 function drawForeground(g, W, H, c, spec, t, p) {
-  if (spec.place === 'space' || spec.place === 'earth') return;
+  if (spec.place === 'space' || spec.place === 'earth' || spec.place === 'black') return;
   const shift = (p - 0.5) * W * 0.06;
   g.save();
   g.fillStyle = 'rgba(12,6,16,0.92)';
@@ -371,6 +393,7 @@ const LOOK_CROWD = { skin: '#3d1f12', cloth: '#5a2c17', pants: '#2e160c', rim: '
 
 // Kino-Look: warme Farbstimmung, schwebende Lichtpartikel, dunkle Ränder
 function cinematicGrade(g, W, H, t, spec) {
+  if (spec.place === 'black') return; // schwarzer Bildschirm bleibt schwarz
   g.save();
   g.globalCompositeOperation = 'soft-light';
   const warm = g.createLinearGradient(0, 0, 0, H);

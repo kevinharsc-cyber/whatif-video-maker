@@ -134,6 +134,15 @@ export function actionPose(action, p, t, ev = 0.3) {
       const s = Math.sin(t * 6);
       return { pose: { ...BASE, la1: 2.5 * (0.5 + 0.5 * s), ra1: 2.5 * (0.5 - 0.5 * s), lt1: s * 0.3, rt1: -s * 0.3 }, lying: 1, swim: true, move: p };
     }
+    case 'drive': {
+      // sitzt im Auto, Hände am Lenkrad, jubelt kurz
+      const yay = p > 0.45 && p < 0.7;
+      return {
+        pose: { ...SIT, la1: yay ? 2.7 : 1.3, la2: yay ? 0.2 : 0.3, ra1: yay ? 2.5 : 1.2, ra2: yay ? -0.2 : 0.4, head: -0.05, dy: Math.sin(t * 18) * 0.004 },
+        seated: true,
+        driving: true,
+      };
+    }
     case 'jump':
       return { pose: { ...BASE, la1: 1.2, ra1: 1.3, lt1: 0.4, lt2: -0.8, rt1: 0.3, rt2: -0.8, dy: Math.abs(Math.sin(t * 4)) * 0.25 } };
     case 'float': // Schwerelosigkeit
@@ -474,6 +483,7 @@ export function emotionFor(action, p, ev = 0.3, lying = 0) {
     case 'cheer':
     case 'wave':
     case 'jump':
+    case 'drive':
       return 'happy';
     case 'think':
       return 'think';

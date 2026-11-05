@@ -505,3 +505,27 @@ a {
   overflow: hidden;
   pointer-events: none;
 }
+
+.own {
+  margin-top: 14px;
+  background: var(--card2);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.own summary {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.own textarea {
+  margin-top: 8px;
+  background: var(--bg);
+}
+
+.scene-flag {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-left: 6px;
+}

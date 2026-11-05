@@ -208,6 +208,7 @@ export const PLACES = {
     rect(g, '#c0392b', W * 0.05, floorY - H * 0.08, W * 0.45, H * 0.08);
     rect(g, '#a93226', W * 0.05, floorY - H * 0.14, W * 0.45, H * 0.07);
     c.seatY = floorY - H * 0.06;
+    c.seatX = W * 0.27; // Sofa
     return { hasSky: false };
   },
 
@@ -315,6 +316,7 @@ export const PLACES = {
     rect(g, '#6d4c41', W * 0.32, c.groundY - H * 0.06, W * 0.02, H * 0.06);
     rect(g, '#6d4c41', W * 0.66, c.groundY - H * 0.06, W * 0.02, H * 0.06);
     c.seatY = c.groundY - H * 0.06;
+    c.seatX = W * 0.5; // Parkbank
     return { hasSky: true };
   },
 
@@ -380,6 +382,53 @@ export const PLACES = {
     g.lineTo(W, c.groundY);
     g.fill();
     rect(g, '#f4f8ff', 0, c.groundY, W, H - c.groundY);
+    return { hasSky: true };
+  },
+
+  black(g, W, H, c) {
+    rect(g, '#000000', 0, 0, W, H);
+    return { hasSky: false, space: true };
+  },
+
+  rooftop(g, W, H, c) {
+    sky(g, W, H, skyColors(c.time, c.dark), H);
+    if (c.time === 'night' || c.dark > 0.4) stars(g, W, H, seededRandom(15), 1, c.t);
+    c.drawSkyProps();
+    // Stadt tief unten (Fernsicht)
+    const rnd = seededRandom(51);
+    const lit = c.time === 'night' ? (c.empty ? 0 : 0.6) : 0.15;
+    for (let layer = 0; layer < 2; layer++) {
+      for (let i = 0; i < 12; i++) {
+        const bw = W * (0.06 + rnd() * 0.06);
+        const bh = H * (0.08 + rnd() * 0.16) * (layer ? 1.25 : 0.8);
+        const x = i * W * 0.09 - W * 0.04 + layer * W * 0.04;
+        building(g, x, c.groundY + H * 0.02, bw, bh, layer ? '#4a4258' : '#6a6178', lit, rnd, c.empty && layer === 1);
+      }
+    }
+    // Dunst über der Stadt
+    const haze = g.createLinearGradient(0, c.groundY - H * 0.25, 0, c.groundY);
+    haze.addColorStop(0, 'rgba(255,200,150,0)');
+    haze.addColorStop(1, 'rgba(255,190,140,0.25)');
+    g.fillStyle = haze;
+    g.fillRect(0, c.groundY - H * 0.25, W, H * 0.25);
+    // Dachfläche + Geländer + Antenne
+    rect(g, '#2b2433', 0, c.groundY, W, H - c.groundY);
+    rect(g, '#3a3245', 0, c.groundY, W, H * 0.012);
+    g.strokeStyle = '#1a1520';
+    g.lineWidth = W * 0.008;
+    g.beginPath();
+    g.moveTo(0, c.groundY - H * 0.05);
+    g.lineTo(W, c.groundY - H * 0.05);
+    for (let x = 0; x <= W; x += W * 0.08) {
+      g.moveTo(x, c.groundY - H * 0.05);
+      g.lineTo(x, c.groundY);
+    }
+    g.stroke();
+    rect(g, '#1a1520', W * 0.88, c.groundY - H * 0.3, W * 0.012, H * 0.3);
+    g.fillStyle = Math.sin(c.t * 3) > 0 ? '#ff3b4d' : '#5a1a22';
+    g.beginPath();
+    g.arc(W * 0.886, c.groundY - H * 0.3, W * 0.012, 0, TAU);
+    g.fill();
     return { hasSky: true };
   },
 
@@ -987,4 +1036,64 @@ export function cameraShake(effect, c) {
     return [Math.sin(c.t * 60) * a, Math.cos(c.t * 53) * a];
   }
   return [0, 0];
+}
+
+// Sportwagen (seitlich), Figur sitzt darin
+export function drawSportsCar(g, x, y, s, t) {
+  g.save();
+  g.translate(x, y);
+  // Fahrtwind-Linien
+  g.strokeStyle = 'rgba(255,255,255,0.5)';
+  g.lineWidth = s * 0.02;
+  for (let i = 0; i < 6; i++) {
+    const yy = -s * (0.08 + i * 0.07);
+    const len = s * (0.4 + ((i * 37) % 5) * 0.12);
+    const off = ((t * s * 3 + i * s * 0.3) % (s * 1.2));
+    g.beginPath();
+    g.moveTo(-s * 0.6 - off, yy);
+    g.lineTo(-s * 0.6 - off - len, yy);
+    g.stroke();
+  }
+  // Karosserie
+  g.fillStyle = '#e11d48';
+  g.beginPath();
+  g.moveTo(-s * 0.55, -s * 0.08);
+  g.lineTo(-s * 0.52, -s * 0.22);
+  g.quadraticCurveTo(-s * 0.2, -s * 0.26, -s * 0.05, -s * 0.24);
+  g.lineTo(s * 0.12, -s * 0.36);
+  g.quadraticCurveTo(s * 0.28, -s * 0.38, s * 0.36, -s * 0.24);
+  g.quadraticCurveTo(s * 0.55, -s * 0.22, s * 0.58, -s * 0.12);
+  g.lineTo(s * 0.58, -s * 0.06);
+  g.closePath();
+  g.fill();
+  // Scheibe
+  g.fillStyle = 'rgba(160,210,255,0.55)';
+  g.beginPath();
+  g.moveTo(s * 0.13, -s * 0.34);
+  g.quadraticCurveTo(s * 0.26, -s * 0.36, s * 0.32, -s * 0.25);
+  g.lineTo(s * 0.06, -s * 0.25);
+  g.closePath();
+  g.fill();
+  // Lichter
+  g.fillStyle = '#fff3c4';
+  g.fillRect(s * 0.52, -s * 0.17, s * 0.06, s * 0.035);
+  g.fillStyle = '#ff6b6b';
+  g.fillRect(-s * 0.56, -s * 0.18, s * 0.04, s * 0.035);
+  // Räder (drehen sich)
+  for (const wx of [-0.33, 0.36]) {
+    g.fillStyle = '#121016';
+    g.beginPath();
+    g.arc(wx * s, -s * 0.06, s * 0.1, 0, TAU);
+    g.fill();
+    g.strokeStyle = '#b8b8c8';
+    g.lineWidth = s * 0.015;
+    for (let k = 0; k < 3; k++) {
+      const a = t * 25 + (k * TAU) / 3;
+      g.beginPath();
+      g.moveTo(wx * s, -s * 0.06);
+      g.lineTo(wx * s + Math.cos(a) * s * 0.07, -s * 0.06 + Math.sin(a) * s * 0.07);
+      g.stroke();
+    }
+  }
+  g.restore();
 }

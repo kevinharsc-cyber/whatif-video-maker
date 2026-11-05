@@ -32,6 +32,16 @@
         <textarea id="topic" rows="3" placeholder="Was wäre, wenn die Erde plötzlich stehen bleibt?"></textarea>
         <div id="ideas" class="chips"></div>
         <button id="btnScript" class="primary">✨ Skript erstellen</button>
+        <details class="own">
+          <summary>✍️ Oder eigenes Skript einfügen</summary>
+          <p class="small">
+            Füge deinen fertigen Text ein. Überschriften (z. B. „😨 Teil 2 – …“) und Tipps werden nicht vorgelesen.
+            Schreibe <b>(mit Pause und schwarzem Bildschirm)</b> in eine Zeile vor einen Satz, dann kommt dort eine
+            Pause mit schwarzem Bild.
+          </p>
+          <textarea id="ownText" rows="8" placeholder="🎬 WAS WÄRE, WENN …?&#10;&#10;Was wäre, wenn du morgen aufwachst …&#10;und plötzlich niemand mehr da ist?"></textarea>
+          <button id="btnOwn" class="primary">📝 Mein Skript übernehmen</button>
+        </details>
       </section>
 
       <!-- Schritt 2: Skript prüfen -->
@@ -118,6 +128,11 @@
         </select>
 
         <label class="check"><input id="sMusic" type="checkbox" /> Hintergrund-Sound &amp; Übergangseffekte</label>
+        <label class="lbl" for="sMood">Musik-Stimmung</label>
+        <select id="sMood">
+          <option value="dark">🌑 Dunkel &amp; spannend (empfohlen)</option>
+          <option value="light">🌤️ Hell &amp; sphärisch</option>
+        </select>
 
         <h3 class="sub-head">📣 Folgen-Pop-up</h3>
         <label class="check"><input id="sFollow" type="checkbox" /> In jedem Video „Folgen“-Pop-up zeigen</label>
