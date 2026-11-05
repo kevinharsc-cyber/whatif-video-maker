@@ -32,6 +32,11 @@ export function loadSettings() {
       s.visualMode = '3d'; // neuer Standard: Low-Poly-3D
       s.lowpolyV1 = true;
     }
+    if (!s.voiceV2) {
+      // Verein: freundliche, gut gelaunte Stimme statt des ruhigen Erzählers
+      if (s.visualMode === 'verein' && (s.voice === 'gemini:Charon' || (s.geminiKey && s.voice.startsWith('piper:')))) s.voice = 'gemini:Puck';
+      s.voiceV2 = true;
+    }
     if (!s.vereinV1) {
       s.visualMode = 'verein'; // Wunsch: alles im Look des SV Kieselbach
       s.vereinV1 = true;

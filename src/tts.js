@@ -16,7 +16,10 @@ export const VOICES = [
   { id: 'piper:de_DE-kerstin-low', label: 'Kerstin (weiblich, kostenlos)' },
   { id: 'piper:de_DE-ramona-low', label: 'Ramona (weiblich, kostenlos)' },
   { id: 'piper:de_DE-eva_k-x_low', label: 'Eva (weiblich, kostenlos, klein)' },
-  { id: 'gemini:Charon', label: 'Gemini „Charon“ (männlich, braucht Schlüssel)' },
+  { id: 'gemini:Puck', label: 'Gemini „Puck“ (männlich, gut gelaunt – empfohlen für SV Kieselbach)' },
+  { id: 'gemini:Achird', label: 'Gemini „Achird“ (männlich, freundlich)' },
+  { id: 'gemini:Sadachbia', label: 'Gemini „Sadachbia“ (männlich, lebhaft)' },
+  { id: 'gemini:Charon', label: 'Gemini „Charon“ (männlich, ruhiger Erzähler, braucht Schlüssel)' },
   { id: 'gemini:Fenrir', label: 'Gemini „Fenrir“ (männlich, aufgeregt, braucht Schlüssel)' },
   { id: 'gemini:Kore', label: 'Gemini „Kore“ (weiblich, braucht Schlüssel)' },
   { id: 'gemini:Aoede', label: 'Gemini „Aoede“ (weiblich, braucht Schlüssel)' },
@@ -59,8 +62,9 @@ export async function synthesize(ctx, scenes, settings, onProgress, log) {
   // Stimme läuft auf dem iPhone und braucht dort sehr viel Arbeitsspeicher.
   if (settings.geminiKey && scenes.length > 12 && settings.autoGeminiVoice !== false) {
     try {
-      log('Langes Skript: nutze die Gemini-Stimme „Charon“ (braucht auf dem iPhone kaum Speicher) …');
-      return await geminiTTS(ctx, scenes, settings, 'Charon', onProgress);
+      const auto = settings.visualMode === 'verein' ? 'Puck' : 'Charon';
+      log(`Langes Skript: nutze die Gemini-Stimme „${auto}“ (braucht auf dem iPhone kaum Speicher) …`);
+      return await geminiTTS(ctx, scenes, settings, auto, onProgress);
     } catch (e) {
       log(`Gemini-Stimme fehlgeschlagen (${e.message}) – nutze kostenlose Piper-Stimme.`, 'warn');
     }
@@ -391,8 +395,22 @@ export function cleanForSpeech(text) {
 
 // ---------------------------------------------------------------- Gemini ---
 
+// Sprechanweisung je nach Video-Art
+export function speakInstruction(settings) {
+  const fast = settings.speed > 1.05;
+  if (settings.visualMode === 'verein') {
+    return (
+      'Sprich den folgenden deutschen Text als gut gelaunter, freundlicher und selbstbewusster Fußballtrainer, ' +
+      'der seinen kleinen Verein vorstellt: locker, herzlich, mit einem Lächeln in der Stimme und etwas Humor, ' +
+      `${fast ? 'flottes, zügiges' : 'zügiges'} Tempo, energisch und motivierend – nicht düster, nicht geheimnisvoll, nicht dramatisch. ` +
+      'Mache nur kurze Pausen:'
+    );
+  }
+  const pace = fast ? 'zügig und ' : settings.speed < 0.97 ? 'langsam, ruhig und ' : '';
+  return `Lies den folgenden deutschen Text ${pace}spannend und atmosphärisch wie der Erzähler einer düsteren Mystery-Doku vor. Mache bei Auslassungspunkten kurze Pausen:`;
+}
+
 async function geminiSpeak(text, settings, voiceName) {
-  const pace = settings.speed > 1.05 ? 'zügig und ' : settings.speed < 0.97 ? 'langsam, ruhig und ' : '';
   const res = await geminiFetch(
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent',
     settings.geminiKey,
@@ -401,7 +419,7 @@ async function geminiSpeak(text, settings, voiceName) {
           {
             parts: [
               {
-                text: `Lies den folgenden deutschen Text ${pace}spannend und atmosphärisch wie der Erzähler einer düsteren Mystery-Doku vor. Mache bei Auslassungspunkten kurze Pausen:\n\n${text}`,
+                text: `${speakInstruction(settings)}\n\n${text}`,
               },
             ],
           },
