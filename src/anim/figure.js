@@ -1,4 +1,5 @@
 import { cachedGradient } from '../util.js';
+import { polyLimb, polyBlob, polyHair, shade } from './polygon.js';
 // Strichmännchen mit Gelenken (Kopf, Rumpf, Arme, Beine).
 // Jede Bewegung ("Aktion") ist eine Funktion, die für einen Zeitpunkt die
 // Winkel aller Gelenke liefert. Daraus wird die Figur gezeichnet.
@@ -295,7 +296,7 @@ function drawBubble(g, kind, x, y, S, t, color) {
 // Dicke, runde Gliedmaßen, großer Kopf mit Gesicht, Kleidung (Hoodie),
 // warmes Randlicht – wie in modernen Erklär-Animationen.
 
-function thick(g, pts, w, c) {
+function thickRound(g, pts, w, c) {
   g.strokeStyle = c;
   g.lineWidth = w;
   g.beginPath();
@@ -309,6 +310,8 @@ function drawBean(g, S, dir, J, look, emotion, t, holdPhone = false) {
   const legW = S * 0.11;
   const armW = S * 0.09;
   const back = look.shade || 'rgba(0,0,0,0.25)';
+  // Low-Poly-2D: kantige Glieder statt runder Striche
+  const thick = look.poly ? (_g, pts, w, c) => polyLimb(g, pts, w, c) : thickRound;
   // hintere Seite (etwas dunkler)
   thick(g, [hip, lk, lf], legW, look.pants);
   thick(g, [neck, le, lh], armW, look.cloth);
@@ -333,18 +336,24 @@ function drawBean(g, S, dir, J, look, emotion, t, holdPhone = false) {
   // Kopf
   const hr = S * 0.16;
   const hc = [neck[0] + Math.sin(headDir) * hr * 0.95 * dir, neck[1] - Math.cos(headDir) * hr * 0.95];
-  if (look.hoodie) {
+  if (look.poly) {
+    if (look.hoodie) polyBlob(g, hc[0] - dir * hr * 0.12, hc[1] + hr * 0.08, hr * 1.18, look.cloth, 7, 0.3);
+    polyBlob(g, hc[0], hc[1], hr, look.skin, 8, 0.39, 1, 1.05);
+    if (look.hair) polyHair(g, hc[0], hc[1], hr, look.hair, dir);
+  } else if (look.hoodie) {
     g.fillStyle = look.cloth;
     g.beginPath();
     g.arc(hc[0] - dir * hr * 0.12, hc[1] + hr * 0.05, hr * 1.18, 0, Math.PI * 2);
     g.fill();
   }
-  g.fillStyle = look.skin;
-  g.beginPath();
-  g.arc(hc[0], hc[1], hr, 0, Math.PI * 2);
-  g.fill();
+  if (!look.poly) {
+    g.fillStyle = look.skin;
+    g.beginPath();
+    g.arc(hc[0], hc[1], hr, 0, Math.PI * 2);
+    g.fill();
+  }
   // Randlicht
-  if (look.rim) {
+  if (look.rim && !look.poly) {
     g.strokeStyle = look.rim;
     g.lineWidth = hr * 0.12;
     g.beginPath();
@@ -372,6 +381,7 @@ function drawBean(g, S, dir, J, look, emotion, t, holdPhone = false) {
 }
 
 function shoe(g, f, S, dir, look) {
+  if (look.poly) return polyBlob(g, f[0] + dir * S * 0.03, f[1] + S * 0.005, S * 0.034, look.shoe || '#1a0f0a', 6, 0, 1.9, 1);
   g.fillStyle = look.shoe || '#1a0f0a';
   g.beginPath();
   g.ellipse(f[0] + dir * S * 0.03, f[1] + S * 0.01, S * 0.06, S * 0.032, 0, 0, Math.PI * 2);
@@ -379,6 +389,7 @@ function shoe(g, f, S, dir, look) {
 }
 
 function hand(g, h, S, look, isBack) {
+  if (look.poly) return polyBlob(g, h[0], h[1], S * 0.047, isBack ? shade(look.skin, -0.2) : look.skin, 6, 0.2);
   g.fillStyle = look.skin;
   g.beginPath();
   g.arc(h[0], h[1], S * 0.045, 0, Math.PI * 2);

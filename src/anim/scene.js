@@ -3,6 +3,7 @@
 
 import { actionPose, drawFigure, seg, emotionFor } from './figure.js';
 import { seededRandom, cachedGradient, cachedLayer } from '../util.js';
+import { polygonize } from './polygon.js';
 import { PLACES, drawSportsCar, drawSkyProps, drawGroundProps, drawEffect, effectSkyDarkness, cameraShake } from './world.js';
 
 // Das Labor wirkte unverständlich und wird nicht mehr verwendet
@@ -155,7 +156,8 @@ export function guessAnim(text, topic = '', index = 0, count = 1) {
 
 // ------------------------------------------------------- Animation ---
 
-export function createAnimVisual(spec) {
+export function createAnimVisual(spec, { poly = false } = {}) {
+  if (poly) spec._poly = true; // Low-Poly-2D-Stil
   return {
     isAnim: true,
     spec,
@@ -200,11 +202,12 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
   const cacheable = !['house_front', 'earth', 'black'].includes(spec.place) && !['darkness', 'explosion'].includes(effect);
   let info;
   if (cacheable) {
-    const key = `bg|${spec.place}|${spec.time}|${spec.empty ? 1 : 0}|${c.noFlowers ? 1 : 0}|${W}|${H}`;
+    const key = `bg|${spec.place}|${spec.time}|${spec.empty ? 1 : 0}|${c.noFlowers ? 1 : 0}|${W}|${H}|${spec._poly ? 'poly' : ''}`;
     const layer = cachedLayer(key, W, H, (lg) => {
       const bc = { ...c, t: 0, p: 0, dark: 0, drawSkyProps: () => {} };
       const inf = placeFn(lg, W, H, bc) || {};
       paintGrade(lg, W, H); // Farbstimmung + Abdunklung gleich mit einbacken (spart 2 Vollbild-Ebenen pro Bild)
+      if (spec._poly) polygonize(lg, W, H); // Low-Poly-2D: einmal pro Szene in Dreiecke zerlegen
       return { inf, bed: bc.bed, seatY: bc.seatY, seatX: bc.seatX, door: bc.door, window: bc.window };
     });
     g.imageSmoothingQuality = 'low';
@@ -307,7 +310,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
       const cx = (0.28 + 0.4 * p) * W;
       const cy = c.groundY + H * 0.06 + Math.sin(t * 22) * H * 0.002;
       const seat = cy - carS * 0.2;
-      drawFigure(g, { x: cx + carS * 0.02, groundY: seat + a.size * 0.235, size: a.size * 0.8, dir: 1, pose: st.pose, color: stroke, fill, t: t + idx, look: a.main ? LOOK_MAIN : LOOK_OTHER, emotion: emotionFor(a.action, p, ev, 0) });
+      drawFigure(g, { x: cx + carS * 0.02, groundY: seat + a.size * 0.235, size: a.size * 0.8, dir: 1, pose: st.pose, color: stroke, fill, t: t + idx, look: spec._poly ? (a.main ? LOOK_MAIN_POLY : LOOK_OTHER_POLY) : a.main ? LOOK_MAIN : LOOK_OTHER, emotion: emotionFor(a.action, p, ev, 0) });
       drawSportsCar(g, cx, cy, carS, t);
       return;
     }
@@ -340,7 +343,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
       jitter: st.jitter || 0,
       holdPhone: !!st.holdPhone,
       bubbleColor: '#fff3e0',
-      look: a.main ? LOOK_MAIN : a.crowd != null ? LOOK_CROWD : LOOK_OTHER,
+      look: spec._poly ? (a.main ? LOOK_MAIN_POLY : a.crowd != null ? LOOK_CROWD_POLY : LOOK_OTHER_POLY) : a.main ? LOOK_MAIN : a.crowd != null ? LOOK_CROWD : LOOK_OTHER,
       emotion: emotionFor(a.action, p, ev, lying),
     });
   });
@@ -394,6 +397,10 @@ function drawForeground(g, W, H, c, spec, t, p) {
 const LOOK_MAIN = { skin: '#f6f1ec', cloth: '#7c3aed', pants: '#2b2140', rim: '#ffffff', hoodie: true, eye: '#2a1f3d', ink: '#231a33', shoe: '#17111f' };
 const LOOK_OTHER = { skin: '#3a1d10', cloth: '#2f6fd6', pants: '#23140c', rim: '#ffb067', hoodie: true, eye: '#fff1dc', shoe: '#140a05' };
 const LOOK_CROWD = { skin: '#3d1f12', cloth: '#5a2c17', pants: '#2e160c', rim: '#ff9a4d', eye: '#ffe7c9', shoe: '#1a0d06' };
+// Low-Poly-2D: gleiche Figur wie im 3D-Stil (Hautton, braune Haare, lila Hoodie, weiße Schuhe)
+const LOOK_MAIN_POLY = { poly: true, skin: '#f1c7a3', hair: '#4a2c1d', cloth: '#7c3aed', pants: '#2b2f45', hoodie: true, eye: '#2a1f3d', ink: '#3a2618', shoe: '#f2f2f2' };
+const LOOK_OTHER_POLY = { ...LOOK_OTHER, poly: true, skin: '#c98d62', hair: '#2a1a10', cloth: '#2f6fd6', pants: '#3a3f55', eye: '#2a1f3d', ink: '#2a1a10', shoe: '#e9e9e9' };
+const LOOK_CROWD_POLY = { ...LOOK_CROWD, poly: true, skin: '#b07a55', hair: '#1f140c', cloth: '#5f6b7a', pants: '#3a3f55', eye: '#2a1f3d', ink: '#2a1a10', shoe: '#dcdcdc' };
 
 // Kino-Look: warme Farbstimmung, schwebende Lichtpartikel, dunkle Ränder
 // Farbstimmung + dunkle Ränder + Abdunklung oben/unten (für die Untertitel)
