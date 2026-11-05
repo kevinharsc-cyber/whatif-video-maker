@@ -3,7 +3,7 @@
 // und NICHT vorgelesen. "(mit Pause und schwarzem Bildschirm)" wird umgesetzt.
 
 import { fetchWithTimeout } from './util.js';
-import { ANIM_PROMPT_HELP } from './anim/scene.js';
+import { ANIM_PROMPT_HELP, SHOT_PROMPT_HELP, SHOT_LIST } from './anim/scene.js';
 import { parseJson, normalizeTopic } from './script.js';
 
 const EMOJI_START = /^[\p{Extended_Pictographic}\u{FE0F}\u{200D}\s￼]+/u;
@@ -69,11 +69,12 @@ export function parseOwnScript(raw) {
       pending.transition = 'fade';
       continue;
     }
-    const lineWords = it.text.split(/\s+/).length;
-    if (cur.length && words(cur) + lineWords > 22) flush();
+    // Eine Zeile = eine Einstellung (wie im Film). Zeilen, die mitten im Satz
+    // weitergehen (kleiner Anfangsbuchstabe), werden angehängt.
+    const continues = cur.length && (/^[a-zäöü]/.test(it.text) || !/[.!?…"“”:]$/.test(cur[cur.length - 1]));
+    if (cur.length && !continues) flush();
     cur.push(it.text);
-    const n = words(cur);
-    if (n >= 9 && /[.!?…"“]$/.test(it.text)) flush();
+    if (words(cur) > 24) flush();
   }
   flush();
   // Schwarzbild-Szene: alles danach gehört dazu (keine weiteren Szenen nötig)
@@ -97,7 +98,8 @@ export async function annotateWithGemini(scenes, topic, key) {
 Die Hauptfigur ist "du". Zeige genau, was der Text beschreibt, und wechsle Orte und Aktionen ab.
 
 Pro Szene:
-- "anim": ${ANIM_PROMPT_HELP}
+- ${SHOT_PROMPT_HELP}
+- "anim": nur wenn "shot" null ist: ${ANIM_PROMPT_HELP}
 - "popups": SPARSAM, im ganzen Video höchstens 4–5 Einblendungen (sonst []). {"emoji","label","word" (Wort aus dem Text), optional "insert": phone|clock|calendar|animals|burger|stars|plant|water|counter, oder "strike": true für Dinge, die wegfallen (keine Nachrichten, kein Netz, keine Autos …)}
 - "thought": optional kurzer Gedanke/Ruf der Figur (2–5 Wörter, z. B. "HALLO?!") oder null – in höchstens 3 Szenen
 - "label": optional Zeit-Einblendung wie "NACH 1 WOCHE" oder null
@@ -106,7 +108,7 @@ Thema: ${topic}
 Szenen:
 ${scenes.map((s, i) => `${i + 1}. ${s.text}`).join('\n')}
 
-Antworte NUR mit JSON: {"scenes":[{"anim":{...},"popups":[],"thought":null,"label":null}]}`;
+Antworte NUR mit JSON: {"scenes":[{"shot":"look_window","anim":null,"popups":[],"thought":null,"label":null}]}`;
   const res = await fetchWithTimeout(
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
     {
@@ -126,6 +128,7 @@ Antworte NUR mit JSON: {"scenes":[{"anim":{...},"popups":[],"thought":null,"labe
   if (!Array.isArray(out) || out.length !== scenes.length) throw new Error('Szenenanzahl passt nicht');
   return scenes.map((s, i) => ({
     ...s,
+    shot: s.black ? null : SHOT_LIST.includes(out[i]?.shot) ? out[i].shot : null,
     anim: s.black ? null : out[i]?.anim || null,
     popups: Array.isArray(out[i]?.popups) ? out[i].popups.slice(0, 2) : [],
     thought: typeof out[i]?.thought === 'string' ? out[i].thought.slice(0, 40) : null,

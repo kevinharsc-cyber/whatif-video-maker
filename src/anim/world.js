@@ -385,6 +385,117 @@ export const PLACES = {
     return { hasSky: true };
   },
 
+  // Zimmer mit großem Fenster, draußen die leere Straße
+  window_view(g, W, H, c) {
+    const floorY = c.groundY;
+    const night = c.time === 'night';
+    rect(g, night ? '#231c2c' : '#cfa983', 0, 0, W, floorY);
+    rect(g, '#7a4e33', 0, floorY, W, H - floorY);
+    const wx = W * 0.32;
+    const wy = H * 0.12;
+    const ww = W * 0.62;
+    const wh = floorY - H * 0.08 - wy;
+    g.save();
+    g.beginPath();
+    g.rect(wx, wy, ww, wh);
+    g.clip();
+    const street = wy + wh * 0.72;
+    sky(g, W, H, skyColors(c.time, c.dark), street);
+    if (night) stars(g, W, H, seededRandom(4), 1, c.t);
+    const rnd = seededRandom(61);
+    for (let i = 0; i < 6; i++) building(g, wx + i * ww * 0.18 - ww * 0.04, street, ww * 0.16, wh * (0.3 + rnd() * 0.3), '#8e8a99', night ? 0 : 0.1, rnd, true);
+    rect(g, '#55505a', wx, street, ww, wh);
+    g.fillStyle = '#e8e8e8';
+    for (let x = wx; x < wx + ww; x += ww * 0.18) g.fillRect(x, street + wh * 0.12, ww * 0.08, wh * 0.015);
+    // ein vorbeiwehendes Blatt Papier = sonst nichts bewegt sich
+    const px = wx + ((c.t * ww * 0.12) % (ww * 1.2)) - ww * 0.1;
+    rect(g, '#f2f2f2', px, street + wh * 0.06 - Math.abs(Math.sin(c.t * 3)) * wh * 0.04, ww * 0.03, ww * 0.02);
+    g.restore();
+    // Fensterrahmen + Kreuz + Vorhang
+    g.strokeStyle = '#f3e4d0';
+    g.lineWidth = W * 0.016;
+    g.strokeRect(wx, wy, ww, wh);
+    g.beginPath();
+    g.moveTo(wx + ww / 2, wy);
+    g.lineTo(wx + ww / 2, wy + wh);
+    g.moveTo(wx, wy + wh * 0.45);
+    g.lineTo(wx + ww, wy + wh * 0.45);
+    g.stroke();
+    rect(g, '#7c3aed', wx - W * 0.07, wy - H * 0.02, W * 0.08, wh + H * 0.05);
+    rect(g, '#6d2fd6', wx + ww - W * 0.01, wy - H * 0.02, W * 0.08, wh + H * 0.05);
+    rect(g, '#e9dcc8', wx - W * 0.03, wy + wh, ww + W * 0.06, H * 0.015);
+    // Licht von draußen
+    const light = g.createLinearGradient(wx, wy, wx - W * 0.25, floorY);
+    light.addColorStop(0, night ? 'rgba(120,140,255,0.1)' : 'rgba(255,235,190,0.3)');
+    light.addColorStop(1, 'rgba(255,235,190,0)');
+    g.fillStyle = light;
+    g.fillRect(0, wy, W, floorY - wy);
+    return { hasSky: false };
+  },
+
+  // Hausfront mit Tür (aus dem Haus treten)
+  house_front(g, W, H, c) {
+    sky(g, W, H, skyColors(c.time, c.dark), c.groundY);
+    if (c.time === 'night') stars(g, W, H, seededRandom(16), 1, c.t);
+    c.drawSkyProps();
+    const top = c.groundY - H * 0.42;
+    rect(g, '#b58466', W * 0.05, top, W * 0.9, c.groundY - top);
+    for (const wx of [0.12, 0.66]) {
+      rect(g, '#2c2433', W * wx, top + H * 0.06, W * 0.22, H * 0.11);
+      rect(g, '#f3e4d0', W * wx, top + H * 0.115, W * 0.22, H * 0.008);
+    }
+    // Tür (öffnet sich zu Beginn)
+    const dx = W * 0.39;
+    const dw = W * 0.22;
+    const dh = H * 0.24;
+    rect(g, '#1d1520', dx, c.groundY - dh, dw, dh);
+    const open = Math.min(1, c.p / 0.25);
+    rect(g, '#6e3f22', dx, c.groundY - dh, dw * (1 - open * 0.8), dh);
+    rect(g, '#e0b070', dx + dw * (1 - open * 0.8) - W * 0.03, c.groundY - dh * 0.5, W * 0.015, W * 0.015);
+    rect(g, '#9a9590', W * 0.34, c.groundY, W * 0.32, H * 0.015);
+    rect(g, '#6f6a66', 0, c.groundY + H * 0.015, W, H - c.groundY);
+    c.door = { x: dx + dw / 2 };
+    return { hasSky: true };
+  },
+
+  // Supermarkt von innen: volle Regale, niemand da
+  supermarket(g, W, H, c) {
+    const floorY = c.groundY;
+    rect(g, '#e9e4dc', 0, 0, W, floorY);
+    rect(g, '#cfc8bd', 0, floorY, W, H - floorY);
+    for (let x = 0; x < W; x += W * 0.12) rect(g, 'rgba(0,0,0,0.04)', x, floorY, W * 0.06, H - floorY);
+    // Deckenlampen
+    for (const lx of [0.2, 0.5, 0.8]) {
+      rect(g, '#fffbe8', W * lx - W * 0.1, H * 0.06, W * 0.2, H * 0.012);
+    }
+    const rnd = seededRandom(71);
+    const cols = ['#e53935', '#fdd835', '#43a047', '#1e88e5', '#fb8c00', '#8e24aa', '#ffffff'];
+    for (const [sx, sw] of [[0.02, 0.44], [0.54, 0.44]]) {
+      const x = W * sx;
+      const w = W * sw;
+      rect(g, '#8d6e63', x, H * 0.18, w, floorY - H * 0.18);
+      for (let r = 0; r < 5; r++) {
+        const y = H * 0.2 + r * (floorY - H * 0.22) / 5;
+        rect(g, '#5d4037', x, y + H * 0.065, w, H * 0.008);
+        for (let k = 0; k < 7; k++) {
+          const ih = H * (0.035 + rnd() * 0.025);
+          rect(g, cols[Math.floor(rnd() * cols.length)], x + w * (0.03 + k * 0.137), y + H * 0.065 - ih, w * 0.11, ih);
+        }
+      }
+    }
+    // Schild
+    g.save();
+    g.fillStyle = '#d32f2f';
+    g.fillRect(W * 0.3, H * 0.09, W * 0.4, H * 0.05);
+    g.fillStyle = '#fff';
+    g.font = `900 ${Math.round(H * 0.025)}px "Arial Black", system-ui, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('ALLES GRATIS?', W / 2, H * 0.116);
+    g.restore();
+    return { hasSky: false };
+  },
+
   black(g, W, H, c) {
     rect(g, '#000000', 0, 0, W, H);
     return { hasSky: false, space: true };

@@ -138,6 +138,8 @@ export function buildOverlays(scenes, sceneStarts, sceneTimes, subtitles, durati
     }
     // Szenenwechsel + große Ereignisse
     if (i > 0) sfx.push({ type: 'whoosh', at: start - 0.2 });
+    // Freizeichen beim Anrufen (niemand geht ran)
+    if (sc._action === 'call') for (let tt = start + 0.4; tt < end - 0.6; tt += 1.6) sfx.push({ type: 'ring', at: tt });
     const eff = sc.anim?.effect || sc._effect;
     if (['explosion', 'flash', 'quake'].includes(eff)) sfx.push({ type: 'boom', at: start + (end - start) * 0.3 });
 
@@ -473,6 +475,19 @@ export function scheduleSfx(ctx, out, list, t0) {
       src.start(at);
       src.stop(at + 0.55);
       nodes.push(src);
+    } else if (s.type === 'ring') {
+      // "Tuuut" – Freizeichen
+      const o = ctx.createOscillator();
+      const gn = ctx.createGain();
+      o.frequency.value = 425;
+      gn.gain.setValueAtTime(0.0001, at);
+      gn.gain.exponentialRampToValueAtTime(0.05, at + 0.02);
+      gn.gain.setValueAtTime(0.05, at + 0.9);
+      gn.gain.exponentialRampToValueAtTime(0.0001, at + 0.95);
+      o.connect(gn).connect(out);
+      o.start(at);
+      o.stop(at + 1);
+      nodes.push(o);
     } else if (s.type === 'chirp') {
       // Vogelzwitschern: 2–4 schnelle, hohe Pfiffe
       const n = 2 + Math.floor(Math.random() * 3);

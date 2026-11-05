@@ -305,19 +305,58 @@ async function geminiTTS(ctx, scenes, settings, voiceName, onProgress) {
     t += pauses[k];
     const { speech } = results[k];
     ch.set(speech, Math.floor(t * sr));
-    // Szenenzeiten innerhalb des Abschnitts anhand der Textlänge schätzen
+    // Szenengrenzen: erst nach Textlänge schätzen, dann an echte Sprechpausen anlegen
     const weights = gr.scenes.map((s) => speechWeight(s.text));
     const sum = weights.reduce((a, b) => a + b, 0);
     const dur = speech.length / sr;
-    let tt = t;
-    weights.forEach((w) => {
-      const d = (w / sum) * dur;
-      sceneTimes.push({ start: tt, end: tt + d });
-      tt += d;
-    });
+    const pausesIn = findPauses(speech, sr);
+    const bounds = [0];
+    let acc = 0;
+    for (let k = 0; k < weights.length - 1; k++) {
+      acc += (weights[k] / sum) * dur;
+      const prev = bounds[bounds.length - 1];
+      let best = acc;
+      let bestD = 1.2;
+      for (const pz of pausesIn) {
+        const d = Math.abs(pz - acc);
+        if (d < bestD && pz > prev + 0.3) {
+          best = pz;
+          bestD = d;
+        }
+      }
+      bounds.push(Math.max(prev + 0.3, best));
+    }
+    bounds.push(dur);
+    for (let k = 0; k < weights.length; k++) {
+      sceneTimes.push({ start: t + bounds[k], end: t + Math.max(bounds[k] + 0.2, bounds[k + 1] - 0.05) });
+    }
     t += dur;
   });
   return { buffer, sceneTimes };
+}
+
+// Findet Sprechpausen (Stille ≥ 0,2 s) und gibt deren Mitte in Sekunden zurück
+export function findPauses(data, sr) {
+  const win = Math.floor(sr * 0.01);
+  const env = [];
+  for (let i = 0; i < data.length; i += win) {
+    let sum = 0;
+    const end = Math.min(data.length, i + win);
+    for (let k = i; k < end; k++) sum += data[k] * data[k];
+    env.push(Math.sqrt(sum / Math.max(1, end - i)));
+  }
+  const loud = env.slice().sort((a, b) => a - b)[Math.floor(env.length * 0.9)] || 0.1;
+  const thr = loud * 0.08;
+  const out = [];
+  let run = 0;
+  for (let i = 0; i < env.length; i++) {
+    if (env[i] < thr) run++;
+    else {
+      if (run >= 20) out.push(((i - run / 2) * win) / sr);
+      run = 0;
+    }
+  }
+  return out;
 }
 
 export function speechWeight(text) {

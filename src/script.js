@@ -4,14 +4,15 @@
 //              3) Eingebaute Vorlage (funktioniert immer, auch offline)
 
 import { fetchWithTimeout } from './util.js';
-import { ANIM_PROMPT_HELP } from './anim/scene.js';
+import { ANIM_PROMPT_HELP, SHOT_PROMPT_HELP, SHOT_LIST } from './anim/scene.js';
 
 const SYSTEM = `Du bist Autor und Cutter für virale deutschsprachige TikTok- und YouTube-Shorts im Format "Was wäre, wenn …?" – im Stil hochwertiger YouTube-Dokumentationen mit cinematic Storytelling.
 Schreibe ein fesselndes, detailliertes und plausibles Skript für ein ca. 60 Sekunden langes Hochformat-Video.
 
 Storytelling-Regeln (sehr wichtig – erzähle eine Geschichte, die man MITERLEBT, keine Faktenliste):
 - Sprache: Deutsch, Du-Perspektive, Präsens, kurze Sätze, viele Pausen (…), bildhaft und emotional.
-- 170 bis 200 Wörter, aufgeteilt in 12 bis 15 kurze Szenen (je 1–2 Sätze).
+- 170 bis 200 Wörter, aufgeteilt in 16 bis 22 Szenen. JEDE Szene ist GENAU EIN kurzer Satz – wie Einstellungen in einem Film.
+- Bild und Text müssen exakt zusammenpassen: Was gesagt wird, sieht man in genau diesem Moment.
 - Aufbau in 5 Teilen:
   1. EINSTIEG (Spannung sofort): "Was wäre, wenn …" + 3–4 ganz kurze Schlag-Sätze ("Keine Nachrichten. Keine Anrufe. …").
   2. DU REALISIERST ES LANGSAM: konkrete Alltagsmomente mit Sinneseindrücken (Handy, Fenster, Straße, Geräusche, Stille).
@@ -30,11 +31,12 @@ Pro Szene zusätzlich:
   Beispiel: Satz erwähnt einen Burgerladen → {"emoji":"🍔","label":"Burgerladen","word":"Burgerladen","insert":"burger"}.
   Wenn das Handy vorkommt, nutze in "anim" die Aktion "phone" (Figur schaut aufs Handy) und insert "phone".
 - "label": optionale kurze Zeit-/Kapitel-Einblendung wie "07:00 UHR", "TAG 3", "NACH 2 WOCHEN" (oder null).
-- "anim": die Animation der Szene. Die Hauptfigur ist "du". Zeige genau, was der Satz beschreibt, und wechsle Orte, Aktionen und Effekte ab.
+- ${SHOT_PROMPT_HELP}
+- "anim": nur wenn "shot" null ist – die Animation der Szene. Die Hauptfigur ist "du". Zeige genau, was der Satz beschreibt, und wechsle Orte, Aktionen und Effekte ab.
 ${ANIM_PROMPT_HELP}
 
 Antworte NUR mit gültigem JSON in genau diesem Format:
-{"title":"kurzer Videotitel","scenes":[{"text":"gesprochener deutscher Text","image_prompt":"english image description","popups":[{"emoji":"🍔","label":"Burgerladen","word":"Burgerladen"}],"label":null,"thought":null,"transition":null,"anim":{"place":"...","time":"day","props":[],"actors":[{"action":"..."}],"crowd":{"count":0,"action":"idle"},"effect":"none"}}],"hashtags":["#wasware", "..."]}`;
+{"title":"kurzer Videotitel","scenes":[{"text":"gesprochener deutscher Text","image_prompt":"english image description","popups":[{"emoji":"🍔","label":"Burgerladen","word":"Burgerladen"}],"label":null,"thought":null,"transition":null,"shot":"wake_up","anim":{"place":"...","time":"day","props":[],"actors":[{"action":"..."}],"crowd":{"count":0,"action":"idle"},"effect":"none"}}],"hashtags":["#wasware", "..."]}`;
 
 export async function generateScript(topic, settings, log) {
   const t = normalizeTopic(topic);
@@ -134,6 +136,7 @@ function validate(obj, topic) {
       thought: typeof s.thought === 'string' && s.thought.trim() ? s.thought.trim().slice(0, 40) : null,
       transition: ['cut', 'fade', 'whip', 'zoom', 'slide', 'flash'].includes(s.transition) ? s.transition : null,
       black: s.black === true,
+      shot: SHOT_LIST.includes(s.shot) ? s.shot : null,
       pauseBefore: Number(s.pauseBefore) > 0 ? Math.min(4, Number(s.pauseBefore)) : 0,
     }))
     .filter((s) => s.text.length > 0);
