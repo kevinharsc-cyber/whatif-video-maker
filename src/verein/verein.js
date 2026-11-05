@@ -152,7 +152,7 @@ const JOBS = [
  */
 export function createVereinVisuals(scenes, opts = {}) {
   const fans = Math.max(0, Math.floor(Number(opts.fans) || 0));
-  const names = (opts.names || []).filter(Boolean).slice(0, 30);
+  const names = (opts.names || []).filter(Boolean).slice(0, A.STAND_SEATS);
   const seen = {};
   let prevVote = null;
   let netsFixed = !!opts.nets;
@@ -222,20 +222,24 @@ function drawWorld(g, W, H, t, dur, c, info) {
   A.drawGround(g, view);
   A.drawClubhouse(g, t);
   // Tribüne: Fans je nach Einstellung
-  let seated = Math.min(30, c.fans);
+  let seated = Math.min(A.STAND_SEATS, c.fans);
   let pop = [];
   let board = c.fans;
   if (kind === 'growth') {
     // Zähler + Tribüne füllen sich gleichzeitig
     const n = Math.round(clamp((t - 0.4) / Math.max(0.8, dur * 0.7)) * (c.growTo || 0));
     board = n;
-    seated = Math.min(30, n);
+    seated = Math.min(A.STAND_SEATS, n);
     const G = Math.max(1, c.growTo || 1);
-    pop = Array.from({ length: 30 }, (_, j) => (t - 0.4 - (j / G) * Math.max(0.8, dur * 0.7)) / 0.25 + 0.2);
+    pop = Array.from({ length: A.STAND_SEATS }, (_, j) => (t - 0.4 - (j / G) * Math.max(0.8, dur * 0.7)) / 0.25 + 0.2);
   } else if (kind === 'stand_fill') {
-    const n = clamp((t - 0.3) / Math.max(0.5, dur - 1.3)) * 30;
+    // Vorschau: von den echten Fans bis zur vollen Tribüne (nur neue Plätze ploppen auf)
+    const cap = A.STAND_SEATS;
+    const have = Math.min(cap, c.fans);
+    const span = Math.max(0.5, dur - 1.3);
+    const n = have + clamp((t - 0.3) / span) * (cap - have);
     seated = Math.max(seated, Math.ceil(n));
-    pop = Array.from({ length: 30 }, (_, j) => (t - 0.3 - (j / 30) * (dur - 1.3)) / 0.25);
+    pop = Array.from({ length: cap }, (_, j) => (j < have ? 1 : (t - 0.3 - ((j - have) / Math.max(1, cap - have)) * span) / 0.25));
   }
   A.drawStand(g, t, seated, pop, { board, names: c.names, nameTag: kind === 'nametag' });
   A.drawBench(g, t);
@@ -524,6 +528,15 @@ function overlays(g, t, dur, c) {
     if (v > 0) {
       card(g, VW / 2, 400, 880, 180, '#ffd60a', v, -0.02);
       label(g, '1 FOLLOWER = 1 PLATZ', 0, 0, 66, OL, { sw: 0 });
+      g.restore();
+    }
+  }
+  if (kind === 'stand_fill' && !/anbau|ausbau/.test(low)) {
+    const v = popIn(t, T(0.4), end);
+    if (v > 0) {
+      card(g, VW / 2, 400, 820, 190, '#ffd60a', v, -0.03);
+      label(g, 'UNSER ZIEL:', 0, -40, 56, OL, { sw: 0 });
+      label(g, `${A.STAND_SEATS} VOLLE PLÄTZE!`, 0, 40, 66, '#e53935', { sw: 0 });
       g.restore();
     }
   }

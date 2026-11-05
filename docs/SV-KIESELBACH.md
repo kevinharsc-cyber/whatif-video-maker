@@ -44,7 +44,7 @@ Auswechselspieler: **keine** (Stand Tag 1).
 ## Gelände
 
 Schotterplatz mit Pfützen und einzelnen Grasbüscheln, schiefe rostige Tore mit Loch im Netz,
-verbogene Eckfahnen, kleine kaputte Holztribüne („FANTRIBÜNE“) mit Anzeigetafel „FANS“,
+verbogene Eckfahnen, kleine kaputte Holztribüne („FANTRIBÜNE“, 75 Plätze: 3 Reihen × 25) mit Anzeigetafel „FANS … von 75 Plätzen“,
 Vereinsheim mit Schild „VEREINSHE M“ (ein Buchstabe fehlt), leere Auswechselbank mit Spinnennetz,
 schiefe blaue Toilette mit Fliegen, alte Kühlbox auf wackligem Campingtisch,
 Werbebanden: „Metzgerei Kies“, „Fahrschule Roller“.
