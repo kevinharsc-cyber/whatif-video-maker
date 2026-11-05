@@ -204,9 +204,17 @@ async function onCreateVideo() {
     if (settings.visualMode !== 'images') {
       // Strichmännchen-Animationen: werden direkt im iPhone gezeichnet
       const n = script.scenes.length;
-      images = script.scenes.map((sc, i) =>
-        createAnimVisual(normalizeAnim(sc.anim) || guessAnim(sc.text, script.topic, i, n)),
-      );
+      let gotUp = false;
+      images = script.scenes.map((sc, i) => {
+        const spec = normalizeAnim(sc.anim) || guessAnim(sc.text, script.topic, i, n);
+        // Nur einmal aufstehen: weitere "get_up"/"sleep" werden zu "walk"
+        const a0 = spec.actors[0];
+        if (a0 && a0.action === 'get_up') {
+          if (gotUp) a0.action = 'walk';
+          gotUp = true;
+        } else if (a0 && a0.action === 'sleep' && gotUp) a0.action = 'think';
+        return createAnimVisual(spec);
+      });
       script.credits = [];
       setStatus('Animationen sind bereit', 0.4);
     } else {

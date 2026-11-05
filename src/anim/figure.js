@@ -14,6 +14,7 @@ export const seg = (p, a, b) => clamp((p - a) / (b - a));
 // Proportionen relativ zur Figurgröße
 const L = { head: 0.085, torso: 0.3, ua: 0.16, la: 0.15, th: 0.21, sh: 0.21 };
 
+export const PHONE_ACTION = 'phone';
 export const BASE = {
   torso: 0, head: 0, la1: 0.12, la2: -0.1, ra1: -0.12, ra2: -0.1,
   lt1: 0.06, lt2: 0, rt1: -0.06, rt2: 0, rot: 0, dy: 0,
@@ -122,6 +123,11 @@ export function actionPose(action, p, t, ev = 0.3) {
       return { pose: { ...BASE, torso: 0.25, head: 0.45, la1: 0.05, ra1: -0.05 }, bubble: '…' };
     case 'work':
       return { pose: { ...SIT, la1: 1.3, la2: 0.2 + Math.sin(t * 12) * 0.15, ra1: 1.2, ra2: 0.25 - Math.sin(t * 12) * 0.15 }, seated: true };
+    case 'phone': {
+      // schaut aufs Handy, schüttelt es kurz
+      const shake = p > 0.45 && p < 0.6 ? Math.sin(t * 40) * 0.12 : 0;
+      return { pose: { ...idle(t), head: 0.35, ra1: 0.55 + shake, ra2: 1.75, la1: 0.1 }, holdPhone: true };
+    }
     case 'point':
       return { pose: { ...idle(t), ra1: 1.9, ra2: 0 } };
     case 'swim': {
@@ -143,7 +149,7 @@ export function actionPose(action, p, t, ev = 0.3) {
  * Zeichnet eine Figur. (x, groundY) = Fußpunkt, size = Figurhöhe in px,
  * dir = Blickrichtung (1 rechts, -1 links)
  */
-export function drawFigure(g, { x, groundY, size, dir = 1, pose, lying = 0, color = '#1b1b1f', fill = '#fff', cap = null, bubble = null, t = 0, jitter = 0, bubbleColor, look = null, emotion = 'neutral' }) {
+export function drawFigure(g, { x, groundY, size, dir = 1, pose, lying = 0, color = '#1b1b1f', fill = '#fff', cap = null, bubble = null, t = 0, jitter = 0, bubbleColor, look = null, emotion = 'neutral', holdPhone = false }) {
   const P = { ...BASE, ...pose };
   const S = size;
   const vec = (ang, len) => [Math.sin(ang) * len * S * dir, Math.cos(ang) * len * S];
@@ -179,7 +185,7 @@ export function drawFigure(g, { x, groundY, size, dir = 1, pose, lying = 0, colo
   g.lineCap = 'round';
   g.lineJoin = 'round';
   if (look) {
-    drawBean(g, S, dir, { hip, neck, lk, lf, rk, rf, le, lh, re, rh, headDir }, look, emotion, t);
+    drawBean(g, S, dir, { hip, neck, lk, lf, rk, rf, le, lh, re, rh, headDir }, look, emotion, t, holdPhone);
     g.restore();
     if (bubble && bubble !== '~') {
       const bx = hx + (lying > 0.5 ? dir * S * 0.35 : 0.2 * S * dir);
@@ -266,7 +272,7 @@ function thick(g, pts, w, c) {
   g.stroke();
 }
 
-function drawBean(g, S, dir, J, look, emotion, t) {
+function drawBean(g, S, dir, J, look, emotion, t, holdPhone = false) {
   const { hip, neck, lk, lf, rk, rf, le, lh, re, rh, headDir } = J;
   const legW = S * 0.11;
   const armW = S * 0.09;
@@ -316,6 +322,22 @@ function drawBean(g, S, dir, J, look, emotion, t) {
   face(g, hc, hr, dir, emotion, t, look);
   // Arm vorne
   thick(g, [neck, re, rh], armW, look.cloth);
+  if (holdPhone) {
+    // Handy mit leuchtendem Display, Licht fällt aufs Gesicht
+    const glow = g.createRadialGradient(rh[0], rh[1], 0, rh[0], rh[1], S * 0.35);
+    glow.addColorStop(0, 'rgba(140,180,255,0.45)');
+    glow.addColorStop(1, 'rgba(140,180,255,0)');
+    g.fillStyle = glow;
+    g.fillRect(rh[0] - S * 0.35, rh[1] - S * 0.35, S * 0.7, S * 0.7);
+    g.save();
+    g.translate(rh[0] + dir * S * 0.02, rh[1] - S * 0.05);
+    g.rotate(dir * 0.35);
+    g.fillStyle = '#0d0d12';
+    g.fillRect(-S * 0.04, -S * 0.07, S * 0.08, S * 0.14);
+    g.fillStyle = Math.sin(t * 6) > 0 ? '#9cc3ff' : '#ff6b7a';
+    g.fillRect(-S * 0.033, -S * 0.062, S * 0.066, S * 0.124);
+    g.restore();
+  }
   hand(g, rh, S, look, false);
 }
 
@@ -455,6 +477,8 @@ export function emotionFor(action, p, ev = 0.3, lying = 0) {
       return 'happy';
     case 'think':
       return 'think';
+    case 'phone':
+      return p < 0.35 ? 'think' : 'worried';
     case 'look_up':
     case 'float':
       return 'wow';

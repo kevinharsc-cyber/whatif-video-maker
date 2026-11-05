@@ -20,8 +20,10 @@ Storytelling-Regeln:
 
 Pro Szene zusätzlich:
 - "image_prompt": detaillierte ENGLISCHE Bildbeschreibung (Motiv, Umgebung, Licht, Stimmung), ohne Text im Bild.
-- "popups": 1–2 Einblendungen für Dinge, die im Satz genannt werden: {"emoji": ein passendes Emoji, "label": 1–2 Wörter, "word": das Wort aus dem Text, bei dem es erscheinen soll}.
-  Beispiel: Satz erwähnt einen Burgerladen → {"emoji":"🍔","label":"Burgerladen","word":"Burgerladen"}.
+- "popups": 1–2 Einblendungen für Dinge, die im Satz genannt werden: {"emoji": ein passendes Emoji, "label": 1–2 Wörter, "word": das Wort aus dem Text, bei dem es erscheinen soll, "insert": optional eine große animierte Nahaufnahme aus: phone (Handy ohne Netz), power (Stromausfall), internet (offline), clock (Zeit rast), calendar (Tage zählen, label z. B. "TAG 3"), animals (Wildtiere), burger (Essen/Burgerladen), stars (Sternenhimmel), plant (Gemüse anbauen), water (Wasser), counter (Menschen-Zähler)}.
+  Nutze "insert" in möglichst vielen Szenen, wenn es passt – das macht das Video lebendig.
+  Beispiel: Satz erwähnt einen Burgerladen → {"emoji":"🍔","label":"Burgerladen","word":"Burgerladen","insert":"burger"}.
+  Wenn das Handy vorkommt, nutze in "anim" die Aktion "phone" (Figur schaut aufs Handy) und insert "phone".
 - "label": optionale kurze Zeit-/Kapitel-Einblendung wie "07:00 UHR", "TAG 3", "NACH 2 WOCHEN" (oder null).
 - "anim": die Animation der Szene. Die Hauptfigur ist "du". Zeige genau, was der Satz beschreibt, und wechsle Orte, Aktionen und Effekte ab.
 ${ANIM_PROMPT_HELP}

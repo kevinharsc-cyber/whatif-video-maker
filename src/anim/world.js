@@ -597,6 +597,46 @@ function drawDino(g, x, y, s, t, dir = 1) {
   g.restore();
 }
 
+function drawQuadruped(g, x, y, s, ph, wolf) {
+  g.save();
+  g.translate(x, y);
+  g.fillStyle = wolf ? '#3a3040' : '#6b4630';
+  g.strokeStyle = g.fillStyle;
+  g.lineCap = 'round';
+  g.lineWidth = s * 0.09;
+  for (const [lx, o] of [[-0.3, 0], [-0.2, Math.PI], [0.25, Math.PI / 2], [0.35, Math.PI * 1.5]]) {
+    g.beginPath();
+    g.moveTo(lx * s, -s * 0.45);
+    g.lineTo(lx * s + Math.sin(Math.sin(ph + o) * 0.5) * s * 0.4, 0);
+    g.stroke();
+  }
+  g.beginPath();
+  g.ellipse(0, -s * 0.55, s * 0.45, s * 0.17, 0, 0, Math.PI * 2);
+  g.fill();
+  g.beginPath();
+  g.moveTo(-s * 0.35, -s * 0.6);
+  g.lineTo(-s * 0.55, wolf ? -s * 0.7 : -s * 0.95);
+  g.stroke();
+  g.beginPath();
+  g.ellipse(-s * 0.62, wolf ? -s * 0.72 : -s * 0.98, s * 0.15, s * 0.08, -0.2, 0, Math.PI * 2);
+  g.fill();
+  if (!wolf) {
+    g.lineWidth = s * 0.035;
+    g.beginPath();
+    g.moveTo(-s * 0.55, -s * 1.05);
+    g.lineTo(-s * 0.48, -s * 1.3);
+    g.moveTo(-s * 0.52, -s * 1.2);
+    g.lineTo(-s * 0.65, -s * 1.32);
+    g.stroke();
+  } else {
+    g.beginPath();
+    g.moveTo(s * 0.42, -s * 0.6);
+    g.quadraticCurveTo(s * 0.7, -s * 0.62, s * 0.75, -s * 0.4);
+    g.stroke();
+  }
+  g.restore();
+}
+
 function drawPlane(g, x, y, s) {
   g.fillStyle = '#eceff1';
   roundRect(g, x - s, y - s * 0.12, s * 2, s * 0.24, s * 0.12);
@@ -764,6 +804,16 @@ export function drawGroundProps(g, W, H, c, props) {
         drawBee(g, W * (0.2 + i * 0.15) + Math.cos(a) * W * 0.06, c.groundY - H * (0.08 + (i % 3) * 0.05) + Math.sin(a * 1.7) * H * 0.02, W * 0.035, c.t + i);
       }
       g.restore();
+    }
+    if (pr.type === 'animals') {
+      // Rehe und ein Wolf ziehen durchs Bild
+      const run = (c.t * 0.07) % 1.5;
+      for (let i = 0; i < 3; i++) {
+        const x = lerp(W * 1.2 + i * W * 0.25, -W * 0.4 + i * W * 0.25, run);
+        const y = c.groundY - H * 0.02;
+        const s = W * (i === 1 ? 0.09 : 0.11);
+        drawQuadruped(g, x, y - Math.abs(Math.sin(c.t * 5 + i)) * H * 0.006, s, c.t * 5 + i, i === 1);
+      }
     }
     if (pr.type === 'dinosaur') {
       const x = lerp(W * 1.2, W * 0.72, seg(c.p, 0, 0.5));
