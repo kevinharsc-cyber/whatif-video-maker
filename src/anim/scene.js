@@ -2,7 +2,7 @@
 // Die Beschreibung kommt von der KI (Gemini) oder wird aus dem Text erraten.
 
 import { actionPose, drawFigure, seg, emotionFor } from './figure.js';
-import { seededRandom, cachedGradient } from '../util.js';
+import { seededRandom, cachedGradient, cachedLayer } from '../util.js';
 import { PLACES, drawSportsCar, drawSkyProps, drawGroundProps, drawEffect, effectSkyDarkness, cameraShake } from './world.js';
 
 // Das Labor wirkte unverständlich und wird nicht mehr verwendet
@@ -191,12 +191,30 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
   g.save();
   // Kamera: langsamer Zoom + Wackeln
   const [sx, sy] = cameraShake(effect, c);
-  const zoom = 1 + p * 0.05;
-  g.translate(W / 2 + sx * W, H / 2 + sy * H);
-  g.scale(zoom, zoom);
-  g.translate(-W / 2, -H / 2);
+  // (Zoom macht bereits die Kamera im Renderer – hier nur noch Wackeln)
+  g.translate(sx * W, sy * H);
 
-  const info = (PLACES[spec.place] || PLACES.meadow)(g, W, H, c) || {};
+  // Unbewegter Hintergrund (Himmel, Häuser, Zimmer …) wird pro Szene einmal
+  // gezeichnet und dann als fertiges Bild eingesetzt.
+  const placeFn = PLACES[spec.place] || PLACES.meadow;
+  const cacheable = !['house_front', 'earth', 'black'].includes(spec.place) && !['darkness', 'explosion'].includes(effect);
+  let info;
+  if (cacheable) {
+    const key = `bg|${spec.place}|${spec.time}|${spec.empty ? 1 : 0}|${c.noFlowers ? 1 : 0}|${W}|${H}`;
+    const layer = cachedLayer(key, W, H, (lg) => {
+      const bc = { ...c, t: 0, p: 0, dark: 0, drawSkyProps: () => {} };
+      const inf = placeFn(lg, W, H, bc) || {};
+      paintGrade(lg, W, H); // Farbstimmung + Abdunklung gleich mit einbacken (spart 2 Vollbild-Ebenen pro Bild)
+      return { inf, bed: bc.bed, seatY: bc.seatY, seatX: bc.seatX, door: bc.door, window: bc.window };
+    });
+    g.imageSmoothingQuality = 'low';
+    g.drawImage(layer.img, 0, 0, W, H);
+    info = layer.info.inf;
+    for (const k of ['bed', 'seatY', 'seatX', 'door', 'window']) if (layer.info[k] !== undefined) c[k] = layer.info[k];
+    if (info.hasSky) c.drawSkyProps();
+  } else {
+    info = placeFn(g, W, H, c) || {};
+  }
   drawGroundProps(g, W, H, c, groundProps);
 
   // Figuren
@@ -330,7 +348,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
   drawForeground(g, W, H, c, spec, t, p);
   drawEffect(g, W, H, c, effect, origin);
   g.restore();
-  cinematicGrade(g, W, H, t, spec);
+  cinematicGrade(g, W, H, t, spec, cacheable);
 }
 
 // Vordergrund-Ebene: dunkle, unscharfe Silhouetten an den Rändern (Tiefe + Parallaxe)
@@ -342,9 +360,14 @@ function drawForeground(g, W, H, c, spec, t, p) {
   const indoor = ['bedroom', 'living_room', 'lab', 'window_view', 'supermarket'].includes(spec.place);
   if (indoor) {
     // drinnen: nur leichte Abdunklung der unteren Ecken
-    const v = cachedGradient(g, 'linear', [0, H * 0.85, 0, H], [[0, 'rgba(12,6,16,0)'], [1, 'rgba(12,6,16,0.5)']]);
-    g.fillStyle = v;
-    g.fillRect(0, H * 0.85, W, H * 0.15);
+    const layer = cachedLayer(`indoorShade|${W}|${H}`, W, H, (lg) => {
+      const v = lg.createLinearGradient(0, H * 0.85, 0, H);
+      v.addColorStop(0, 'rgba(12,6,16,0)');
+      v.addColorStop(1, 'rgba(12,6,16,0.5)');
+      lg.fillStyle = v;
+      lg.fillRect(0, H * 0.85, W, H * 0.15);
+    });
+    g.drawImage(layer.img, 0, 0, W, H);
   } else {
     // Gras/Büsche in den unteren Ecken, wiegen sich im Wind
     for (const side of [0, 1]) {
@@ -373,38 +396,52 @@ const LOOK_OTHER = { skin: '#3a1d10', cloth: '#2f6fd6', pants: '#23140c', rim: '
 const LOOK_CROWD = { skin: '#3d1f12', cloth: '#5a2c17', pants: '#2e160c', rim: '#ff9a4d', eye: '#ffe7c9', shoe: '#1a0d06' };
 
 // Kino-Look: warme Farbstimmung, schwebende Lichtpartikel, dunkle Ränder
-function cinematicGrade(g, W, H, t, spec) {
+// Farbstimmung + dunkle Ränder + Abdunklung oben/unten (für die Untertitel)
+function paintGrade(lg, W, H) {
+  const warm = lg.createLinearGradient(0, 0, 0, H);
+  warm.addColorStop(0, 'rgba(255,140,60,0.16)');
+  warm.addColorStop(0.6, 'rgba(255,110,40,0.10)');
+  warm.addColorStop(1, 'rgba(60,15,60,0.24)');
+  lg.fillStyle = warm;
+  lg.fillRect(0, 0, W, H);
+  const v = lg.createRadialGradient(W / 2, H * 0.48, H * 0.25, W / 2, H * 0.5, H * 0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(10,3,8,0.6)');
+  lg.fillStyle = v;
+  lg.fillRect(0, 0, W, H);
+  const bottom = lg.createLinearGradient(0, H * 0.66, 0, H);
+  bottom.addColorStop(0, 'rgba(0,0,0,0)');
+  bottom.addColorStop(1, 'rgba(0,0,0,0.45)');
+  lg.fillStyle = bottom;
+  lg.fillRect(0, H * 0.66, W, H * 0.34);
+  const top = lg.createLinearGradient(0, 0, 0, H * 0.2);
+  top.addColorStop(0, 'rgba(0,0,0,0.5)');
+  top.addColorStop(1, 'rgba(0,0,0,0)');
+  lg.fillStyle = top;
+  lg.fillRect(0, 0, W, H * 0.2);
+}
+
+function cinematicGrade(g, W, H, t, spec, baked) {
   if (spec.place === 'black') return; // schwarzer Bildschirm bleibt schwarz
-  g.save();
-  g.globalCompositeOperation = 'soft-light';
-  const warm = cachedGradient(g, 'linear', [0, 0, 0, H], [[0, 'rgba(255,150,60,0.75)'], [0.6, 'rgba(255,110,40,0.5)'], [1, 'rgba(60,15,60,0.8)']]);
-  g.fillStyle = warm;
-  g.fillRect(0, 0, W, H);
-  g.globalCompositeOperation = 'source-over';
-  // Lichtpartikel
+  if (!baked) {
+    // Nur wenn der Hintergrund nicht vorgezeichnet werden konnte
+    const layer = cachedLayer(`grade|${W}|${H}`, W, H, (lg) => paintGrade(lg, W, H));
+    g.drawImage(layer.img, 0, 0, W, H);
+  }
+  // Lichtpartikel (wenige kleine Punkte, günstig)
   const rnd = seededRandom(99);
-  const n = spec.place === 'space' || spec.place === 'earth' ? 12 : 22;
+  const n = spec.place === 'space' || spec.place === 'earth' ? 10 : 18;
   for (let i = 0; i < n; i++) {
     const sp = 0.01 + rnd() * 0.03;
     const x = rnd() * W + Math.sin(t * 0.5 + i) * W * 0.02;
     const y = (((rnd() * H - t * H * sp) % H) + H) % H;
     const r = W * (0.0015 + rnd() * 0.003);
     const a = 0.25 + 0.35 * Math.abs(Math.sin(t * 0.8 + i));
-    g.fillStyle = `rgba(255,190,110,${a * 0.35})`;
-    g.beginPath();
-    g.arc(x, y, r * 3, 0, Math.PI * 2);
-    g.fill();
     g.fillStyle = `rgba(255,220,170,${a})`;
     g.beginPath();
-    g.arc(x, y, r, 0, Math.PI * 2);
+    g.arc(x, y, r * 1.4, 0, Math.PI * 2);
     g.fill();
   }
-  // (Filmkorn entfernt: kostete in Safari bei jedem Bild eine Kopie im Speicher)
-  // Vignette
-  const v = cachedGradient(g, 'radial', [W / 2, H * 0.48, H * 0.25, W / 2, H * 0.5, H * 0.75], [[0, 'rgba(0,0,0,0)'], [1, 'rgba(10,3,8,0.6)']]);
-  g.fillStyle = v;
-  g.fillRect(0, 0, W, H);
-  g.restore();
 }
 
 // ------------------------------------------------- Film-Einstellungen ---
