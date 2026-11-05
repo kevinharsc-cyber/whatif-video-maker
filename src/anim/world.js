@@ -708,6 +708,42 @@ export function drawSkyProps(g, W, H, c, props) {
  */
 export function drawGroundProps(g, W, H, c, props) {
   for (const pr of props) {
+    if (pr.type === 'shop') {
+      // Ladenfront mit leuchtendem Schild und Schaufenster
+      const w = W * 0.72;
+      const x = W * 0.5 - w / 2;
+      const top = c.groundY - H * 0.34;
+      rect(g, '#3b2a2a', x, top, w, c.groundY - top);
+      rect(g, '#241818', x - W * 0.02, top - H * 0.012, w + W * 0.04, H * 0.016);
+      const sy = top + H * 0.025;
+      rect(g, '#1a1010', x + w * 0.12, sy, w * 0.76, H * 0.06);
+      const label = String(pr.label || 'SHOP').toUpperCase().slice(0, 12);
+      g.save();
+      g.font = `900 ${Math.round(H * 0.035)}px "Arial Black", system-ui, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.shadowColor = 'rgba(255,200,120,0.95)';
+      g.shadowBlur = W * 0.03;
+      g.fillStyle = '#fff1d6';
+      g.fillText(label, W / 2, sy + H * 0.031);
+      g.restore();
+      const wy = sy + H * 0.085;
+      const wh = c.groundY - wy - H * 0.02;
+      const glow = g.createLinearGradient(0, wy, 0, wy + wh);
+      glow.addColorStop(0, '#fff3d6');
+      glow.addColorStop(1, '#f2c98a');
+      g.fillStyle = glow;
+      g.fillRect(x + w * 0.06, wy, w * 0.88, wh);
+      const rnd = seededRandom(41);
+      for (let r = 0; r < 3; r++) {
+        rect(g, '#b58a5a', x + w * 0.08, wy + (r + 1) * (wh / 3.4), w * 0.84, H * 0.004);
+        for (let k = 0; k < 6; k++) {
+          rect(g, ['#e8743b', '#f4b942', '#d9534f', '#8fbf5a', '#ffffff'][Math.floor(rnd() * 5)], x + w * (0.1 + k * 0.135), wy + (r + 1) * (wh / 3.4) - H * 0.025, w * 0.09, H * 0.025);
+        }
+      }
+      rect(g, '#3b2a2a', x + w * 0.495, wy, w * 0.01, wh);
+      continue;
+    }
     if (pr.type === 'cars') {
       const n = 3;
       for (let i = 0; i < n; i++) {

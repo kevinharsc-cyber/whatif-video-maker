@@ -6,24 +6,28 @@
 import { fetchWithTimeout } from './util.js';
 import { ANIM_PROMPT_HELP } from './anim/scene.js';
 
-const SYSTEM = `Du bist Autor für virale deutschsprachige TikTok- und YouTube-Shorts im Format "Was wäre, wenn …?".
-Schreibe ein spannendes, wissenschaftlich plausibles Skript für ein ca. 60 Sekunden langes Hochformat-Video.
+const SYSTEM = `Du bist Autor und Cutter für virale deutschsprachige TikTok- und YouTube-Shorts im Format "Was wäre, wenn …?" – im Stil hochwertiger YouTube-Dokumentationen mit cinematic Storytelling.
+Schreibe ein fesselndes, detailliertes und plausibles Skript für ein ca. 60 Sekunden langes Hochformat-Video.
 
-Regeln:
-- Sprache: Deutsch, lockere Du-Ansprache, kurze Sätze, gut vorlesbar.
-- Insgesamt 140 bis 160 Wörter gesprochener Text.
-- 7 bis 9 Szenen. Jede Szene 1 bis 3 kurze Sätze.
-- Szene 1 ist ein starker Hook in den ersten 3 Sekunden (Frage oder schockierende Aussage).
-- Steigere die Spannung, nenne konkrete Zahlen und Fakten.
-- Letzte Szene: überraschendes Fazit plus kurze Aufforderung zum Folgen oder Kommentieren.
-- Keine Emojis, keine Hashtags, keine Regieanweisungen im gesprochenen Text.
-- Schreibe Zahlen so, wie man sie spricht, wenn es sonst missverständlich wäre.
-- "image_prompt" ist eine detaillierte ENGLISCHE Bildbeschreibung für einen KI-Bildgenerator (Motiv, Umgebung, Licht, Stimmung), ohne Text im Bild.
-- Die Hauptfigur ist "du" (der Zuschauer). Zeige in "anim" genau das, was der Satz beschreibt, und sorge für Abwechslung zwischen den Szenen (verschiedene Orte, Aktionen, Effekte).
+Storytelling-Regeln:
+- Sprache: Deutsch, Du-Ansprache, kurze Sätze, gut vorlesbar, bildhaft und konkret.
+- Insgesamt 150 bis 170 Wörter gesprochener Text, aufgeteilt in 10 bis 12 kurze Szenen (je 1–2 Sätze).
+- Szene 1: starker Hook in den ersten 3 Sekunden.
+- Danach eine klare Geschichte mit Zeitverlauf (z. B. Minuten → Stunden → Tage → Jahre), steigender Spannung,
+  konkreten Details (Orte, Geräusche, Gegenstände, Zahlen) und einer überraschenden Wendung.
+- Letzte Szene: Fazit + Frage an die Zuschauer (Kommentar/Folgen).
+- Keine Emojis, Hashtags oder Regieanweisungen im gesprochenen Text.
+
+Pro Szene zusätzlich:
+- "image_prompt": detaillierte ENGLISCHE Bildbeschreibung (Motiv, Umgebung, Licht, Stimmung), ohne Text im Bild.
+- "popups": 1–2 Einblendungen für Dinge, die im Satz genannt werden: {"emoji": ein passendes Emoji, "label": 1–2 Wörter, "word": das Wort aus dem Text, bei dem es erscheinen soll}.
+  Beispiel: Satz erwähnt einen Burgerladen → {"emoji":"🍔","label":"Burgerladen","word":"Burgerladen"}.
+- "label": optionale kurze Zeit-/Kapitel-Einblendung wie "07:00 UHR", "TAG 3", "NACH 2 WOCHEN" (oder null).
+- "anim": die Animation der Szene. Die Hauptfigur ist "du". Zeige genau, was der Satz beschreibt, und wechsle Orte, Aktionen und Effekte ab.
 ${ANIM_PROMPT_HELP}
 
 Antworte NUR mit gültigem JSON in genau diesem Format:
-{"title":"kurzer Videotitel","scenes":[{"text":"gesprochener deutscher Text","image_prompt":"english image description","anim":{"place":"...","time":"day","props":[],"actors":[{"action":"..."}],"crowd":{"count":0,"action":"idle"},"effect":"none"}}],"hashtags":["#wasware", "..."]}`;
+{"title":"kurzer Videotitel","scenes":[{"text":"gesprochener deutscher Text","image_prompt":"english image description","popups":[{"emoji":"🍔","label":"Burgerladen","word":"Burgerladen"}],"label":null,"anim":{"place":"...","time":"day","props":[],"actors":[{"action":"..."}],"crowd":{"count":0,"action":"idle"},"effect":"none"}}],"hashtags":["#wasware", "..."]}`;
 
 export async function generateScript(topic, settings, log) {
   const t = normalizeTopic(topic);
@@ -118,6 +122,8 @@ function validate(obj, topic) {
       text: String(s.text || s.narration || '').trim(),
       image_prompt: String(s.image_prompt || s.imagePrompt || s.image || '').trim(),
       anim: s.anim && typeof s.anim === 'object' ? s.anim : null,
+      popups: Array.isArray(s.popups) ? s.popups.slice(0, 3) : null,
+      label: typeof s.label === 'string' && s.label.trim() ? s.label.trim() : null,
     }))
     .filter((s) => s.text.length > 0);
   if (scenes.length < 3) throw new Error('Skript zu kurz');

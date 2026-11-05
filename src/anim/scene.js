@@ -7,7 +7,7 @@ import { PLACES, drawSkyProps, drawGroundProps, drawEffect, effectSkyDarkness, c
 
 export const PLACE_LIST = Object.keys(PLACES);
 export const ACTIONS = ['idle', 'walk', 'run', 'sit', 'sleep', 'get_up', 'scared', 'flee', 'look_up', 'wave', 'shiver', 'fall', 'cheer', 'think', 'sad', 'work', 'point', 'swim', 'jump', 'float'];
-export const PROPS = ['sun', 'moon', 'earth', 'clouds', 'birds', 'plane', 'rocket', 'meteor', 'cars', 'bees', 'dinosaur', 'trees', 'house', 'money'];
+export const PROPS = ['shop', 'sun', 'moon', 'earth', 'clouds', 'birds', 'plane', 'rocket', 'meteor', 'cars', 'bees', 'dinosaur', 'trees', 'house', 'money'];
 export const PROP_STATES = ['normal', 'explode', 'vanish', 'grow', 'dim', 'stop', 'fall', 'big', 'red_giant', 'dead', 'storm'];
 export const EFFECTS = ['none', 'explosion', 'flash', 'darkness', 'fire', 'flood', 'quake', 'rain', 'storm', 'snow', 'freeze', 'heat', 'alarm'];
 export const TIMES = ['day', 'sunset', 'night'];
@@ -17,7 +17,7 @@ const POS = { offleft: -0.15, left: 0.22, center: 0.5, right: 0.78, offright: 1.
 export const ANIM_PROMPT_HELP = `"anim" beschreibt die Strichmännchen-Animation der Szene (Werte NUR aus diesen Listen):
 - "place": ${PLACE_LIST.join(', ')}
 - "time": ${TIMES.join(', ')}
-- "props": Liste von {"type": ${PROPS.join('|')}, "state": ${PROP_STATES.join('|')}}
+- "props": Liste von {"type": ${PROPS.join('|')}, "state": ${PROP_STATES.join('|')}} – "shop" ist eine Ladenfront, dazu "label" mit dem Schildtext (z. B. "BURGER", "SUPERMARKT")
 - "actors": 1-2 Figuren {"action": ${ACTIONS.join('|')}, "from": left|center|right|offleft|offright, "to": left|center|right|offleft|offright}. Die erste Figur ist "du" (Hauptfigur mit roter Kappe).
 - "crowd": {"count": 0-4, "action": eine Aktion} für weitere Menschen
 - "effect": ${EFFECTS.join(', ')} (Ereignisse wie Explosionen passieren bei ca. 30 % der Szene; Figuren mit "scared"/"flee"/"fall" reagieren genau dann)
@@ -34,7 +34,7 @@ export function normalizeAnim(a) {
     props: (Array.isArray(a.props) ? a.props : [])
       .map((p) => (typeof p === 'string' ? { type: p } : p))
       .filter((p) => p && PROPS.includes(p.type))
-      .map((p) => ({ type: p.type, state: pick(p.state, PROP_STATES, 'normal') }))
+      .map((p) => ({ type: p.type, state: pick(p.state, PROP_STATES, 'normal'), label: typeof p.label === 'string' ? p.label : undefined }))
       .slice(0, 4),
     actors: (Array.isArray(a.actors) ? a.actors : [])
       .map((x) => (typeof x === 'string' ? { action: x } : x))
@@ -93,6 +93,11 @@ export function guessAnim(text, topic = '', index = 0, count = 1) {
   if (has(all, /biene/)) spec.props.push({ type: 'bees', state: has(t, /(verschwind|sterben|aussterb|weg|keine)/) ? 'vanish' : 'normal' });
   if (has(t, /(auto|verkehr|stau)/)) spec.props.push({ type: 'cars', state: has(t, /(still|stehen|stopp|chaos)/) ? 'stop' : 'normal' });
   if (has(all, /dinosaur/)) spec.props.push({ type: 'dinosaur', state: 'normal' });
+  const shop = t.match(/(burger|pizza|döner|supermarkt|bäckerei|kiosk|café|laden|geschäft|tankstelle|apotheke)/);
+  if (shop && !['bedroom', 'living_room', 'lab', 'space', 'earth'].includes(spec.place)) {
+    if (!['street', 'city', 'empty_city'].includes(spec.place)) spec.place = 'street';
+    spec.props.push({ type: 'shop', state: 'normal', label: shop[1] === 'laden' || shop[1] === 'geschäft' ? 'SHOP' : shop[1].toUpperCase() });
+  }
   if (has(t, /(rakete|raumschiff)/)) spec.props.push({ type: 'rocket', state: 'normal' });
   if (has(t, /(meteor|asteroid|komet)/)) spec.props.push({ type: 'meteor', state: 'normal' });
   if (has(t, /flugzeug/)) spec.props.push({ type: 'plane', state: has(t, /(absturz|stürz|fall)/) ? 'fall' : 'normal' });
@@ -298,7 +303,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
 }
 
 // Figuren-Looks: Hauptfigur mit orangem Hoodie, andere in dunklen Warmtönen
-const LOOK_MAIN = { skin: '#3a1d10', cloth: '#ff7a1a', pants: '#2a140b', rim: '#ffb067', hoodie: true, eye: '#fff1dc', shoe: '#140a05' };
+const LOOK_MAIN = { skin: '#f6f1ec', cloth: '#7c3aed', pants: '#2b2140', rim: '#ffffff', hoodie: true, eye: '#2a1f3d', ink: '#231a33', shoe: '#17111f' };
 const LOOK_OTHER = { skin: '#3a1d10', cloth: '#2f6fd6', pants: '#23140c', rim: '#ffb067', hoodie: true, eye: '#fff1dc', shoe: '#140a05' };
 const LOOK_CROWD = { skin: '#3d1f12', cloth: '#5a2c17', pants: '#2e160c', rim: '#ff9a4d', eye: '#ffe7c9', shoe: '#1a0d06' };
 

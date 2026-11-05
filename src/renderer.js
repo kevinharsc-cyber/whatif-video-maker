@@ -4,7 +4,11 @@
 // zusammen mit der Sprachspur als Video auf. Auf dem iPhone (Safari)
 // entsteht dabei direkt eine MP4-Datei (H.264 + AAC).
 
+import { buildOverlays, drawOverlays, scheduleSfx } from './anim/overlays.js';
+
 const FPS = 30;
+const TRANSITIONS = ['whip', 'zoom', 'slide', 'flash'];
+const easeInOut = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
 
 export function pickMimeType() {
   const candidates = [
@@ -38,6 +42,47 @@ export class VideoRenderer {
     this.font = '"Arial Black", "Helvetica Neue", Helvetica, system-ui, sans-serif';
     // Ab wann jede Szene im Bild ist (leicht vor dem Sprechbeginn).
     this.sceneStarts = sceneTimes.map((st, i) => (i === 0 ? 0 : Math.max(0, st.start - 0.12)));
+    // Motion Graphics (Pop-ups, Labels) + Soundeffekte
+    const withEffects = scenes.map((sc, i) => ({ ...sc, _effect: images[i]?.spec?.effect }));
+    const { overlays, sfx } = buildOverlays(withEffects, this.sceneStarts, sceneTimes, subtitles, this.duration);
+    this.overlays = overlays;
+    this.sfx = sfx;
+    this.punches = overlays.filter((o) => o.type === 'popup').map((o) => o.start);
+  }
+
+  // Kamera: dezente Bewegung je Szene + kurzer Zoom-"Punch" bei jedem Pop-up
+  camera(i, t) {
+    const start = this.sceneStarts[i];
+    const end = i + 1 < this.sceneStarts.length ? this.sceneStarts[i + 1] : this.duration;
+    const p = Math.min(1, Math.max(0, (t - start) / Math.max(0.5, end - start)));
+    const move = i % 4;
+    let scale = 1.06;
+    let dx = 0;
+    if (move === 0) scale = 1.02 + 0.07 * p; // langsam hinein
+    if (move === 1) dx = (p - 0.5) * 0.04; // Schwenk
+    if (move === 2) scale = 1.09 - 0.06 * p; // heraus
+    if (move === 3) dx = (0.5 - p) * 0.04;
+    let punch = 0;
+    for (const ts of this.punches) {
+      const a = t - ts;
+      if (a > 0 && a < 1.2) punch = Math.max(punch, Math.min(1, a / 0.08) * Math.exp(-a * 3.5));
+    }
+    // Einstiegs-Punch am Szenenanfang
+    const a0 = t - start;
+    if (i > 0 && a0 > 0 && a0 < 1) punch = Math.max(punch, Math.exp(-a0 * 5) * 0.8);
+    return { scale: scale + punch * 0.045, dx };
+  }
+
+  drawSceneCam(i, t, { alpha = 1, dx = 0, dy = 0, zoom = 1 } = {}) {
+    const { g, W, H } = this;
+    const cam = this.camera(i, t);
+    const s = cam.scale * zoom;
+    g.save();
+    g.translate(W / 2 + (cam.dx + dx) * W, H / 2 + dy * H);
+    g.scale(s, s);
+    g.translate(-W / 2, -H / 2);
+    this.drawScene(i, t, alpha);
+    g.restore();
   }
 
   // ------------------------------------------------------------ Zeichnen --
@@ -48,12 +93,33 @@ export class VideoRenderer {
     g.fillRect(0, 0, W, H);
 
     const i = this.sceneIndexAt(t);
-    const fade = 0.35;
+    const T = 0.42;
     const sceneStart = this.sceneStarts[i];
-    this.drawScene(i, t, 1);
-    // Weiche Überblendung von der vorherigen Szene
-    if (i > 0 && t - sceneStart < fade) {
-      this.drawScene(i - 1, t, 1 - (t - sceneStart) / fade);
+    const since = t - sceneStart;
+    if (i > 0 && since < T) {
+      // Abwechslungsreiche Übergänge
+      const k = easeInOut(Math.max(0, since / T));
+      const type = TRANSITIONS[(i - 1) % TRANSITIONS.length];
+      if (type === 'whip') {
+        this.drawSceneCam(i - 1, t, { dx: -k });
+        this.drawSceneCam(i, t, { dx: 1 - k });
+        g.fillStyle = `rgba(255,255,255,${0.25 * Math.sin(k * Math.PI)})`;
+        for (let y = 0; y < H; y += H / 40) g.fillRect(0, y, W, H / 160);
+      } else if (type === 'zoom') {
+        if (k < 0.5) this.drawSceneCam(i - 1, t, { zoom: 1 + k * 1.2 });
+        else this.drawSceneCam(i, t, { zoom: 1.3 - (k - 0.5) * 0.6 });
+        g.fillStyle = `rgba(255,255,255,${0.55 * Math.sin(k * Math.PI)})`;
+        g.fillRect(0, 0, W, H);
+      } else if (type === 'slide') {
+        this.drawSceneCam(i - 1, t, { dy: -k * 0.25, alpha: 1 });
+        this.drawSceneCam(i, t, { dy: 1 - k });
+      } else {
+        this.drawSceneCam(k < 0.5 ? i - 1 : i, t);
+        g.fillStyle = `rgba(255,255,255,${Math.sin(k * Math.PI)})`;
+        g.fillRect(0, 0, W, H);
+      }
+    } else {
+      this.drawSceneCam(i, t);
     }
 
     // Abdunkeln unten (bessere Lesbarkeit der Untertitel) und oben
@@ -70,6 +136,7 @@ export class VideoRenderer {
     g.fillStyle = top;
     g.fillRect(0, 0, W, H * 0.2);
 
+    drawOverlays(g, W, H, t, this.overlays, this.font);
     this.drawTitle(t);
     this.drawSubtitle(t);
     this.drawProgress(t);
@@ -228,7 +295,7 @@ export class VideoRenderer {
     voice.connect(master);
 
     let stopMusic = () => {};
-    if (music) stopMusic = startAmbientMusic(ctx, master, this.duration, this.sceneStarts);
+    if (music) stopMusic = startAmbientMusic(ctx, master, this.duration, []);
 
     this.drawFrame(0);
     const videoStream = this.canvas.captureStream(FPS);
@@ -246,6 +313,7 @@ export class VideoRenderer {
     rec.start(1000);
     const t0 = ctx.currentTime + 0.15;
     voice.start(t0);
+    const stopSfx = music ? scheduleSfx(ctx, master, this.sfx, t0) : () => {};
 
     const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
     let lastCt = ctx.currentTime;
@@ -273,6 +341,7 @@ export class VideoRenderer {
 
     rec.stop();
     stopMusic();
+    stopSfx();
     await stopped;
     videoStream.getTracks().forEach((tr) => tr.stop());
     try {
@@ -349,6 +418,22 @@ function startAmbientMusic(ctx, out, duration, sceneStarts) {
   lfo.start(now);
   lfo.stop(now + duration + 0.5);
   nodes.push(lfo);
+
+  // Dezenter Bass-Puls (Spannung wie in Doku-Trailern)
+  for (let b = 2; b < duration - 1; b += 1.25) {
+    const o = ctx.createOscillator();
+    const gn = ctx.createGain();
+    o.frequency.setValueAtTime(70, now + b);
+    o.frequency.exponentialRampToValueAtTime(40, now + b + 0.25);
+    gn.gain.setValueAtTime(0.0001, now + b);
+    gn.gain.exponentialRampToValueAtTime(1.4, now + b + 0.015);
+    gn.gain.exponentialRampToValueAtTime(0.0001, now + b + 0.35);
+    o.connect(gn);
+    gn.connect(bus);
+    o.start(now + b);
+    o.stop(now + b + 0.4);
+    nodes.push(o);
+  }
 
   // Whoosh-Effekt bei Szenenwechseln
   const noise = ctx.createBuffer(1, ctx.sampleRate * 1, ctx.sampleRate);

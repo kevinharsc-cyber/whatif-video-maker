@@ -355,6 +355,18 @@ function face(g, c, r, dir, emo, t, look) {
       continue;
     }
     const big = emo === 'scared' || emo === 'wow' ? 1.25 : 1;
+    if (look.ink) {
+      // helle Figur: dunkle Augen mit Glanzpunkt
+      g.fillStyle = look.ink;
+      g.beginPath();
+      g.ellipse(x, ey, r * 0.085 * big, r * 0.13 * big, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      g.arc(x + dir * r * 0.03, ey - r * 0.05 * big, r * 0.03 * big, 0, Math.PI * 2);
+      g.fill();
+      continue;
+    }
     g.fillStyle = eyeC;
     g.beginPath();
     g.ellipse(x, ey, r * 0.11 * big, r * 0.14 * big, 0, 0, Math.PI * 2);
