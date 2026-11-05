@@ -122,7 +122,7 @@ export function qualityReport(parsed, expectedDuration, expectedFps = 24) {
     let maxGap = 0;
     for (let i = 1; i < cts.length; i++) maxGap = Math.max(maxGap, cts[i] - cts[i - 1]);
     facts.video = { codec: v.codec, width: v.video?.width, height: v.video?.height, frames: vs.length, duration: vDur, fps, maxGap };
-    add('Video-Codec H.264', /^avc1|^avc3/.test(v.codec), v.codec);
+    add('Video-Codec H.264/HEVC', /^avc1|^avc3|^hvc1|^hev1/.test(v.codec), /^hvc1|^hev1/.test(v.codec) ? `${v.codec} (HEVC wie iPhone-Kamera)` : v.codec);
     add('Hochformat 9:16', v.video && Math.abs(v.video.width / v.video.height - 9 / 16) < 0.01, `${v.video?.width} × ${v.video?.height}`);
     add(`Bildrate ${expectedFps} fps`, Math.abs(fps - expectedFps) < expectedFps * 0.1, `${fps.toFixed(1)} fps`);
     // Konstante Bildrate: alle Bild-Abstände gleich (± 2 ms)
