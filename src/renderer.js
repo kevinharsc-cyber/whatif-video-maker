@@ -5,7 +5,7 @@
 // entsteht dabei direkt eine MP4-Datei (H.264 + AAC).
 
 import { buildOverlays, drawOverlays, scheduleSfx, addFollowOverlay } from './anim/overlays.js';
-import { cachedGradient } from './util.js';
+import { cachedGradient, cachedLayer } from './util.js';
 
 const FPS = 30;
 const TRANSITIONS = ['whip', 'zoom', 'slide', 'flash'];
@@ -151,13 +151,21 @@ export class VideoRenderer {
 
     // Abdunkeln unten (bessere Lesbarkeit der Untertitel) und oben
     const animMode = this.images[i]?.isAnim;
-    const gTop = animMode ? H * 0.66 : H * 0.45;
-    const grad = cachedGradient(g, 'linear', [0, gTop, 0, H], [[0, 'rgba(0,0,0,0)'], [1, animMode ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.72)']]);
-    g.fillStyle = grad;
-    g.fillRect(0, gTop, W, H - gTop);
-    const top = cachedGradient(g, 'linear', [0, 0, 0, H * 0.2], [[0, 'rgba(0,0,0,0.5)'], [1, 'rgba(0,0,0,0)']]);
-    g.fillStyle = top;
-    g.fillRect(0, 0, W, H * 0.2);
+    // Abdunklung oben/unten als fertige Ebene (einmal berechnet)
+    const shade = cachedLayer(`shade|${animMode ? 1 : 0}|${W}|${H}`, W, H, (lg) => {
+      const gTop = animMode ? H * 0.66 : H * 0.45;
+      const grad = lg.createLinearGradient(0, gTop, 0, H);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, animMode ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.72)');
+      lg.fillStyle = grad;
+      lg.fillRect(0, gTop, W, H - gTop);
+      const top = lg.createLinearGradient(0, 0, 0, H * 0.2);
+      top.addColorStop(0, 'rgba(0,0,0,0.5)');
+      top.addColorStop(1, 'rgba(0,0,0,0)');
+      lg.fillStyle = top;
+      lg.fillRect(0, 0, W, H * 0.2);
+    });
+    if (!animMode) g.drawImage(shade.img, 0, 0, W, H); // bei Animationen schon im Hintergrund enthalten
 
     drawOverlays(g, W, H, t, this.overlays, this.font);
     this.drawTitle(t);

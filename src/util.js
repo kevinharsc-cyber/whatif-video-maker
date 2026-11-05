@@ -87,3 +87,36 @@ export function cachedGradient(g, type, args, stops) {
   if (gradCache.size > 300) gradCache.delete(gradCache.keys().next().value);
   return gr;
 }
+
+// Fertige Bild-Ebenen (Hintergrund einer Szene, Farbstimmung, Abdunklung)
+// werden EINMAL gezeichnet und danach nur noch als Bild eingesetzt. Ganzflächige
+// Verläufe/Effekte bei jedem Videobild neu zu berechnen war zu teuer (≈ 40 ms
+// pro Bild) – das iPhone kam nicht hinterher und der Speicher lief voll.
+const layerCache = new Map();
+export function cachedLayer(key, W, H, draw, max = 6) {
+  let e = layerCache.get(key);
+  if (e) {
+    layerCache.delete(key);
+    layerCache.set(key, e);
+    return e;
+  }
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  e = { img: c, info: draw(c.getContext('2d')) };
+  layerCache.set(key, e);
+  if (typeof createImageBitmap === 'function') {
+    createImageBitmap(c)
+      .then((bmp) => {
+        if (layerCache.get(key) === e) e.img = bmp;
+        else bmp.close?.();
+      })
+      .catch(() => {});
+  }
+  while (layerCache.size > max) {
+    const k = layerCache.keys().next().value;
+    layerCache.get(k).img.close?.();
+    layerCache.delete(k);
+  }
+  return e;
+}
