@@ -2,7 +2,7 @@
 // Die Beschreibung kommt von der KI (Gemini) oder wird aus dem Text erraten.
 
 import { actionPose, drawFigure, seg, emotionFor } from './figure.js';
-import { seededRandom } from '../util.js';
+import { seededRandom, cachedGradient } from '../util.js';
 import { PLACES, drawSportsCar, drawSkyProps, drawGroundProps, drawEffect, effectSkyDarkness, cameraShake } from './world.js';
 
 // Das Labor wirkte unverständlich und wird nicht mehr verwendet
@@ -342,9 +342,7 @@ function drawForeground(g, W, H, c, spec, t, p) {
   const indoor = ['bedroom', 'living_room', 'lab', 'window_view', 'supermarket'].includes(spec.place);
   if (indoor) {
     // drinnen: nur leichte Abdunklung der unteren Ecken
-    const v = g.createLinearGradient(0, H * 0.85, 0, H);
-    v.addColorStop(0, 'rgba(12,6,16,0)');
-    v.addColorStop(1, 'rgba(12,6,16,0.5)');
+    const v = cachedGradient(g, 'linear', [0, H * 0.85, 0, H], [[0, 'rgba(12,6,16,0)'], [1, 'rgba(12,6,16,0.5)']]);
     g.fillStyle = v;
     g.fillRect(0, H * 0.85, W, H * 0.15);
   } else {
@@ -379,10 +377,7 @@ function cinematicGrade(g, W, H, t, spec) {
   if (spec.place === 'black') return; // schwarzer Bildschirm bleibt schwarz
   g.save();
   g.globalCompositeOperation = 'soft-light';
-  const warm = g.createLinearGradient(0, 0, 0, H);
-  warm.addColorStop(0, 'rgba(255,150,60,0.75)');
-  warm.addColorStop(0.6, 'rgba(255,110,40,0.5)');
-  warm.addColorStop(1, 'rgba(60,15,60,0.8)');
+  const warm = cachedGradient(g, 'linear', [0, 0, 0, H], [[0, 'rgba(255,150,60,0.75)'], [0.6, 'rgba(255,110,40,0.5)'], [1, 'rgba(60,15,60,0.8)']]);
   g.fillStyle = warm;
   g.fillRect(0, 0, W, H);
   g.globalCompositeOperation = 'source-over';
@@ -406,9 +401,7 @@ function cinematicGrade(g, W, H, t, spec) {
   }
   // (Filmkorn entfernt: kostete in Safari bei jedem Bild eine Kopie im Speicher)
   // Vignette
-  const v = g.createRadialGradient(W / 2, H * 0.48, H * 0.25, W / 2, H * 0.5, H * 0.75);
-  v.addColorStop(0, 'rgba(0,0,0,0)');
-  v.addColorStop(1, 'rgba(10,3,8,0.6)');
+  const v = cachedGradient(g, 'radial', [W / 2, H * 0.48, H * 0.25, W / 2, H * 0.5, H * 0.75], [[0, 'rgba(0,0,0,0)'], [1, 'rgba(10,3,8,0.6)']]);
   g.fillStyle = v;
   g.fillRect(0, 0, W, H);
   g.restore();

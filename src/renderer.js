@@ -5,6 +5,7 @@
 // entsteht dabei direkt eine MP4-Datei (H.264 + AAC).
 
 import { buildOverlays, drawOverlays, scheduleSfx, addFollowOverlay } from './anim/overlays.js';
+import { cachedGradient } from './util.js';
 
 const FPS = 30;
 const TRANSITIONS = ['whip', 'zoom', 'slide', 'flash'];
@@ -151,14 +152,10 @@ export class VideoRenderer {
     // Abdunkeln unten (bessere Lesbarkeit der Untertitel) und oben
     const animMode = this.images[i]?.isAnim;
     const gTop = animMode ? H * 0.66 : H * 0.45;
-    const grad = g.createLinearGradient(0, gTop, 0, H);
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, animMode ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.72)');
+    const grad = cachedGradient(g, 'linear', [0, gTop, 0, H], [[0, 'rgba(0,0,0,0)'], [1, animMode ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.72)']]);
     g.fillStyle = grad;
     g.fillRect(0, gTop, W, H - gTop);
-    const top = g.createLinearGradient(0, 0, 0, H * 0.2);
-    top.addColorStop(0, 'rgba(0,0,0,0.5)');
-    top.addColorStop(1, 'rgba(0,0,0,0)');
+    const top = cachedGradient(g, 'linear', [0, 0, 0, H * 0.2], [[0, 'rgba(0,0,0,0.5)'], [1, 'rgba(0,0,0,0)']]);
     g.fillStyle = top;
     g.fillRect(0, 0, W, H * 0.2);
 

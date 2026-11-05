@@ -2,6 +2,7 @@
 // Pop-ups sliden passend zum gesprochenen Wort von unten ins Bild.
 
 import { drawInsert, INSERT_LIST, wifi, redX } from './inserts.js';
+import { cachedGradient } from '../util.js';
 
 // Schlüsselwörter → animierte B-Roll-Einblendung
 const INSERT_MAP = [
@@ -683,9 +684,7 @@ export function drawFollow(g, W, H, o, t, font) {
   if (f.img) {
     g.drawImage(f.img, ax - r, -r, r * 2, r * 2);
   } else {
-    const gr = g.createLinearGradient(ax - r, -r, ax + r, r);
-    gr.addColorStop(0, '#7c3aed');
-    gr.addColorStop(1, '#ff3d7f');
+    const gr = cachedGradient(g, 'linear', [ax - r, -r, ax + r, r], [[0, '#7c3aed'], [1, '#ff3d7f']]);
     g.fillStyle = gr;
     g.fillRect(ax - r, -r, r * 2, r * 2);
     g.fillStyle = '#fff';

@@ -1,7 +1,7 @@
 // Orte, Dinge und Effekte für die Strichmännchen-Animationen.
 // Alles wird mit einfachen Formen gezeichnet (flacher 2D-Zeichentrick-Stil).
 
-import { seededRandom } from '../util.js';
+import { seededRandom, cachedGradient } from '../util.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -30,9 +30,7 @@ function mixHex(a, b, k) {
 }
 
 function sky(g, W, H, cols, horizon) {
-  const gr = g.createLinearGradient(0, 0, 0, horizon);
-  gr.addColorStop(0, cols[0]);
-  gr.addColorStop(1, cols[1]);
+  const gr = cachedGradient(g, 'linear', [0, 0, 0, horizon], [[0, cols[0]], [1, cols[1]]]);
   g.fillStyle = gr;
   g.fillRect(0, 0, W, horizon + 2);
 }
@@ -124,9 +122,7 @@ function lamp(g, x, groundY, W, H, on = true) {
   rect(g, '#1e130d', x - W * 0.008, top, W * 0.016, groundY - top);
   rect(g, '#1e130d', x - W * 0.035, top - H * 0.008, W * 0.05, H * 0.012);
   if (!on) return;
-  const cone = g.createLinearGradient(0, top, 0, groundY);
-  cone.addColorStop(0, 'rgba(255,190,100,0.45)');
-  cone.addColorStop(1, 'rgba(255,170,80,0.05)');
+  const cone = cachedGradient(g, 'linear', [0, top, 0, groundY], [[0, 'rgba(255,190,100,0.45)'], [1, 'rgba(255,170,80,0.05)']]);
   g.fillStyle = cone;
   g.beginPath();
   g.moveTo(x - W * 0.03, top);
@@ -134,10 +130,7 @@ function lamp(g, x, groundY, W, H, on = true) {
   g.lineTo(x + W * 0.11, groundY);
   g.lineTo(x + W * 0.0, top);
   g.fill();
-  const glow = g.createRadialGradient(x - W * 0.015, top, 0, x - W * 0.015, top, W * 0.09);
-  glow.addColorStop(0, 'rgba(255,230,170,1)');
-  glow.addColorStop(0.25, 'rgba(255,180,90,0.6)');
-  glow.addColorStop(1, 'rgba(255,150,60,0)');
+  const glow = cachedGradient(g, 'radial', [x - W * 0.015, top, 0, x - W * 0.015, top, W * 0.09], [[0, 'rgba(255,230,170,1)'], [0.25, 'rgba(255,180,90,0.6)'], [1, 'rgba(255,150,60,0)']]);
   g.fillStyle = glow;
   g.fillRect(x - W * 0.11, top - W * 0.1, W * 0.2, W * 0.2);
 }
@@ -164,9 +157,7 @@ export const PLACES = {
     sky(g, W, H, skyColors(c.time, c.dark), wy + wh);
     if (c.time === 'night') stars(g, W, H, seededRandom(3), 1, c.t);
     g.restore();
-    const light = g.createLinearGradient(wx, wy, wx - W * 0.2, floorY);
-    light.addColorStop(0, night ? 'rgba(120,140,255,0.12)' : 'rgba(255,230,180,0.35)');
-    light.addColorStop(1, 'rgba(255,230,180,0)');
+    const light = cachedGradient(g, 'linear', [wx, wy, wx - W * 0.2, floorY], [[0, night ? 'rgba(120,140,255,0.12)' : 'rgba(255,230,180,0.35)'], [1, 'rgba(255,230,180,0)']]);
     g.fillStyle = light;
     g.beginPath();
     g.moveTo(wx, wy);
@@ -425,9 +416,7 @@ export const PLACES = {
     rect(g, '#6d2fd6', wx + ww - W * 0.01, wy - H * 0.02, W * 0.08, wh + H * 0.05);
     rect(g, '#e9dcc8', wx - W * 0.03, wy + wh, ww + W * 0.06, H * 0.015);
     // Licht von draußen
-    const light = g.createLinearGradient(wx, wy, wx - W * 0.25, floorY);
-    light.addColorStop(0, night ? 'rgba(120,140,255,0.1)' : 'rgba(255,235,190,0.3)');
-    light.addColorStop(1, 'rgba(255,235,190,0)');
+    const light = cachedGradient(g, 'linear', [wx, wy, wx - W * 0.25, floorY], [[0, night ? 'rgba(120,140,255,0.1)' : 'rgba(255,235,190,0.3)'], [1, 'rgba(255,235,190,0)']]);
     g.fillStyle = light;
     g.fillRect(0, wy, W, floorY - wy);
     return { hasSky: false };
@@ -517,9 +506,7 @@ export const PLACES = {
       }
     }
     // Dunst über der Stadt
-    const haze = g.createLinearGradient(0, c.groundY - H * 0.25, 0, c.groundY);
-    haze.addColorStop(0, 'rgba(255,200,150,0)');
-    haze.addColorStop(1, 'rgba(255,190,140,0.25)');
+    const haze = cachedGradient(g, 'linear', [0, c.groundY - H * 0.25, 0, c.groundY], [[0, 'rgba(255,200,150,0)'], [1, 'rgba(255,190,140,0.25)']]);
     g.fillStyle = haze;
     g.fillRect(0, c.groundY - H * 0.25, W, H * 0.25);
     // Dachfläche + Geländer + Antenne
@@ -571,9 +558,7 @@ export function drawEarth(g, x, y, r, c, state = 'normal') {
   g.beginPath();
   g.arc(x, y, r, 0, TAU);
   g.clip();
-  const ocean = g.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r);
-  ocean.addColorStop(0, '#4fa3ff');
-  ocean.addColorStop(1, '#0d47a1');
+  const ocean = cachedGradient(g, 'radial', [x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r], [[0, '#4fa3ff'], [1, '#0d47a1']]);
   g.fillStyle = ocean;
   g.fillRect(x - r, y - r, r * 2, r * 2);
   g.fillStyle = state === 'dead' ? '#8d6e63' : '#43a047';
@@ -595,9 +580,7 @@ export function drawEarth(g, x, y, r, c, state = 'normal') {
   g.beginPath();
   g.ellipse(x, y - r * 0.92, r * 0.5, r * 0.12, 0, 0, TAU);
   g.fill();
-  const shade = g.createRadialGradient(x - r * 0.5, y - r * 0.5, r * 0.2, x, y, r * 1.1);
-  shade.addColorStop(0, 'rgba(0,0,0,0)');
-  shade.addColorStop(1, 'rgba(0,0,30,0.55)');
+  const shade = cachedGradient(g, 'radial', [x - r * 0.5, y - r * 0.5, r * 0.2, x, y, r * 1.1], [[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,30,0.55)']]);
   g.fillStyle = shade;
   g.fillRect(x - r, y - r, r * 2, r * 2);
   g.restore();
@@ -612,9 +595,7 @@ function drawSun(g, x, y, r, t, scale = 1, alpha = 1, color = '#ffd60a') {
   if (alpha <= 0) return;
   g.save();
   g.globalAlpha *= alpha;
-  const glow = g.createRadialGradient(x, y, r * scale * 0.5, x, y, r * scale * 2.2);
-  glow.addColorStop(0, 'rgba(255,220,80,0.6)');
-  glow.addColorStop(1, 'rgba(255,200,0,0)');
+  const glow = cachedGradient(g, 'radial', [x, y, r * scale * 0.5, x, y, r * scale * 2.2], [[0, 'rgba(255,220,80,0.6)'], [1, 'rgba(255,200,0,0)']]);
   g.fillStyle = glow;
   g.fillRect(x - r * scale * 2.5, y - r * scale * 2.5, r * scale * 5, r * scale * 5);
   g.fillStyle = color;
@@ -885,9 +866,7 @@ export function drawSkyProps(g, W, H, c, props) {
       if (c.p < c.ev) {
         const mx = lerp(W * 1.1, W * 0.55, k);
         const my = lerp(-H * 0.05, c.groundY - H * 0.02, k);
-        const tail = g.createLinearGradient(mx, my, mx + W * 0.35, my - H * 0.2);
-        tail.addColorStop(0, 'rgba(255,170,60,0.9)');
-        tail.addColorStop(1, 'rgba(255,170,60,0)');
+        const tail = cachedGradient(g, 'linear', [mx, my, mx + W * 0.35, my - H * 0.2], [[0, 'rgba(255,170,60,0.9)'], [1, 'rgba(255,170,60,0)']]);
         g.strokeStyle = tail;
         g.lineWidth = W * 0.04;
         g.beginPath();
@@ -927,9 +906,7 @@ export function drawGroundProps(g, W, H, c, props) {
       g.restore();
       const wy = sy + H * 0.085;
       const wh = c.groundY - wy - H * 0.02;
-      const glow = g.createLinearGradient(0, wy, 0, wy + wh);
-      glow.addColorStop(0, '#fff3d6');
-      glow.addColorStop(1, '#f2c98a');
+      const glow = cachedGradient(g, 'linear', [0, wy, 0, wy + wh], [[0, '#fff3d6'], [1, '#f2c98a']]);
       g.fillStyle = glow;
       g.fillRect(x + w * 0.06, wy, w * 0.88, wh);
       const rnd = seededRandom(41);
@@ -1036,10 +1013,7 @@ export function drawEffect(g, W, H, c, effect, origin) {
         // Feuerball
         const fr = W * 0.12 * (1 + k * 2.5);
         const fa = Math.max(0, 1 - k / 2.2);
-        const fb = g.createRadialGradient(origin.x, origin.y, 0, origin.x, origin.y, fr);
-        fb.addColorStop(0, `rgba(255,255,220,${fa})`);
-        fb.addColorStop(0.4, `rgba(255,170,40,${fa * 0.9})`);
-        fb.addColorStop(1, 'rgba(200,40,0,0)');
+        const fb = cachedGradient(g, 'radial', [origin.x, origin.y, 0, origin.x, origin.y, fr], [[0, `rgba(255,255,220,${fa})`], [0.4, `rgba(255,170,40,${fa * 0.9})`], [1, 'rgba(200,40,0,0)']]);
         g.fillStyle = fb;
         g.fillRect(0, 0, W, H);
         // Trümmer
@@ -1107,10 +1081,7 @@ export function drawEffect(g, W, H, c, effect, origin) {
     for (let i = 0; i < 26; i++) {
       const x = (i / 25) * W;
       const fh = h * (0.6 + 0.4 * Math.sin(c.t * 7 + i * 1.7));
-      const gr = g.createLinearGradient(0, c.groundY, 0, c.groundY - fh);
-      gr.addColorStop(0, 'rgba(255,80,0,0.95)');
-      gr.addColorStop(0.6, 'rgba(255,190,0,0.8)');
-      gr.addColorStop(1, 'rgba(255,240,150,0)');
+      const gr = cachedGradient(g, 'linear', [0, c.groundY, 0, c.groundY - fh], [[0, 'rgba(255,80,0,0.95)'], [0.6, 'rgba(255,190,0,0.8)'], [1, 'rgba(255,240,150,0)']]);
       g.fillStyle = gr;
       g.beginPath();
       g.moveTo(x - W * 0.05, c.groundY + H * 0.01);
