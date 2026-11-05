@@ -232,6 +232,7 @@ export const PLACES = {
 
   empty_city(g, W, H, c) {
     sky(g, W, H, skyColors(c.time === 'day' ? 'day' : c.time, Math.max(c.dark, 0.15)), c.groundY);
+    if (c.time === 'night' || c.dark > 0.4) stars(g, W, H, seededRandom(14), 1, c.t);
     c.drawSkyProps();
     const rnd = seededRandom(31);
     for (let i = 0; i < 8; i++) {
