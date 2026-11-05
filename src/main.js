@@ -636,6 +636,14 @@ function recoverAfterCrash() {
     settings.quality = '720';
     changes.push('Videoqualität auf 720p gestellt');
   }
+  if (saved.phase === 'voice' && settings.voice.startsWith('piper:')) {
+    if (settings.geminiKey) {
+      settings.voice = 'gemini:Charon';
+      changes.push('die Stimme auf Gemini „Charon“ umgestellt (braucht auf dem iPhone kaum Speicher)');
+    } else {
+      changes.push('nichts an der Stimme geändert – Tipp: Trag unter ⚙️ einen kostenlosen Gemini-Schlüssel ein und wähle die Stimme Gemini „Charon“, die braucht kaum Speicher');
+    }
+  }
   if (saved.phase === 'export' && settings.exportMode !== 'realtime') {
     settings.exportMode = 'realtime';
     changes.push('sparsamere Echtzeit-Aufnahme eingeschaltet');
