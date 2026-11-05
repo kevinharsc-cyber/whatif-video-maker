@@ -560,9 +560,14 @@ export class VideoRenderer {
     const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
     let lastCt = ctx.currentTime;
     let lastChange = performance.now();
+    let lastDraw = -1e9;
     for (;;) {
       await nextFrame();
       const now = performance.now();
+      // Genau ~30 Bilder/s zeichnen – iPhones mit 120-Hz-Bildschirm würden sonst
+      // 120 Bilder/s zeichnen (4× so viel Arbeit wie nötig).
+      if (now - lastDraw < 1000 / FPS - 3) continue;
+      lastDraw = now;
       if (ctx.currentTime !== lastCt) {
         lastCt = ctx.currentTime;
         lastChange = now;

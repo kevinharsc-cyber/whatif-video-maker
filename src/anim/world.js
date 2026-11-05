@@ -37,7 +37,7 @@ function sky(g, W, H, cols, horizon) {
 
 function stars(g, W, H, rnd, alpha, t) {
   if (alpha <= 0) return;
-  for (let i = 0; i < 160; i++) {
+  for (let i = 0; i < 80; i++) {
     const x = rnd() * W;
     const y = rnd() * H * 0.6;
     const r = rnd() * 2.2 + 0.4;

@@ -430,7 +430,7 @@ function cinematicGrade(g, W, H, t, spec, baked) {
   }
   // Lichtpartikel (wenige kleine Punkte, günstig)
   const rnd = seededRandom(99);
-  const n = spec.place === 'space' || spec.place === 'earth' ? 10 : 18;
+  const n = 0; // Lichtpartikel abgeschaltet (spart Zeichenarbeit)
   for (let i = 0; i < n; i++) {
     const sp = 0.01 + rnd() * 0.03;
     const x = rnd() * W + Math.sin(t * 0.5 + i) * W * 0.02;
