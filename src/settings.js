@@ -32,6 +32,12 @@ export function loadSettings() {
       s.visualMode = '3d'; // neuer Standard: Low-Poly-3D
       s.lowpolyV1 = true;
     }
+    if (!s.voiceV3) {
+      // Wunsch: freundlich erzählt statt aufgedreht → Achird
+      if (s.visualMode === 'verein' && ['gemini:Puck', 'gemini:Charon'].includes(s.voice)) s.voice = 'gemini:Achird';
+      s.voiceV3 = true;
+      s.voiceV2 = true;
+    }
     if (!s.voiceV2) {
       // Verein: freundliche, gut gelaunte Stimme statt des ruhigen Erzählers
       if (s.visualMode === 'verein' && (s.voice === 'gemini:Charon' || (s.geminiKey && s.voice.startsWith('piper:')))) s.voice = 'gemini:Puck';
