@@ -155,6 +155,85 @@ async function loadPiperVoice(voiceId, onProgress) {
   return voice;
 }
 
+// Alle Sätze in EINEM Durchgang umwandeln (spart viel Arbeitsspeicher:
+// das 18-MB-Sprachpaket wird nur einmal geladen statt für jeden Satz).
+function phonemizeAll(texts, espeakVoice) {
+  const base = new URL('piper/', document.baseURI).href;
+  return new Promise((resolve, reject) => {
+    const lines = [];
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try {
+        resolve(lines.map((l) => JSON.parse(l).phoneme_ids));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    createPiperPhonemize({
+      print: (line) => {
+        lines.push(line);
+        if (lines.length === texts.length) finish();
+      },
+      printErr: (msg) => console.warn('phonemize:', msg),
+      locateFile: (f) => (f.endsWith('.wasm') || f.endsWith('.data') ? base + f.replace(/^.*\//, '') : f),
+    })
+      .then((mod) => mod.callMain(['-l', espeakVoice, '--input', JSON.stringify(texts.map((text) => ({ text }))), '--espeak_data', '/espeak-ng-data']))
+      .catch(reject);
+    setTimeout(() => !done && (lines.length === texts.length ? finish() : reject(new Error('Lautumwandlung dauert zu lange'))), 60000);
+  });
+}
+
+// Lädt Stimmen-Konfiguration + Modell (aus dem Browser-Speicher, falls vorhanden)
+async function fetchPiperFiles(voiceId, onProgress) {
+  const path = PIPER_PATHS[voiceId] || PIPER_PATHS['de_DE-thorsten-medium'];
+  let lastErr = null;
+  for (const base of HF_BASES) {
+    try {
+      const cfgBuf = await cachedFetch(`${base}/${path}.json`);
+      const config = JSON.parse(new TextDecoder().decode(cfgBuf));
+      const model = await cachedFetch(`${base}/${path}`, (loaded, total) => onProgress({ phase: 'download', loaded, total }));
+      return { config, model };
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw new Error(`Stimme konnte nicht geladen werden: ${lastErr?.message}`);
+}
+
+// Sprachausgabe im Hintergrund-Prozess; danach wird er beendet (Speicher frei)
+function inferInWorker(model, config, idsList, speed, onPart) {
+  return new Promise((resolve, reject) => {
+    let worker;
+    try {
+      worker = new Worker(new URL('./piper-worker.js', import.meta.url), { type: 'module' });
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    const parts = new Array(idsList.length);
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === 'part') {
+        parts[m.index] = m.data;
+        onPart(m.index);
+      } else if (m.type === 'done') {
+        worker.terminate();
+        resolve(parts);
+      } else if (m.type === 'error') {
+        worker.terminate();
+        reject(new Error(m.message));
+      }
+    };
+    worker.onerror = (e) => {
+      worker.terminate();
+      reject(new Error(e.message || 'Hintergrund-Prozess fehlgeschlagen'));
+    };
+    worker.postMessage({ model, config, idsList, speed, wasmBase: new URL('ort/', document.baseURI).href }, [model]);
+  });
+}
+
 function phonemize(text, espeakVoice) {
   const base = new URL('piper/', document.baseURI).href;
   return new Promise((resolve, reject) => {
@@ -193,10 +272,23 @@ function trimSilence(data, sr) {
 
 async function piperTTS(ctx, scenes, settings, voiceId, onProgress, log) {
   log('Lade kostenlose Piper-Stimme (beim ersten Mal kann das 1–2 Minuten dauern) …');
+  const speed = Math.min(1.5, Math.max(0.7, Number(settings.speed) || 1));
+  const texts = scenes.map((s) => cleanForSpeech(s.text) || '…');
+  // Speichersparender Weg: Lautschrift in einem Durchgang, Stimme im Hintergrund-Prozess
+  try {
+    const { config, model } = await fetchPiperFiles(voiceId, onProgress);
+    onProgress({ phase: 'speak', index: 0, count: scenes.length });
+    const idsList = await phonemizeAll(texts, config.espeak.voice);
+    const raw = await inferInWorker(model, config, idsList, speed, (i) => onProgress({ phase: 'speak', index: Math.min(i + 1, scenes.length - 1), count: scenes.length }));
+    const sr = config.audio.sample_rate;
+    return assemble(ctx, raw.map((d) => trimSilence(d, sr)), sr, scenes);
+  } catch (e) {
+    console.warn('Speichersparende Stimme nicht möglich, nutze normalen Weg:', e);
+  }
+  // Rückfall: alles im Haupt-Thread (wie früher)
   const voice = await loadPiperVoice(voiceId, onProgress);
   const { config, session, ort } = voice;
   const sr = config.audio.sample_rate;
-  const speed = Math.min(1.5, Math.max(0.7, Number(settings.speed) || 1));
   const scales = new Float32Array([
     config.inference.noise_scale,
     config.inference.length_scale / speed,
@@ -205,8 +297,8 @@ async function piperTTS(ctx, scenes, settings, voiceId, onProgress, log) {
   const parts = [];
   for (let i = 0; i < scenes.length; i++) {
     onProgress({ phase: 'speak', index: i, count: scenes.length });
-    await sleep(30); // Bildschirm kurz aktualisieren lassen
-    const ids = await phonemize(cleanForSpeech(scenes[i].text), config.espeak.voice);
+    await sleep(30);
+    const ids = await phonemize(texts[i], config.espeak.voice);
     const feeds = {
       input: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
       input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),

@@ -340,7 +340,7 @@ export class VideoRenderer {
       scheduleSfx(off, master, this.sfx, lead);
     }
     onProgress?.(0);
-    const mixed = await withTimeout(off.startRendering(), 60000, 'Ton-Mischung');
+    let mixed = await withTimeout(off.startRendering(), 60000, 'Ton-Mischung');
 
     // 2) Codecs wählen (H.264 + AAC bevorzugt)
     const vBase = { width: W, height: H, bitrate: W >= 1080 ? 5_000_000 : 3_500_000, framerate: FPS, latencyMode: 'quality' };
@@ -426,8 +426,8 @@ export class VideoRenderer {
     aenc.configure(acfg);
 
     // 3) Ton kodieren
-    const L = mixed.getChannelData(0);
-    const R = mixed.getChannelData(1);
+    let L = mixed.getChannelData(0);
+    let R = mixed.getChannelData(1);
     const step = 4800;
     for (let i = 0; i < mixed.length; i += step) {
       const n = Math.min(step, mixed.length - i);
@@ -440,6 +440,9 @@ export class VideoRenderer {
     }
     await withTimeout(aenc.flush(), 30000, 'Audio-Encoder');
     if (failure) throw failure;
+    // Ton-Rohdaten werden nicht mehr gebraucht → Speicher frei
+    L = R = null;
+    mixed = null;
 
     // 4) Bild für Bild zeichnen und kodieren
     const yieldUI = () => new Promise((r) => setTimeout(r, 0));
