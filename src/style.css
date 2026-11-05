@@ -530,3 +530,35 @@ a {
   color: var(--muted);
   margin-left: 6px;
 }
+
+.qc {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 6px 0 10px;
+}
+.qc ul {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+}
+.qc li {
+  padding: 2px 0;
+}
+.qc li.bad,
+.qc-warn {
+  color: #fbbf24;
+}
+.qc-ok {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.device-check {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.72rem;
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 10px;
+  color: var(--muted);
+}

@@ -13,7 +13,9 @@
   "dependencies": {
     "@diffusionstudio/piper-wasm": "1.0.0",
     "mp4-muxer": "5.2.2",
-    "onnxruntime-web": "1.18.0"
+    "mp4box": "2.5.0",
+    "onnxruntime-web": "1.18.0",
+    "three": "0.187.0"
   },
   "devDependencies": {
     "vite": "6.3.5"

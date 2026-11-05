@@ -78,6 +78,7 @@
         <h2><span class="num">4</span> Fertig! 🎉</h2>
         <video id="result" controls playsinline></video>
         <p id="resultInfo" class="info"></p>
+        <details id="qcWrap" class="qc" open><summary>Qualitätskontrolle</summary><div id="qc"></div></details>
         <button id="btnShare" class="primary">📲 Auf iPhone speichern / teilen</button>
         <a id="btnDownload" class="button ghost" download>⬇️ Datei herunterladen</a>
         <div class="row">
@@ -98,7 +99,9 @@
           <button class="icon-btn" value="close" aria-label="Schließen">✕</button>
         </div>
         <p class="small">👆 Mit dem Finger <b>im Fenster</b> nach oben wischen, um alle Einstellungen zu sehen.</p>
-        <p class="small">App-Version: <b>25 (30 fps, 720p)</b></p>
+        <p class="small">App-Version: <b>26 (3D)</b></p>
+        <button type="button" id="btnDeviceCheck" class="ghost wide">🔍 Gerät prüfen (Video-Encoder)</button>
+        <pre id="deviceCheck" class="device-check hidden"></pre>
 
         <label class="lbl" for="sVoice">Stimme</label>
         <select id="sVoice"></select>
@@ -109,7 +112,8 @@
 
         <label class="lbl" for="sVisual">Video-Stil</label>
         <select id="sVisual">
-          <option value="animation">🎬 Animation mit Strichmännchen (kostenlos, empfohlen)</option>
+          <option value="3d">🧊 Low-Poly-3D (kostenlos, empfohlen)</option>
+          <option value="animation">🎬 2D-Comic-Animation</option>
           <option value="images">🖼️ KI-Bilder / Fotos</option>
         </select>
 

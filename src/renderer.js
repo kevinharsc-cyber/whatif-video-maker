@@ -5,6 +5,7 @@
 // entsteht dabei direkt eine MP4-Datei (H.264 + AAC).
 
 import { buildOverlays, drawOverlays, scheduleSfx, addFollowOverlay } from './anim/overlays.js';
+import { h264Candidates } from './devicecheck.js';
 import { cachedGradient, cachedLayer } from './util.js';
 
 const FPS = 30;
@@ -165,7 +166,7 @@ export class VideoRenderer {
       lg.fillStyle = top;
       lg.fillRect(0, 0, W, H * 0.2);
     });
-    if (!animMode) g.drawImage(shade.img, 0, 0, W, H); // bei Animationen schon im Hintergrund enthalten
+    if (!animMode || this.images[i]?.needsShade) g.drawImage(shade.img, 0, 0, W, H); // bei 2D-Animationen schon im Hintergrund enthalten
 
     drawOverlays(g, W, H, t, this.overlays, this.font);
     this.drawTitle(t);
@@ -350,16 +351,20 @@ export class VideoRenderer {
     // 2) Codecs wählen (H.264 + AAC bevorzugt)
     const vBase = { width: W, height: H, bitrate: W >= 1080 ? 5_000_000 : 3_500_000, framerate: FPS, latencyMode: 'quality' };
     let vcfg = null;
-    for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028', 'avc1.640033']) {
-      const cfg = { ...vBase, codec, avc: { format: 'avc' } };
-      try {
-        if ((await withTimeout(VideoEncoder.isConfigSupported(cfg), 4000, 'Video-Encoder')).supported) {
-          vcfg = cfg;
-          break;
+    // Viele Varianten probieren (manche iPhones/iOS-Versionen akzeptieren nur einzelne)
+    for (const cand of h264Candidates(W, H, FPS, vBase.bitrate)) {
+      const cfg = { ...cand, latencyMode: 'quality' };
+      for (const c of [cfg, cand]) {
+        try {
+          if ((await withTimeout(VideoEncoder.isConfigSupported(c), 4000, 'Video-Encoder')).supported) {
+            vcfg = c;
+            break;
+          }
+        } catch {
+          /* weiter */
         }
-      } catch {
-        /* weiter */
       }
+      if (vcfg) break;
     }
     if (!vcfg && allowNonAac) {
       const cfg = { ...vBase, codec: 'vp09.00.40.08' };
