@@ -83,14 +83,16 @@ export async function findVideoConfig(W, H, onStep = () => {}) {
   if (pickCache?.key === key) return pickCache.res;
   try {
     const saved = JSON.parse(localStorage.getItem(ENC_KEY) || 'null');
-    if (saved?.key === key && saved.res?.cfg) return (pickCache = { key, res: saved.res }).res;
+    if (saved?.key === key && (saved.res?.cfg || Date.now() - (saved.at || 0) < 24 * 3600 * 1000)) return (pickCache = { key, res: saved.res }).res;
   } catch {
     /* egal */
   }
   const res = await findVideoConfigUncached(W, H, onStep);
   pickCache = { key, res };
   try {
-    if (res.cfg) localStorage.setItem(ENC_KEY, JSON.stringify({ key, res }));
+    // Auch ein "geht nicht" merken (1 Tag): spart beim nächsten Mal die Prüfung und
+    // erzeugt keine hängenden Encoder in Safari, die die Aufnahme stören könnten
+    localStorage.setItem(ENC_KEY, JSON.stringify({ key, res, at: Date.now() }));
   } catch {
     /* egal */
   }

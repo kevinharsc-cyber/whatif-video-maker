@@ -554,7 +554,7 @@ async function checkPlayback(blob) {
 // Ton-Synchronität: Wo beginnt hörbar das 2. Wort? Soll: genau dort, wo es eingeplant war.
 async function checkAudioSync(blob, ctx, expectedAt) {
   try {
-    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const buf = await Promise.race([ctx.decodeAudioData(await blob.arrayBuffer()), new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung')), 10000))]);
     const d = buf.getChannelData(0);
     const sr = buf.sampleRate;
     let peak = 0;
