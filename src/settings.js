@@ -10,7 +10,9 @@ export const DEFAULTS = {
   speed: 1.0,
   quality: '1080',
   imageStyle: 'cinematic',
-  visualMode: 'animation',
+  visualMode: 'verein',
+  vereinFans: 0,
+  vereinNames: '',
   followEnabled: true,
   followName: '',
   followImage: '',
@@ -29,6 +31,12 @@ export function loadSettings() {
     if (!s.lowpolyV1) {
       s.visualMode = '3d'; // neuer Standard: Low-Poly-3D
       s.lowpolyV1 = true;
+    }
+    if (!s.vereinV1) {
+      s.visualMode = 'verein'; // Wunsch: alles im Look des SV Kieselbach
+      s.vereinV1 = true;
+      s.clear2dV1 = true;
+      s.poly2dV1 = true;
     }
     if (!s.clear2dV1) {
       s.visualMode = 'animation'; // Wunsch: klare 2D-Grafik ohne Polygone

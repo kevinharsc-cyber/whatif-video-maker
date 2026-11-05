@@ -607,6 +607,8 @@ export function scheduleSfx(ctx, out, list, t0) {
       src.start(at);
       src.stop(at + 1);
       nodes.push(o, src);
+    } else {
+      vereinSfx(ctx, out, s, at, getNoise, nodes);
     }
   }
   return () => nodes.forEach((n) => {
@@ -792,4 +794,167 @@ export function drawFollow(g, W, H, o, t, font) {
     g.restore();
   }
   g.restore();
+}
+
+// ------------------------------------------- Geräusche für den Vereins-Modus ---
+function vereinSfx(ctx, out, s, at, getNoise, nodes) {
+  const osc = (type, f0, f1, len, gain, dest = out) => {
+    const o = ctx.createOscillator();
+    const gn = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, at);
+    if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, at + len);
+    gn.gain.setValueAtTime(0.0001, at);
+    gn.gain.exponentialRampToValueAtTime(gain, at + 0.01);
+    gn.gain.exponentialRampToValueAtTime(0.0001, at + len);
+    o.connect(gn).connect(dest);
+    o.start(at);
+    o.stop(at + len + 0.05);
+    nodes.push(o);
+    return o;
+  };
+  const noise = (from, to, len, gain, type = 'bandpass', freq = 2000, q = 1, offset = 0) => {
+    const src = ctx.createBufferSource();
+    src.buffer = getNoise();
+    src.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    f.Q.value = q;
+    const gn = ctx.createGain();
+    gn.gain.setValueAtTime(0.0001, at + offset);
+    gn.gain.exponentialRampToValueAtTime(gain, at + offset + from);
+    gn.gain.exponentialRampToValueAtTime(0.0001, at + offset + to);
+    src.connect(f).connect(gn).connect(out);
+    src.start(at + offset);
+    src.stop(at + offset + len);
+    nodes.push(src);
+  };
+  if (s.type === 'whistle' || s.type === 'whistleshort') {
+    const len = s.type === 'whistle' ? 0.5 : 0.25;
+    const o = osc('sine', 2900, 2900, len, 0.12);
+    const lfo = ctx.createOscillator();
+    const lg = ctx.createGain();
+    lfo.frequency.value = 32;
+    lg.gain.value = 120;
+    lfo.connect(lg).connect(o.frequency);
+    lfo.start(at);
+    lfo.stop(at + len);
+    nodes.push(lfo);
+  } else if (s.type === 'crickets') {
+    const d = s.dur || 3;
+    for (let k = 0; k * 0.42 < d; k++) for (let j = 0; j < 3; j++) {
+      const t0 = k * 0.42 + j * 0.05;
+      const o = ctx.createOscillator();
+      const gn = ctx.createGain();
+      o.frequency.value = 4500;
+      gn.gain.setValueAtTime(0.0001, at + t0);
+      gn.gain.exponentialRampToValueAtTime(0.05, at + t0 + 0.01);
+      gn.gain.exponentialRampToValueAtTime(0.0001, at + t0 + 0.035);
+      o.connect(gn).connect(out);
+      o.start(at + t0);
+      o.stop(at + t0 + 0.05);
+      nodes.push(o);
+    }
+  } else if (s.type === 'trombone') {
+    [[233, 0], [220, 0.42], [208, 0.84], [196, 1.26]].forEach(([fr, d], i) => {
+      const o = ctx.createOscillator();
+      const lp = ctx.createBiquadFilter();
+      const gn = ctx.createGain();
+      o.type = 'sawtooth';
+      o.frequency.value = fr;
+      lp.type = 'lowpass';
+      lp.frequency.value = 1200;
+      const len = i === 3 ? 1.3 : 0.38;
+      gn.gain.setValueAtTime(0.0001, at + d);
+      gn.gain.exponentialRampToValueAtTime(0.09, at + d + 0.04);
+      gn.gain.exponentialRampToValueAtTime(0.0001, at + d + len);
+      o.connect(lp).connect(gn).connect(out);
+      o.start(at + d);
+      o.stop(at + d + len + 0.05);
+      nodes.push(o);
+    });
+  } else if (s.type === 'clang' || s.type === 'hammer') {
+    const hits = s.type === 'hammer' ? [0, 0.22, 0.44] : [0];
+    for (const h of hits) {
+      for (const [fr, g2, len] of [[523, 0.08, 1.2], [1347, 0.05, 0.8], [2411, 0.035, 0.5], [3729, 0.02, 0.35]]) {
+        const o = ctx.createOscillator();
+        const gn = ctx.createGain();
+        o.frequency.value = fr;
+        const l = s.type === 'hammer' ? 0.18 : len;
+        gn.gain.setValueAtTime(0.0001, at + h);
+        gn.gain.exponentialRampToValueAtTime(g2, at + h + 0.003);
+        gn.gain.exponentialRampToValueAtTime(0.0001, at + h + l);
+        o.connect(gn).connect(out);
+        o.start(at + h);
+        o.stop(at + h + l + 0.05);
+        nodes.push(o);
+      }
+    }
+  } else if (s.type === 'kick') {
+    osc('sine', 140, 50, 0.2, 0.3);
+    noise(0.003, 0.05, 0.1, 0.12, 'bandpass', 3000, 1);
+  } else if (s.type === 'stamp') {
+    osc('sine', 90, 50, 0.3, 0.35);
+    noise(0.003, 0.15, 0.2, 0.2, 'lowpass', 900, 0.7);
+  } else if (s.type === 'creak') {
+    const o = ctx.createOscillator();
+    const bp = ctx.createBiquadFilter();
+    const gn = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(260, at);
+    o.frequency.linearRampToValueAtTime(420, at + 0.5);
+    o.frequency.linearRampToValueAtTime(300, at + 1);
+    bp.type = 'bandpass';
+    bp.frequency.value = 900;
+    bp.Q.value = 3;
+    gn.gain.setValueAtTime(0.0001, at);
+    gn.gain.exponentialRampToValueAtTime(0.05, at + 0.15);
+    gn.gain.exponentialRampToValueAtTime(0.0001, at + 1.1);
+    o.connect(bp).connect(gn).connect(out);
+    o.start(at);
+    o.stop(at + 1.2);
+    nodes.push(o);
+  } else if (s.type === 'flies') {
+    const d = s.dur || 3;
+    const o = ctx.createOscillator();
+    const lp = ctx.createBiquadFilter();
+    const gn = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.value = 210;
+    const lfo = ctx.createOscillator();
+    const lg = ctx.createGain();
+    lfo.frequency.value = 3;
+    lg.gain.value = 25;
+    lfo.connect(lg).connect(o.frequency);
+    lp.type = 'lowpass';
+    lp.frequency.value = 1500;
+    gn.gain.setValueAtTime(0.0001, at);
+    gn.gain.exponentialRampToValueAtTime(0.025, at + 0.4);
+    gn.gain.setValueAtTime(0.025, at + d - 0.4);
+    gn.gain.exponentialRampToValueAtTime(0.0001, at + d);
+    o.connect(lp).connect(gn).connect(out);
+    o.start(at);
+    o.stop(at + d);
+    lfo.start(at);
+    lfo.stop(at + d);
+    nodes.push(o, lfo);
+  } else if (s.type === 'lid') {
+    noise(0.003, 0.12, 0.15, 0.25, 'bandpass', 2500, 1.2);
+  } else if (s.type === 'clink') {
+    [3520, 4186, 3729].forEach((fr, i) => {
+      const o = ctx.createOscillator();
+      const gn = ctx.createGain();
+      o.frequency.value = fr;
+      gn.gain.setValueAtTime(0.0001, at + i * 0.09);
+      gn.gain.exponentialRampToValueAtTime(0.05, at + i * 0.09 + 0.003);
+      gn.gain.exponentialRampToValueAtTime(0.0001, at + i * 0.09 + 0.3);
+      o.connect(gn).connect(out);
+      o.start(at + i * 0.09);
+      o.stop(at + i * 0.09 + 0.35);
+      nodes.push(o);
+    });
+  } else if (s.type === 'cheer') {
+    noise(0.3, 1.6, 1.8, 0.06, 'bandpass', 1200, 0.5);
+  }
 }
