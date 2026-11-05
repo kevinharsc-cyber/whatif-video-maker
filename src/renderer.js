@@ -310,7 +310,7 @@ export class VideoRenderer {
   }
 
   async exportMp4({ music = true, onProgress, allowNonAac = false } = {}) {
-    const { Muxer, ArrayBufferTarget } = await import('mp4-muxer');
+    const { Muxer, StreamTarget } = await import('mp4-muxer');
     const W = this.W;
     const H = this.H;
     const lead = 0.15;
@@ -343,7 +343,7 @@ export class VideoRenderer {
     const mixed = await withTimeout(off.startRendering(), 60000, 'Ton-Mischung');
 
     // 2) Codecs wählen (H.264 + AAC bevorzugt)
-    const vBase = { width: W, height: H, bitrate: W >= 1080 ? 8_000_000 : 5_000_000, framerate: FPS, latencyMode: 'quality' };
+    const vBase = { width: W, height: H, bitrate: W >= 1080 ? 5_000_000 : 3_500_000, framerate: FPS, latencyMode: 'quality' };
     let vcfg = null;
     for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028', 'avc1.640033']) {
       const cfg = { ...vBase, codec, avc: { format: 'avc' } };
@@ -373,18 +373,56 @@ export class VideoRenderer {
       acfg = { codec: 'opus', sampleRate: sr, numberOfChannels: 2, bitrate: 192_000 };
     }
 
-    const target = new ArrayBufferTarget();
+    // Speichersparend: fertige Datei-Stücke nacheinander einsammeln (nicht doppelt
+    // im Speicher). Spätere Korrekturen am Dateianfang werden direkt eingetragen.
+    const parts = [];
+    let size = 0;
+    const target = new StreamTarget({
+      chunked: true,
+      chunkSize: 2 ** 22,
+      onData: (data, pos) => {
+        const copy = data.slice();
+        if (pos > size) {
+          parts.push({ pos: size, d: new Uint8Array(pos - size) });
+          size = pos;
+        }
+        if (pos === size) {
+          parts.push({ pos, d: copy });
+          size += copy.length;
+          return;
+        }
+        for (const p of parts) {
+          const a = Math.max(pos, p.pos);
+          const b = Math.min(pos + copy.length, p.pos + p.d.length);
+          if (a < b) p.d.set(copy.subarray(a - pos, b - pos), a - p.pos);
+        }
+        if (pos + copy.length > size) {
+          const extra = copy.slice(size - pos);
+          parts.push({ pos: size, d: extra });
+          size += extra.length;
+        }
+      },
+    });
+    const frames = Math.ceil(total * FPS);
     const muxer = new Muxer({
       target,
       video: { codec: vcfg.codec.startsWith('avc') ? 'avc' : 'vp9', width: W, height: H, frameRate: FPS },
       audio: { codec: acfg.codec === 'opus' ? 'opus' : 'aac', numberOfChannels: 2, sampleRate: sr },
-      fastStart: 'in-memory',
+      // Platz für das Inhaltsverzeichnis am Anfang reservieren → normale MP4, Index vorne
+      fastStart: { expectedVideoChunks: frames + 2, expectedAudioChunks: Math.ceil((total * sr) / 480) + 64 },
       firstTimestampBehavior: 'offset',
     });
     let failure = null;
-    const venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: (e) => (failure = e) });
+    const safe = (fn) => (c, m) => {
+      try {
+        fn(c, m);
+      } catch (e) {
+        failure = e;
+      }
+    };
+    const venc = new VideoEncoder({ output: safe((c, m) => muxer.addVideoChunk(c, m)), error: (e) => (failure = e) });
     venc.configure(vcfg);
-    const aenc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: (e) => (failure = e) });
+    const aenc = new AudioEncoder({ output: safe((c, m) => muxer.addAudioChunk(c, m)), error: (e) => (failure = e) });
     aenc.configure(acfg);
 
     // 3) Ton kodieren
@@ -401,9 +439,9 @@ export class VideoRenderer {
       ad.close();
     }
     await withTimeout(aenc.flush(), 30000, 'Audio-Encoder');
+    if (failure) throw failure;
 
     // 4) Bild für Bild zeichnen und kodieren
-    const frames = Math.ceil(total * FPS);
     const yieldUI = () => new Promise((r) => setTimeout(r, 0));
     for (let n = 0; n < frames; n++) {
       if (failure) throw failure;
@@ -413,7 +451,7 @@ export class VideoRenderer {
       venc.encode(frame, { keyFrame: n % (FPS * 2) === 0 });
       frame.close();
       const waitStart = performance.now();
-      while (venc.encodeQueueSize > 6) {
+      while (venc.encodeQueueSize > 2) {
         if (performance.now() - waitStart > 15000) throw new Error('Video-Encoder hängt');
         await new Promise((r) => setTimeout(r, 4));
       }
@@ -428,7 +466,12 @@ export class VideoRenderer {
     venc.close();
     aenc.close();
     onProgress?.(1);
-    return new Blob([target.buffer], { type: 'video/mp4' });
+    const blob = new Blob(
+      parts.map((p) => p.d),
+      { type: 'video/mp4' },
+    );
+    parts.length = 0;
+    return blob;
   }
 
   async record(ctx, { music = true, monitor = true, onProgress, mimeType, ensureAudio = tryResume } = {}) {

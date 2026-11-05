@@ -63,6 +63,18 @@ export async function synthesize(ctx, scenes, settings, onProgress, log) {
 let ortModule = null;
 const sessions = new Map();
 
+/** Stimmen-Modell aus dem Arbeitsspeicher entfernen (vor dem Video-Export). */
+export async function releaseVoices() {
+  for (const v of sessions.values()) {
+    try {
+      await v.session.release?.();
+    } catch {
+      /* egal */
+    }
+  }
+  sessions.clear();
+}
+
 async function getOrt() {
   if (!ortModule) {
     ortModule = await import('onnxruntime-web');

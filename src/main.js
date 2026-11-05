@@ -4,7 +4,7 @@ import { generateScript, normalizeTopic } from './script.js';
 import { buildOwnScript } from './ownscript.js';
 import { loadSceneImages } from './images.js';
 import { createAnimVisual, normalizeAnim, guessAnim, guessShot, shotSpec } from './anim/scene.js';
-import { synthesize, VOICES, speechWeight } from './tts.js';
+import { synthesize, VOICES, speechWeight, releaseVoices } from './tts.js';
 import { buildSubtitles, toSrt } from './subtitles.js';
 import { VideoRenderer, pickMimeType, tryResume } from './renderer.js';
 
@@ -225,6 +225,13 @@ async function onCreateVideo() {
   setStatus('Starte …', 0);
 
   try {
+    // Absturz-Schutz: Skript merken; falls Safari die Seite wegen Speichermangel
+    // neu lädt, wird es beim nächsten Öffnen wiederhergestellt.
+    try {
+      localStorage.setItem(RENDER_KEY, JSON.stringify({ script, at: Date.now() }));
+    } catch {
+      /* egal */
+    }
     const width = settings.quality === '720' ? 720 : 1080;
     const height = Math.round((width * 16) / 9);
 
@@ -287,6 +294,8 @@ async function onCreateVideo() {
       log,
     );
     setTask('voice', 'done');
+    // Stimmen-Modell wird nicht mehr gebraucht → Arbeitsspeicher frei machen
+    await releaseVoices();
 
     // 3) Untertitel
     setTask('subs', 'active');
@@ -358,6 +367,11 @@ async function onCreateVideo() {
       });
     }
     setTask('render', 'done');
+    try {
+      localStorage.removeItem(RENDER_KEY);
+    } catch {
+      /* egal */
+    }
     setStatus('Fertig!', 1);
 
     const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
@@ -365,6 +379,11 @@ async function onCreateVideo() {
     showResult();
   } catch (e) {
     console.error(e);
+    try {
+      localStorage.removeItem(RENDER_KEY); // normaler Fehler, kein Absturz
+    } catch {
+      /* egal */
+    }
     log(`Fehler: ${e.message || e}`, 'error');
     setStatus(`❌ ${e.message || e}`);
     document.querySelectorAll('[data-task][data-state="active"]').forEach((li) => (li.dataset.state = 'error'));
@@ -579,6 +598,32 @@ async function loadFollowConfig() {
   return { img, name: settings.followName, at: settings.followAt, button: settings.followButton };
 }
 
+// ------------------------------------------------------ Absturz-Schutz --
+
+const RENDER_KEY = 'whatif-rendering-v1';
+
+function recoverAfterCrash() {
+  let saved = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(RENDER_KEY) || 'null');
+    localStorage.removeItem(RENDER_KEY);
+  } catch {
+    saved = null;
+  }
+  if (!saved?.script?.scenes?.length || Date.now() - saved.at > 6 * 3600 * 1000) return;
+  script = saved.script;
+  $('topic').value = script.topic || '';
+  renderScript();
+  show(['stepTopic', 'stepScript']);
+  if (settings.quality !== '720') {
+    settings.quality = '720';
+    saveSettings(settings);
+    log('⚠️ Das letzte Video wurde abgebrochen, weil dem iPhone der Arbeitsspeicher ausging. Dein Skript ist wiederhergestellt. Die Videoqualität ist jetzt auf 720p gestellt (braucht viel weniger Speicher). Tippe einfach nochmal auf „Video erstellen“.', 'warn');
+  } else {
+    log('⚠️ Das letzte Video wurde abgebrochen. Dein Skript ist wiederhergestellt. Tipp: Andere Apps schließen und nochmal auf „Video erstellen“ tippen. Kürzere Skripte brauchen weniger Speicher.', 'warn');
+  }
+}
+
 // ------------------------------------------------------------------ Start --
 
 $('btnScript').onclick = onCreateScript;
@@ -618,6 +663,7 @@ $('topic').addEventListener('keydown', (e) => {
 });
 
 renderIdeas();
+recoverAfterCrash();
 if (!pickMimeType()) log('Achtung: Dieser Browser kann keine Videos aufnehmen. Bitte Safari auf dem iPhone nutzen.', 'warn');
 
 // Für automatische Tests
