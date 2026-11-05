@@ -264,6 +264,7 @@ async function onCreateVideo() {
       subtitles,
       title: script.title,
       audio: buffer,
+      follow: await loadFollowConfig(),
     });
     const preview = $('livePreview');
     const pg = preview.getContext('2d');
@@ -386,6 +387,11 @@ function openSettings() {
   $('sMusic').checked = settings.music;
   $('sKey').value = settings.geminiKey;
   $('sPolKey').value = settings.pollinationsKey;
+  $('sFollow').checked = settings.followEnabled;
+  $('sFollowName').value = settings.followName;
+  $('sFollowAt').value = String(settings.followAt);
+  $('sFollowBtn').value = settings.followButton;
+  showAvatarPreview();
   document.documentElement.classList.add('modal-open');
   $('settings').showModal();
   $('settings').querySelector('.settings').scrollTop = 0;
@@ -402,6 +408,10 @@ function readSettingsForm() {
     music: $('sMusic').checked,
     geminiKey: $('sKey').value.trim(),
     pollinationsKey: $('sPolKey').value.trim(),
+    followEnabled: $('sFollow').checked,
+    followName: $('sFollowName').value.trim(),
+    followAt: Number($('sFollowAt').value) || 0.2,
+    followButton: $('sFollowBtn').value,
   };
   saveSettings(settings);
 }
@@ -440,6 +450,53 @@ async function onTestVoice() {
   }
 }
 
+// --------------------------------------------------- Folgen-Pop-up Bild --
+
+function showAvatarPreview() {
+  const img = $('sFollowPreview');
+  if (settings.followImage) img.src = settings.followImage;
+  else img.removeAttribute('src');
+}
+
+// Profilbild verkleinern (quadratisch, 256 px) und nur lokal speichern
+async function onAvatarFile(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const size = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const s = Math.min(img.naturalWidth, img.naturalHeight);
+    c.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, size, size);
+    URL.revokeObjectURL(url);
+    settings.followImage = c.toDataURL('image/jpeg', 0.88);
+    saveSettings(settings);
+    showAvatarPreview();
+  } catch (err) {
+    log(`Bild konnte nicht geladen werden: ${err.message}`, 'error');
+  }
+  e.target.value = '';
+}
+
+async function loadFollowConfig() {
+  if (!settings.followEnabled) return null;
+  let img = null;
+  if (settings.followImage) {
+    try {
+      img = new Image();
+      img.src = settings.followImage;
+      await img.decode();
+    } catch {
+      img = null;
+    }
+  }
+  return { img, name: settings.followName, at: settings.followAt, button: settings.followButton };
+}
+
 // ------------------------------------------------------------------ Start --
 
 $('btnScript').onclick = onCreateScript;
@@ -464,6 +521,12 @@ $('settings').addEventListener('close', () => {
 });
 $('sSpeed').oninput = (e) => ($('sSpeedVal').textContent = `${Number(e.target.value).toFixed(2)}×`);
 $('btnTestVoice').onclick = onTestVoice;
+$('sFollowFile').addEventListener('change', onAvatarFile);
+$('sFollowRemove').onclick = () => {
+  settings.followImage = '';
+  saveSettings(settings);
+  showAvatarPreview();
+};
 $('topic').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();

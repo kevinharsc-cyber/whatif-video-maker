@@ -11,6 +11,11 @@ export const DEFAULTS = {
   quality: '1080',
   imageStyle: 'cinematic',
   visualMode: 'animation',
+  followEnabled: true,
+  followName: '',
+  followImage: '',
+  followAt: 0.2,
+  followButton: 'Folgen',
   music: true,
 };
 
