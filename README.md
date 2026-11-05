@@ -19,7 +19,7 @@ Eine Web-App, die automatisch deutschsprachige **„Was wäre, wenn …?“-Vide
 | Baustein | Dienst | Kosten |
 |---|---|---|
 | Skript | [Pollinations.ai](https://pollinations.ai), ohne Anmeldung; optional **Google Gemini** | kostenlos |
-| Bilder | Pollinations.ai (Modell „Flux“), **kostenloser Schlüssel nötig** | kostenlos |
+| Bilder | Pollinations.ai (Modell „Flux“, Schlüssel nötig) – ohne Schlüssel automatisch **passende echte Fotos von Wikimedia Commons** | kostenlos |
 | Stimme | **Piper**, eine Open-Source-Stimme, die direkt auf deinem iPhone läuft; optional Gemini-Stimmen | kostenlos |
 | Untertitel und Video | entstehen im Browser auf deinem iPhone | kostenlos |
 | Webseite | GitHub Pages | kostenlos |
@@ -102,6 +102,7 @@ Danach wird die App bei jeder Änderung auf `main` automatisch neu veröffentlic
 | Problem | Lösung |
 |---|---|
 | „Hinweis: Es wurde die eingebaute Vorlage genutzt“ | Der kostenlose Skript-Dienst war gerade überlastet. Versuche es noch einmal oder trage einen Gemini-Schlüssel ein. |
+| Fotos statt KI-Bilder | Ohne Pollinations-Schlüssel nutzt die App passende Fotos von Wikimedia Commons. Die Bildnachweise stehen in „📋 Beschreibung kopieren“ – bitte mit in die Videobeschreibung übernehmen (Lizenzpflicht). |
 | Bilder sind nur bunte „Planeten“ / „HTTP 402“ | Der Bilddienst Pollinations gibt ohne Schlüssel kaum noch Bilder heraus. Hol dir einen kostenlosen Schlüssel (siehe unten) und trag ihn unter ⚙️ ein. |
 | Aufnahme hängt bei „0 / 47 s“ oder „⏸️ iOS hat den Ton pausiert“ | Tippe auf **„▶️ Aufnahme fortsetzen“**. Hilft das nicht: Musik, Podcasts oder Videos in anderen Apps stoppen (die belegen den Ton) und erneut tippen. |
 | Die Stimme lädt sehr lange | Beim ersten Mal werden etwa 60 MB geladen. Am besten im WLAN. Danach bleibt die Stimme gespeichert. Die Stimme „Eva“ ist kleiner. |

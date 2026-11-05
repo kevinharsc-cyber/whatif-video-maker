@@ -202,9 +202,11 @@ async function onCreateVideo() {
     const images = await loadSceneImages(
       script.scenes,
       settings,
-      (i, n) => setStatus(`Bild ${Math.min(i + 1, n)} von ${n} wird gemalt …`, (i / n) * 0.4),
+      (i, n) => setStatus(`Bild ${Math.min(i + 1, n)} von ${n} wird gesucht/gemalt …`, (i / n) * 0.4),
       log,
+      { topic: script.topic, template: !!script.template },
     );
+    script.credits = images.credits || [];
     setTask('images', 'done');
 
     // 2) Stimme
@@ -329,7 +331,9 @@ async function onShare() {
 
 function description() {
   const tags = (script.hashtags || []).map((t) => (t.startsWith('#') ? t : `#${t}`)).join(' ');
-  return `${script.title}\n\n${tags} #waswärewenn #shorts`;
+  let text = `${script.title}\n\n${tags} #waswärewenn #shorts`;
+  if (script.credits?.length) text += `\n\nBildquellen:\n${script.credits.join('\n')}`;
+  return text;
 }
 
 async function onCopy() {
