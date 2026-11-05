@@ -18,6 +18,7 @@ export const DEFAULTS = {
   followButton: 'Folgen',
   music: true,
   musicMood: 'dark',
+  exportMode: 'auto',
 };
 
 export function loadSettings() {

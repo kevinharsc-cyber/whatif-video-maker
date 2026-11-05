@@ -279,7 +279,17 @@ async function piperTTS(ctx, scenes, settings, voiceId, onProgress, log) {
     const { config, model } = await fetchPiperFiles(voiceId, onProgress);
     onProgress({ phase: 'speak', index: 0, count: scenes.length });
     const idsList = await phonemizeAll(texts, config.espeak.voice);
-    const raw = await inferInWorker(model, config, idsList, speed, (i) => onProgress({ phase: 'speak', index: Math.min(i + 1, scenes.length - 1), count: scenes.length }));
+    // In Paketen zu 6 Sätzen: nach jedem Paket wird der Hintergrund-Prozess
+    // beendet, damit sein Speicher nicht immer weiter wächst.
+    const BATCH = 6;
+    const raw = [];
+    for (let b = 0; b < idsList.length; b += BATCH) {
+      const part = await inferInWorker(model.slice(0), config, idsList.slice(b, b + BATCH), speed, (i) =>
+        onProgress({ phase: 'speak', index: Math.min(b + i + 1, scenes.length - 1), count: scenes.length }),
+      );
+      raw.push(...part);
+      await sleep(150); // dem Browser Zeit zum Aufräumen geben
+    }
     const sr = config.audio.sample_rate;
     return assemble(ctx, raw.map((d) => trimSilence(d, sr)), sr, scenes);
   } catch (e) {
@@ -338,7 +348,12 @@ export function cleanForSpeech(text) {
   return text
     .replace(/[„“”"«»]/g, '')
     .replace(/\s*[–—]\s*/g, ', ')
-    .replace(/…/g, '...')
+    // Auslassungspunkte → normale Sprechpause (vermeidet Probleme der Stimme)
+    .replace(/\s*(…|\.{2,})\s*/g, ', ')
+    .replace(/,\s*([.!?])/g, '$1')
+    .replace(/(,\s*)+/g, ', ')
+    .replace(/,\s*$/, '.')
+    .replace(/^\s*,\s*/, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

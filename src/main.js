@@ -228,7 +228,7 @@ async function onCreateVideo() {
     // Absturz-Schutz: Skript merken; falls Safari die Seite wegen Speichermangel
     // neu lädt, wird es beim nächsten Öffnen wiederhergestellt.
     try {
-      localStorage.setItem(RENDER_KEY, JSON.stringify({ script, at: Date.now() }));
+      localStorage.setItem(RENDER_KEY, JSON.stringify({ script, at: Date.now(), phase: 'start' }));
     } catch {
       /* egal */
     }
@@ -278,6 +278,7 @@ async function onCreateVideo() {
 
     // 2) Stimme
     setTask('voice', 'active');
+    markPhase('voice');
     const { buffer, sceneTimes } = await synthesize(
       ctx,
       script.scenes,
@@ -304,6 +305,7 @@ async function onCreateVideo() {
 
     // 4) Aufnahme
     setTask('render', 'active');
+    markPhase('export');
     const renderer = new VideoRenderer({
       width,
       height,
@@ -325,7 +327,7 @@ async function onCreateVideo() {
     };
     let blob = null;
     let method = 'Echtzeit-Aufnahme';
-    if (await VideoRenderer.canExportMp4()) {
+    if (settings.exportMode !== 'realtime' && (await VideoRenderer.canExportMp4())) {
       try {
         // Sauberer Export Bild für Bild (normale MP4-Datei, ruckelt nicht auf TikTok)
         // Sicherung: kommt 20 s lang kein Fortschritt, wird abgebrochen
@@ -353,6 +355,7 @@ async function onCreateVideo() {
         method = 'Saubere MP4 (30 fps)';
       } catch (e) {
         log(`Schneller MP4-Export nicht möglich (${e.message}) – nutze Echtzeit-Aufnahme.`, 'warn');
+        markPhase('record');
       }
     }
     if (!blob) {
@@ -485,6 +488,7 @@ function openSettings() {
   $('sQuality').value = settings.quality;
   $('sMusic').checked = settings.music;
   $('sMood').value = settings.musicMood;
+  $('sExport').value = settings.exportMode;
   $('sKey').value = settings.geminiKey;
   $('sPolKey').value = settings.pollinationsKey;
   $('sFollow').checked = settings.followEnabled;
@@ -507,6 +511,7 @@ function readSettingsForm() {
     quality: $('sQuality').value,
     music: $('sMusic').checked,
     musicMood: $('sMood').value,
+    exportMode: $('sExport').value,
     geminiKey: $('sKey').value.trim(),
     pollinationsKey: $('sPolKey').value.trim(),
     followEnabled: $('sFollow').checked,
@@ -602,6 +607,15 @@ async function loadFollowConfig() {
 
 const RENDER_KEY = 'whatif-rendering-v1';
 
+function markPhase(phase) {
+  try {
+    const cur = JSON.parse(localStorage.getItem(RENDER_KEY) || 'null');
+    if (cur) localStorage.setItem(RENDER_KEY, JSON.stringify({ ...cur, phase }));
+  } catch {
+    /* egal */
+  }
+}
+
 function recoverAfterCrash() {
   let saved = null;
   try {
@@ -615,13 +629,24 @@ function recoverAfterCrash() {
   $('topic').value = script.topic || '';
   renderScript();
   show(['stepTopic', 'stepScript']);
+  const steps = { start: 'Vorbereitung', voice: 'Sprachaufnahme', export: 'Video-Erstellung', record: 'Echtzeit-Aufnahme' };
+  const where = steps[saved.phase] || 'Erstellung';
+  const changes = [];
   if (settings.quality !== '720') {
     settings.quality = '720';
-    saveSettings(settings);
-    log('⚠️ Das letzte Video wurde abgebrochen, weil dem iPhone der Arbeitsspeicher ausging. Dein Skript ist wiederhergestellt. Die Videoqualität ist jetzt auf 720p gestellt (braucht viel weniger Speicher). Tippe einfach nochmal auf „Video erstellen“.', 'warn');
-  } else {
-    log('⚠️ Das letzte Video wurde abgebrochen. Dein Skript ist wiederhergestellt. Tipp: Andere Apps schließen und nochmal auf „Video erstellen“ tippen. Kürzere Skripte brauchen weniger Speicher.', 'warn');
+    changes.push('Videoqualität auf 720p gestellt');
   }
+  if (saved.phase === 'export' && settings.exportMode !== 'realtime') {
+    settings.exportMode = 'realtime';
+    changes.push('sparsamere Echtzeit-Aufnahme eingeschaltet');
+  }
+  saveSettings(settings);
+  log(
+    `⚠️ Das letzte Video wurde bei der „${where}“ abgebrochen (dem iPhone ging der Arbeitsspeicher aus). Dein Skript ist wiederhergestellt.` +
+      (changes.length ? ` Ich habe ${changes.join(' und ')}.` : ' Tipp: Andere Apps schließen.') +
+      ' Tippe einfach nochmal auf „Video erstellen“.',
+    'warn',
+  );
 }
 
 // ------------------------------------------------------------------ Start --
