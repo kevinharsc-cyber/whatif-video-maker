@@ -148,7 +148,8 @@ export class VideoRenderer {
     const pop = age < 0.12 ? 0.82 + 0.18 * (age / 0.12) : 1;
     let size = Math.round(W * 0.088);
     const maxW = W * 0.88;
-    const words = chunk.words.map((w) => w.word);
+    const upper = (w) => w.toLocaleUpperCase('de-DE');
+    const words = chunk.words.map((w) => upper(w.word));
     g.font = `900 ${size}px ${this.font}`;
     const spaceW = () => g.measureText(' ').width;
     let total = g.measureText(words.join(' ')).width;
@@ -161,7 +162,7 @@ export class VideoRenderer {
     const lines = [];
     let cur = [];
     for (let k = 0; k < chunk.words.length; k++) {
-      const test = [...cur, chunk.words[k]].map((w) => w.word).join(' ');
+      const test = [...cur, chunk.words[k]].map((w) => upper(w.word)).join(' ');
       if (cur.length && g.measureText(test).width > maxW) {
         lines.push(cur);
         cur = [];
@@ -178,18 +179,19 @@ export class VideoRenderer {
     g.lineJoin = 'round';
     const lh = size * 1.2;
     lines.forEach((line, li) => {
-      const text = line.map((w) => w.word).join(' ');
+      const text = line.map((w) => upper(w.word)).join(' ');
       const lw = g.measureText(text).width;
       let x = -lw / 2;
       const y = -((lines.length - 1) * lh) / 2 + li * lh;
       for (const w of line) {
         const active = t >= w.start && t < w.end + 0.05;
-        g.lineWidth = size * 0.2;
+        const word = upper(w.word);
+        g.lineWidth = size * 0.24;
         g.strokeStyle = '#000';
-        g.strokeText(w.word, x, y);
-        g.fillStyle = active ? '#FFD60A' : '#FFFFFF';
-        g.fillText(w.word, x, y);
-        x += g.measureText(w.word).width + spaceW();
+        g.strokeText(word, x, y);
+        g.fillStyle = active ? '#A6FF3B' : '#FFFFFF';
+        g.fillText(word, x, y);
+        x += g.measureText(word).width + spaceW();
       }
     });
     g.restore();

@@ -118,45 +118,81 @@ function building(g, x, y, w, h, c, lit, rnd, broken = false) {
   }
 }
 
+// Straßenlaterne mit Lichtkegel
+function lamp(g, x, groundY, W, H, on = true) {
+  const top = groundY - H * 0.26;
+  rect(g, '#1e130d', x - W * 0.008, top, W * 0.016, groundY - top);
+  rect(g, '#1e130d', x - W * 0.035, top - H * 0.008, W * 0.05, H * 0.012);
+  if (!on) return;
+  const cone = g.createLinearGradient(0, top, 0, groundY);
+  cone.addColorStop(0, 'rgba(255,190,100,0.45)');
+  cone.addColorStop(1, 'rgba(255,170,80,0.05)');
+  g.fillStyle = cone;
+  g.beginPath();
+  g.moveTo(x - W * 0.03, top);
+  g.lineTo(x - W * 0.14, groundY);
+  g.lineTo(x + W * 0.11, groundY);
+  g.lineTo(x + W * 0.0, top);
+  g.fill();
+  const glow = g.createRadialGradient(x - W * 0.015, top, 0, x - W * 0.015, top, W * 0.09);
+  glow.addColorStop(0, 'rgba(255,230,170,1)');
+  glow.addColorStop(0.25, 'rgba(255,180,90,0.6)');
+  glow.addColorStop(1, 'rgba(255,150,60,0)');
+  g.fillStyle = glow;
+  g.fillRect(x - W * 0.11, top - W * 0.1, W * 0.2, W * 0.2);
+}
+
 // --------------------------------------------------------------- Orte ---
 // Jeder Ort zeichnet Himmel + Boden und liefert Infos (Bodenhöhe, Himmel ja/nein).
 
 export const PLACES = {
   bedroom(g, W, H, c) {
     const floorY = c.groundY;
-    rect(g, c.dark > 0.5 ? '#2a2633' : '#e9dcc9', 0, 0, W, floorY);
-    rect(g, '#b98c5f', 0, floorY, W, H - floorY);
+    const night = c.time === 'night' || c.dark > 0.5;
+    rect(g, night ? '#2a2030' : '#d9b48f', 0, 0, W, floorY);
+    rect(g, '#8a5a3c', 0, floorY, W, H - floorY);
+    rect(g, 'rgba(0,0,0,0.15)', 0, floorY - H * 0.012, W, H * 0.012);
     // Fenster mit Himmel
-    const wx = W * 0.56;
-    const wy = H * 0.16;
-    const ww = W * 0.32;
-    const wh = H * 0.17;
+    const wx = W * 0.5;
+    const wy = H * 0.14;
+    const ww = W * 0.34;
+    const wh = H * 0.2;
     g.save();
     g.beginPath();
     g.rect(wx, wy, ww, wh);
     g.clip();
     sky(g, W, H, skyColors(c.time, c.dark), wy + wh);
     if (c.time === 'night') stars(g, W, H, seededRandom(3), 1, c.t);
-    c.window = { x: wx, y: wy, w: ww, h: wh };
     g.restore();
-    g.strokeStyle = '#fff';
-    g.lineWidth = W * 0.012;
+    const light = g.createLinearGradient(wx, wy, wx - W * 0.2, floorY);
+    light.addColorStop(0, night ? 'rgba(120,140,255,0.12)' : 'rgba(255,230,180,0.35)');
+    light.addColorStop(1, 'rgba(255,230,180,0)');
+    g.fillStyle = light;
+    g.beginPath();
+    g.moveTo(wx, wy);
+    g.lineTo(wx + ww, wy);
+    g.lineTo(wx + ww - W * 0.1, floorY);
+    g.lineTo(wx - W * 0.35, floorY);
+    g.fill();
+    g.strokeStyle = '#f3e4d0';
+    g.lineWidth = W * 0.014;
     g.strokeRect(wx, wy, ww, wh);
     g.beginPath();
     g.moveTo(wx + ww / 2, wy);
     g.lineTo(wx + ww / 2, wy + wh);
     g.stroke();
     // Tür rechts
-    rect(g, '#8a5a35', W * 0.86, floorY - H * 0.27, W * 0.14, H * 0.27);
+    rect(g, '#6e3f22', W * 0.85, floorY - H * 0.38, W * 0.15, H * 0.38);
+    rect(g, '#e0b070', W * 0.865, floorY - H * 0.2, W * 0.02, H * 0.02);
     // Bett links
-    const bx = W * 0.04;
-    const bw = W * 0.5;
-    const bTop = floorY - H * 0.06;
-    rect(g, '#6d4c41', bx, bTop, bw, H * 0.06);
-    rect(g, '#6d4c41', bx, bTop - H * 0.07, W * 0.04, H * 0.07);
-    rect(g, '#ffffff', bx + W * 0.05, bTop - H * 0.015, bw - W * 0.06, H * 0.02);
-    rect(g, '#f2f2f2', bx + W * 0.05, bTop - H * 0.035, W * 0.1, H * 0.025);
-    c.bed = { x: bx, w: bw, top: bTop - H * 0.012 };
+    const bx = W * 0.02;
+    const bw = W * 0.62;
+    const bTop = floorY - H * 0.08;
+    rect(g, '#5a3420', bx, bTop, bw, H * 0.08);
+    rect(g, '#5a3420', bx, bTop - H * 0.1, W * 0.05, H * 0.1);
+    rect(g, '#e9d8c4', bx + W * 0.05, bTop - H * 0.02, bw - W * 0.06, H * 0.028);
+    rect(g, '#f5ece0', bx + W * 0.06, bTop - H * 0.045, W * 0.13, H * 0.03);
+    c.bed = { x: bx, w: bw, top: bTop - H * 0.015 };
     return { hasSky: false };
   },
 
@@ -210,8 +246,10 @@ export const PLACES = {
       const bw = W * (0.14 + rnd() * 0.1);
       building(g, i * W * 0.18 - W * 0.04, c.groundY, bw, H * (0.14 + rnd() * 0.16), ['#8e9aaf', '#6c7a91', '#a3a9b8'][i % 3], c.time === 'night' ? 0.6 : 0.15, rnd);
     }
-    rect(g, '#9aa0a6', 0, c.groundY, W, H * 0.03);
-    rect(g, '#3b3f45', 0, c.groundY + H * 0.03, W, H - c.groundY);
+    rect(g, '#6f6a66', 0, c.groundY, W, H * 0.03);
+    rect(g, '#3b3533', 0, c.groundY + H * 0.03, W, H - c.groundY);
+    lamp(g, W * 0.08, c.groundY, W, H, c.time !== 'day' || c.dark > 0.3);
+    lamp(g, W * 0.92, c.groundY, W, H, c.time !== 'day' || c.dark > 0.3);
     g.fillStyle = '#f5f5f5';
     for (let x = 0; x < W; x += W * 0.18) g.fillRect(x + ((c.t * W * 0.05) % (W * 0.18)) * 0, c.groundY + H * 0.1, W * 0.09, H * 0.008);
     return { hasSky: true };
@@ -226,7 +264,9 @@ export const PLACES = {
       const bw = W * (0.1 + rnd() * 0.1);
       building(g, i * W * 0.12 - W * 0.05, c.groundY, bw, H * (0.12 + rnd() * 0.28), ['#55607a', '#3f4a63', '#6a7590'][i % 3], c.time === 'night' ? 0.7 : 0.2, rnd);
     }
-    rect(g, '#2f343b', 0, c.groundY, W, H - c.groundY);
+    rect(g, '#2f2a2b', 0, c.groundY, W, H - c.groundY);
+    lamp(g, W * 0.1, c.groundY, W, H, c.time !== 'day' || c.dark > 0.3);
+    lamp(g, W * 0.9, c.groundY, W, H, c.time !== 'day' || c.dark > 0.3);
     return { hasSky: true };
   },
 
@@ -240,6 +280,8 @@ export const PLACES = {
       building(g, i * W * 0.13 - W * 0.05, c.groundY, bw, H * (0.12 + rnd() * 0.25), '#6d6f73', 0, rnd, true);
     }
     rect(g, '#4b4f46', 0, c.groundY, W, H - c.groundY);
+    lamp(g, W * 0.12, c.groundY, W, H, false);
+    lamp(g, W * 0.88, c.groundY, W, H, false);
     g.fillStyle = '#5f8f3a';
     for (let i = 0; i < 14; i++) {
       g.beginPath();

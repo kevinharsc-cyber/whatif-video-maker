@@ -1,7 +1,8 @@
 // Baut aus einer Szenenbeschreibung eine Animation.
 // Die Beschreibung kommt von der KI (Gemini) oder wird aus dem Text erraten.
 
-import { actionPose, drawFigure, seg } from './figure.js';
+import { actionPose, drawFigure, seg, emotionFor } from './figure.js';
+import { seededRandom } from '../util.js';
 import { PLACES, drawSkyProps, drawGroundProps, drawEffect, effectSkyDarkness, cameraShake } from './world.js';
 
 export const PLACE_LIST = Object.keys(PLACES);
@@ -161,7 +162,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
   const darkPlace = spec.place === 'space' || spec.place === 'earth';
   const c = {
     W, H, t, p, dur, ev,
-    groundY: H * (darkPlace ? 0.6 : 0.64),
+    groundY: H * (darkPlace ? 0.62 : 0.7),
     time: spec.time,
     dark: effectSkyDarkness(effect, p),
     sunPos: { x: W * 0.72, y: H * (darkPlace ? 0.3 : 0.17) },
@@ -190,7 +191,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
   const darkBg = info.space || spec.time === 'night';
   const stroke = darkBg ? '#f5f5f5' : '#1b1b1f';
   const fill = darkBg ? '#2a2a35' : '#ffffff';
-  const S = H * 0.23;
+  const S = H * 0.3; // Hauptfigur groß im Vordergrund
   const origin = sunProp && spec.place !== 'bedroom' ? c.sunPos : spec.props.some((x) => x.type === 'earth') ? { x: W * 0.5, y: H * 0.38 } : spec.props.some((x) => x.type === 'meteor') ? { x: W * 0.55, y: c.groundY } : { x: W * 0.5, y: H * 0.3 };
 
   const actors = [];
@@ -201,16 +202,18 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
   const slots = [0.12, 0.32, 0.68, 0.88];
   for (let i = 0; i < spec.crowd.count; i++) {
     const x = slots[(i + 1) % slots.length];
-    actors.push({ action: spec.crowd.action, fromX: x, size: S * (0.78 + (i % 2) * 0.08), crowd: i });
+    actors.push({ action: spec.crowd.action, fromX: x, size: S * (0.55 + (i % 2) * 0.06), crowd: i });
   }
 
   const usedX = [];
+  // Hintergrund-Menschen zuerst (stehen weiter hinten), dann die Hauptfiguren
+  actors.sort((a, b) => (b.crowd != null) - (a.crowd != null));
   actors.forEach((a, idx) => {
     const st = actionPose(a.action, Math.min(1, Math.max(0, p - (a.crowd != null ? a.crowd * 0.015 : 0))), t + idx * 0.37, ev);
     let fromX = a.fromX ?? (a.from ? POS[a.from] : idx === 0 ? (actors.length > 1 ? 0.5 : 0.5) : 0.72);
     if (idx === 0 && actors.length > 2 && !a.from) fromX = 0.5;
     let toX = a.to ? POS[a.to] : fromX;
-    let groundY = c.groundY;
+    let groundY = a.crowd != null ? c.groundY - H * 0.035 : c.groundY;
     let lying = st.lying || 0;
     const moving = ['walk', 'run', 'flee', 'swim', 'get_up'].includes(a.action);
     if (moving && toX === fromX) {
@@ -225,7 +228,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
     }
     // Spezialfälle
     if (a.action === 'get_up' && c.bed) {
-      const bedX = (c.bed.x + c.bed.w * 0.5) / W;
+      const bedX = (c.bed.x + c.bed.w * 0.62) / W;
       const edgeX = (c.bed.x + c.bed.w * 0.95) / W;
       if (p < 0.3) {
         fromX = bedX;
@@ -242,7 +245,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
       }
     } else if ((a.action === 'sleep' || a.action === 'get_up') && c.bed) {
       groundY = c.bed.top;
-      fromX = toX = (c.bed.x + c.bed.w * 0.5) / W;
+      fromX = toX = (c.bed.x + c.bed.w * 0.62) / W;
     }
     if (st.seated && c.seatY && a.action !== 'get_up') groundY = c.seatY + S * 0.235;
     const needsStool = st.seated && a.action !== 'get_up' && (spec.place === 'lab' || !c.seatY);
@@ -253,7 +256,9 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
     let x = (fromX + (toX - fromX) * k) * W;
     // Figuren nicht übereinander stellen
     if (!moving) {
-      while (usedX.some((u) => Math.abs(u - x) < S * 0.35)) x += S * 0.4 * (x < W / 2 ? 1 : -1);
+      const minGap = a.size * 0.55;
+      const step = x < W / 2 ? 1 : -1; // Richtung einmal festlegen (sonst Endlosschleife)
+      for (let k = 0; k < 6 && usedX.some((u) => Math.abs(u - x) < minGap); k++) x += minGap * step;
       usedX.push(x);
     }
     let dir = toX > fromX ? 1 : toX < fromX ? -1 : x < W / 2 ? 1 : -1;
@@ -281,10 +286,56 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
       bubble: st.bubble,
       t: t + idx,
       jitter: st.jitter || 0,
-      bubbleColor: darkBg ? '#ffd60a' : '#e53935',
+      bubbleColor: '#fff3e0',
+      look: a.main ? LOOK_MAIN : a.crowd != null ? LOOK_CROWD : LOOK_OTHER,
+      emotion: emotionFor(a.action, p, ev, lying),
     });
   });
 
   drawEffect(g, W, H, c, effect, origin);
+  g.restore();
+  cinematicGrade(g, W, H, t, spec);
+}
+
+// Figuren-Looks: Hauptfigur mit orangem Hoodie, andere in dunklen Warmtönen
+const LOOK_MAIN = { skin: '#3a1d10', cloth: '#ff7a1a', pants: '#2a140b', rim: '#ffb067', hoodie: true, eye: '#fff1dc', shoe: '#140a05' };
+const LOOK_OTHER = { skin: '#3a1d10', cloth: '#2f6fd6', pants: '#23140c', rim: '#ffb067', hoodie: true, eye: '#fff1dc', shoe: '#140a05' };
+const LOOK_CROWD = { skin: '#3d1f12', cloth: '#5a2c17', pants: '#2e160c', rim: '#ff9a4d', eye: '#ffe7c9', shoe: '#1a0d06' };
+
+// Kino-Look: warme Farbstimmung, schwebende Lichtpartikel, dunkle Ränder
+function cinematicGrade(g, W, H, t, spec) {
+  g.save();
+  g.globalCompositeOperation = 'soft-light';
+  const warm = g.createLinearGradient(0, 0, 0, H);
+  warm.addColorStop(0, 'rgba(255,150,60,0.75)');
+  warm.addColorStop(0.6, 'rgba(255,110,40,0.5)');
+  warm.addColorStop(1, 'rgba(60,15,60,0.8)');
+  g.fillStyle = warm;
+  g.fillRect(0, 0, W, H);
+  g.globalCompositeOperation = 'source-over';
+  // Lichtpartikel
+  const rnd = seededRandom(99);
+  const n = spec.place === 'space' || spec.place === 'earth' ? 20 : 45;
+  for (let i = 0; i < n; i++) {
+    const sp = 0.01 + rnd() * 0.03;
+    const x = rnd() * W + Math.sin(t * 0.5 + i) * W * 0.02;
+    const y = (((rnd() * H - t * H * sp) % H) + H) % H;
+    const r = W * (0.0015 + rnd() * 0.003);
+    const a = 0.25 + 0.35 * Math.abs(Math.sin(t * 0.8 + i));
+    g.fillStyle = `rgba(255,190,110,${a * 0.35})`;
+    g.beginPath();
+    g.arc(x, y, r * 3, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = `rgba(255,220,170,${a})`;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Vignette
+  const v = g.createRadialGradient(W / 2, H * 0.48, H * 0.25, W / 2, H * 0.5, H * 0.75);
+  v.addColorStop(0, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(10,3,8,0.6)');
+  g.fillStyle = v;
+  g.fillRect(0, 0, W, H);
   g.restore();
 }

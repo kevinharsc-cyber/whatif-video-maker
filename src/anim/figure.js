@@ -143,12 +143,13 @@ export function actionPose(action, p, t, ev = 0.3) {
  * Zeichnet eine Figur. (x, groundY) = Fußpunkt, size = Figurhöhe in px,
  * dir = Blickrichtung (1 rechts, -1 links)
  */
-export function drawFigure(g, { x, groundY, size, dir = 1, pose, lying = 0, color = '#1b1b1f', fill = '#fff', cap = null, bubble = null, t = 0, jitter = 0, bubbleColor }) {
+export function drawFigure(g, { x, groundY, size, dir = 1, pose, lying = 0, color = '#1b1b1f', fill = '#fff', cap = null, bubble = null, t = 0, jitter = 0, bubbleColor, look = null, emotion = 'neutral' }) {
   const P = { ...BASE, ...pose };
   const S = size;
   const vec = (ang, len) => [Math.sin(ang) * len * S * dir, Math.cos(ang) * len * S];
   // Positionen relativ zur Hüfte
-  const up = [Math.sin(P.torso) * L.torso * S * dir, -Math.cos(P.torso) * L.torso * S];
+  const TL = look ? 0.22 : L.torso; // Comic-Figur: kürzerer Rumpf, größerer Kopf
+  const up = [Math.sin(P.torso) * TL * S * dir, -Math.cos(P.torso) * TL * S];
   const neck = up;
   const headDir = P.torso + P.head;
   const head = [neck[0] + Math.sin(headDir) * (L.head + 0.02) * S * dir, neck[1] - Math.cos(headDir) * (L.head + 0.02) * S];
@@ -177,6 +178,16 @@ export function drawFigure(g, { x, groundY, size, dir = 1, pose, lying = 0, colo
   g.rotate(-dir * (Math.PI / 2) * lying + P.rot);
   g.lineCap = 'round';
   g.lineJoin = 'round';
+  if (look) {
+    drawBean(g, S, dir, { hip, neck, lk, lf, rk, rf, le, lh, re, rh, headDir }, look, emotion, t);
+    g.restore();
+    if (bubble && bubble !== '~') {
+      const bx = hx + (lying > 0.5 ? dir * S * 0.35 : 0.2 * S * dir);
+      const by = lying > 0.5 ? groundY - S * 0.4 : hy - (L.torso + 0.34) * S;
+      drawBubble(g, bubble, bx, by, S * 0.9, t, bubbleColor || '#fff');
+    }
+    return;
+  }
   g.strokeStyle = color;
   g.lineWidth = Math.max(3, S * 0.045);
   const line = (pts) => {
@@ -240,4 +251,202 @@ function drawBubble(g, kind, x, y, S, t, color) {
     g.fillText(kind, x, y - S * 0.06);
   }
   g.restore();
+}
+
+// ------------------------------------------------- Comic-Figur (Bean) ---
+// Dicke, runde Gliedmaßen, großer Kopf mit Gesicht, Kleidung (Hoodie),
+// warmes Randlicht – wie in modernen Erklär-Animationen.
+
+function thick(g, pts, w, c) {
+  g.strokeStyle = c;
+  g.lineWidth = w;
+  g.beginPath();
+  g.moveTo(pts[0][0], pts[0][1]);
+  for (let k = 1; k < pts.length; k++) g.lineTo(pts[k][0], pts[k][1]);
+  g.stroke();
+}
+
+function drawBean(g, S, dir, J, look, emotion, t) {
+  const { hip, neck, lk, lf, rk, rf, le, lh, re, rh, headDir } = J;
+  const legW = S * 0.11;
+  const armW = S * 0.09;
+  const back = look.shade || 'rgba(0,0,0,0.25)';
+  // hintere Seite (etwas dunkler)
+  thick(g, [hip, lk, lf], legW, look.pants);
+  thick(g, [neck, le, lh], armW, look.cloth);
+  thick(g, [hip, lk, lf], legW, back);
+  thick(g, [neck, le, lh], armW, back);
+  shoe(g, lf, S, dir, look);
+  hand(g, lh, S, look, true);
+  // Rumpf: Hoodie als dicke, runde Form
+  const mid = [(hip[0] + neck[0]) / 2, (hip[1] + neck[1]) / 2];
+  thick(g, [[hip[0], hip[1] - S * 0.02], neck], S * 0.23, look.cloth);
+  thick(g, [[hip[0], hip[1] + S * 0.015], [hip[0], hip[1] + S * 0.015]], S * 0.17, look.pants);
+  // Bauchtasche / Hoodie-Details
+  if (look.hoodie) {
+    g.fillStyle = 'rgba(0,0,0,0.12)';
+    g.beginPath();
+    g.ellipse(mid[0] + dir * S * 0.02, mid[1] + S * 0.05, S * 0.07, S * 0.035, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  // vordere Seite
+  thick(g, [hip, rk, rf], legW, look.pants);
+  shoe(g, rf, S, dir, look);
+  // Kopf
+  const hr = S * 0.16;
+  const hc = [neck[0] + Math.sin(headDir) * hr * 0.95 * dir, neck[1] - Math.cos(headDir) * hr * 0.95];
+  if (look.hoodie) {
+    g.fillStyle = look.cloth;
+    g.beginPath();
+    g.arc(hc[0] - dir * hr * 0.12, hc[1] + hr * 0.05, hr * 1.18, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillStyle = look.skin;
+  g.beginPath();
+  g.arc(hc[0], hc[1], hr, 0, Math.PI * 2);
+  g.fill();
+  // Randlicht
+  if (look.rim) {
+    g.strokeStyle = look.rim;
+    g.lineWidth = hr * 0.12;
+    g.beginPath();
+    g.arc(hc[0], hc[1], hr * 0.94, -Math.PI * 0.95, -Math.PI * 0.35);
+    g.stroke();
+  }
+  face(g, hc, hr, dir, emotion, t, look);
+  // Arm vorne
+  thick(g, [neck, re, rh], armW, look.cloth);
+  hand(g, rh, S, look, false);
+}
+
+function shoe(g, f, S, dir, look) {
+  g.fillStyle = look.shoe || '#1a0f0a';
+  g.beginPath();
+  g.ellipse(f[0] + dir * S * 0.03, f[1] + S * 0.01, S * 0.06, S * 0.032, 0, 0, Math.PI * 2);
+  g.fill();
+}
+
+function hand(g, h, S, look, isBack) {
+  g.fillStyle = look.skin;
+  g.beginPath();
+  g.arc(h[0], h[1], S * 0.045, 0, Math.PI * 2);
+  g.fill();
+  if (isBack) {
+    g.fillStyle = 'rgba(0,0,0,0.2)';
+    g.fill();
+  }
+}
+
+function face(g, c, r, dir, emo, t, look) {
+  const ex = c[0] + dir * r * 0.28;
+  const ey = c[1] - r * 0.05;
+  const gap = r * 0.36;
+  const eyeC = look.eye || '#fff3e0';
+  const blink = emo !== 'sleep' && Math.sin(t * 1.3) > 0.985;
+  // Augen
+  for (const k of [-1, 1]) {
+    const x = ex + k * gap * 0.5;
+    if (emo === 'sleep' || blink) {
+      g.strokeStyle = eyeC;
+      g.lineWidth = r * 0.08;
+      g.beginPath();
+      g.arc(x, ey, r * 0.1, 0.15 * Math.PI, 0.85 * Math.PI);
+      g.stroke();
+      continue;
+    }
+    const big = emo === 'scared' || emo === 'wow' ? 1.25 : 1;
+    g.fillStyle = eyeC;
+    g.beginPath();
+    g.ellipse(x, ey, r * 0.11 * big, r * 0.14 * big, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#1a0d06';
+    const look_y = emo === 'wow' ? -r * 0.05 : emo === 'sad' ? r * 0.04 : 0;
+    g.beginPath();
+    g.arc(x + dir * r * 0.035, ey + look_y, r * 0.055 * big, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Augenbrauen
+  g.strokeStyle = eyeC;
+  g.lineWidth = r * 0.075;
+  g.lineCap = 'round';
+  for (const k of [-1, 1]) {
+    const x = ex + k * gap * 0.5;
+    const y = ey - r * 0.27;
+    // innen = zur Gesichtsmitte hin
+    let inner = 0;
+    if (emo === 'scared' || emo === 'worried' || emo === 'sad') inner = -r * 0.07;
+    if (emo === 'angry') inner = r * 0.06;
+    if (emo === 'think') inner = k === 1 ? r * 0.05 : -r * 0.03;
+    const lift = emo === 'wow' || emo === 'scared' ? -r * 0.06 : 0;
+    g.beginPath();
+    g.moveTo(x - k * r * 0.11, y + lift + inner);
+    g.lineTo(x + k * r * 0.11, y + lift - inner * 0.4);
+    g.stroke();
+  }
+  // Mund
+  const mx = ex;
+  const my = c[1] + r * 0.4;
+  g.strokeStyle = eyeC;
+  g.lineWidth = r * 0.08;
+  g.beginPath();
+  if (emo === 'happy') {
+    g.fillStyle = eyeC;
+    g.arc(mx, my - r * 0.06, r * 0.2, 0.1 * Math.PI, 0.9 * Math.PI);
+    g.closePath();
+    g.fill();
+  } else if (emo === 'scared' || emo === 'wow') {
+    g.fillStyle = '#1a0d06';
+    g.ellipse(mx, my, r * 0.1, r * (emo === 'scared' ? 0.14 : 0.1), 0, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  } else if (emo === 'worried') {
+    for (let k = 0; k <= 8; k++) {
+      const px = mx - r * 0.18 + (k / 8) * r * 0.36;
+      const py = my + Math.sin(k * 1.4 + t * 6) * r * 0.035;
+      k ? g.lineTo(px, py) : g.moveTo(px, py);
+    }
+    g.stroke();
+  } else if (emo === 'sad') {
+    g.arc(mx, my + r * 0.16, r * 0.15, 1.15 * Math.PI, 1.85 * Math.PI);
+    g.stroke();
+  } else if (emo === 'think') {
+    g.moveTo(mx - r * 0.12, my + r * 0.02);
+    g.lineTo(mx + r * 0.12, my - r * 0.04);
+    g.stroke();
+  } else if (emo === 'sleep') {
+    g.ellipse(mx, my, r * 0.06, r * 0.04, 0, 0, Math.PI * 2);
+    g.stroke();
+  } else {
+    g.arc(mx, my - r * 0.1, r * 0.15, 0.25 * Math.PI, 0.75 * Math.PI);
+    g.stroke();
+  }
+}
+
+// Gefühl passend zur Aktion
+export function emotionFor(action, p, ev = 0.3, lying = 0) {
+  switch (action) {
+    case 'sleep':
+      return 'sleep';
+    case 'get_up':
+      return p < 0.25 ? 'sleep' : p < 0.55 ? 'worried' : 'neutral';
+    case 'scared':
+    case 'flee':
+    case 'fall':
+      return p < ev ? 'neutral' : 'scared';
+    case 'sad':
+      return 'sad';
+    case 'shiver':
+      return 'worried';
+    case 'cheer':
+    case 'wave':
+    case 'jump':
+      return 'happy';
+    case 'think':
+      return 'think';
+    case 'look_up':
+    case 'float':
+      return 'wow';
+    default:
+      return 'neutral';
+  }
 }
