@@ -319,7 +319,28 @@ async function onCreateVideo() {
     if (await VideoRenderer.canExportMp4()) {
       try {
         // Sauberer Export Bild für Bild (normale MP4-Datei, ruckelt nicht auf TikTok)
-        blob = await renderer.exportMp4({ music: settings.music, onProgress: onProg });
+        // Sicherung: kommt 20 s lang kein Fortschritt, wird abgebrochen
+        let lastProgress = performance.now();
+        let watchdog = null;
+        const stalled = new Promise((_, rej) => {
+          watchdog = setInterval(() => {
+            if (performance.now() - lastProgress > 20000) rej(new Error('keine Rückmeldung vom iPhone-Encoder'));
+          }, 1000);
+        });
+        try {
+          blob = await Promise.race([
+            renderer.exportMp4({
+              music: settings.music,
+              onProgress: (p) => {
+                lastProgress = performance.now();
+                onProg(p);
+              },
+            }),
+            stalled,
+          ]);
+        } finally {
+          clearInterval(watchdog);
+        }
         method = 'Saubere MP4 (30 fps)';
       } catch (e) {
         log(`Schneller MP4-Export nicht möglich (${e.message}) – nutze Echtzeit-Aufnahme.`, 'warn');
