@@ -66,3 +66,24 @@ export async function geminiFetch(url, key, body, ms = 60000) {
   }
   return last;
 }
+
+// Farbverläufe zwischenspeichern: Safari hängt an jeden neu erzeugten Verlauf
+// Speicher, der nur langsam freigegeben wird. Bei 30 Bildern/s und vielen
+// Verläufen pro Bild lief der Speicher voll. Gleiche Verläufe werden jetzt
+// wiederverwendet (Koordinaten auf 0,5 px gerundet).
+const gradCache = new Map();
+export function cachedGradient(g, type, args, stops) {
+  const a = args.map((v) => Math.round(v * 2) / 2);
+  const key = `${type}|${a.join(',')}|${stops.map((s) => `${s[0]}:${s[1]}`).join(';')}`;
+  let gr = gradCache.get(key);
+  if (gr) {
+    gradCache.delete(key);
+    gradCache.set(key, gr);
+    return gr;
+  }
+  gr = type === 'linear' ? g.createLinearGradient(...a) : g.createRadialGradient(...a);
+  for (const [o, c] of stops) gr.addColorStop(o, c);
+  gradCache.set(key, gr);
+  if (gradCache.size > 300) gradCache.delete(gradCache.keys().next().value);
+  return gr;
+}

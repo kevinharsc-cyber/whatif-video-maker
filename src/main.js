@@ -14,6 +14,7 @@ let script = null; // { title, topic, scenes:[{text,image_prompt}], hashtags }
 let lastVideo = null; // { blob, subtitles, ext }
 let busy = false;
 let audioCtx = null;
+const PREVIEW_EL = document.getElementById('livePreview');
 
 const IDEAS = [
   'Was wäre, wenn die Erde plötzlich stehen bleibt?',
@@ -318,18 +319,17 @@ async function onCreateVideo() {
       follow: await loadFollowConfig(),
       mood: settings.musicMood,
     });
-    const preview = $('livePreview');
-    const pg = preview.getContext('2d');
-    const mimeType = pickMimeType();
-    // Vorschau nur alle 2 s aktualisieren: jedes Kopieren des großen Bildes
-    // kostet in Safari Speicher, der nur langsam freigegeben wird.
-    let lastPreview = 0;
-    const updatePreview = () => {
-      const now = performance.now();
-      if (now - lastPreview < 2000) return;
-      lastPreview = now;
-      pg.drawImage(renderer.canvas, 0, 0, preview.width, preview.height);
+    // Flüssige Vorschau ohne Kopieren: das Arbeitsbild selbst wird verkleinert
+    // angezeigt (Kopien des großen Bildes kosteten in Safari viel Speicher).
+    const preview = PREVIEW_EL;
+    document.querySelectorAll('.live-canvas').forEach((el) => el.replaceWith(preview));
+    renderer.canvas.className = 'live-canvas';
+    preview.replaceWith(renderer.canvas);
+    const restorePreview = () => {
+      if (renderer.canvas.isConnected) renderer.canvas.replaceWith(preview);
     };
+    const mimeType = pickMimeType();
+    const updatePreview = () => {};
     const onProg = (p) => {
       updatePreview();
       setStatus(`Video wird erstellt: ${Math.round(p * 100)} %`, 0.65 + p * 0.35);
@@ -364,7 +364,7 @@ async function onCreateVideo() {
         method = 'Saubere MP4 (30 fps)';
       } catch (e) {
         log(`Schneller MP4-Export nicht möglich (${e.message}) – nutze Echtzeit-Aufnahme.`, 'warn');
-        markPhase('record');
+        markPhase('record', e.message);
       }
     }
     if (!blob) {
@@ -379,6 +379,7 @@ async function onCreateVideo() {
       });
     }
     setTask('render', 'done');
+    restorePreview();
     try {
       localStorage.removeItem(RENDER_KEY);
     } catch {
@@ -616,10 +617,10 @@ async function loadFollowConfig() {
 
 const RENDER_KEY = 'whatif-rendering-v1';
 
-function markPhase(phase) {
+function markPhase(phase, reason) {
   try {
     const cur = JSON.parse(localStorage.getItem(RENDER_KEY) || 'null');
-    if (cur) localStorage.setItem(RENDER_KEY, JSON.stringify({ ...cur, phase }));
+    if (cur) localStorage.setItem(RENDER_KEY, JSON.stringify({ ...cur, phase, ...(reason ? { reason } : {}) }));
   } catch {
     /* egal */
   }
@@ -661,6 +662,7 @@ function recoverAfterCrash() {
   log(
     `⚠️ Das letzte Video wurde bei der „${where}“ abgebrochen (dem iPhone ging der Arbeitsspeicher aus). Dein Skript ist wiederhergestellt.` +
       (changes.length ? ` Ich habe ${changes.join(' und ')}.` : ' Tipp: Andere Apps schließen.') +
+      (saved.reason ? ` (Info für den Entwickler: saubere MP4 nicht möglich – ${String(saved.reason).slice(0, 120)})` : '') +
       ' Tippe einfach nochmal auf „Video erstellen“.',
     'warn',
   );

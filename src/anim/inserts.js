@@ -3,7 +3,7 @@
 // Jede Funktion zeichnet in ein Feld der Größe w × h; a = Sekunden seit Start.
 
 import { drawEarth } from './world.js';
-import { seededRandom } from '../util.js';
+import { seededRandom, cachedGradient } from '../util.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -24,9 +24,7 @@ function rr(g, x, y, w, h, r) {
 }
 
 function bg(g, w, h, c1, c2) {
-  const gr = g.createLinearGradient(0, 0, 0, h);
-  gr.addColorStop(0, c1);
-  gr.addColorStop(1, c2);
+  const gr = cachedGradient(g, 'linear', [0, 0, 0, h], [[0, c1], [1, c2]]);
   g.fillStyle = gr;
   g.fillRect(0, 0, w, h);
 }
@@ -72,9 +70,7 @@ const INSERTS = {
   phone(g, w, h, a) {
     bg(g, w, h, '#2a1846', '#120a22');
     // Lichtschein vom Display
-    const glow = g.createRadialGradient(w / 2, h * 0.45, 0, w / 2, h * 0.45, w * 0.6);
-    glow.addColorStop(0, 'rgba(120,160,255,0.35)');
-    glow.addColorStop(1, 'rgba(120,160,255,0)');
+    const glow = cachedGradient(g, 'radial', [w / 2, h * 0.45, 0, w / 2, h * 0.45, w * 0.6], [[0, 'rgba(120,160,255,0.35)'], [1, 'rgba(120,160,255,0)']]);
     g.fillStyle = glow;
     g.fillRect(0, 0, w, h);
     // Hand mit lila Ärmel
@@ -97,9 +93,7 @@ const INSERTS = {
     const sy = py + pw * 0.05;
     const sw = pw * 0.9;
     const sh = ph - pw * 0.1;
-    const scr = g.createLinearGradient(0, sy, 0, sy + sh);
-    scr.addColorStop(0, '#1b2a55');
-    scr.addColorStop(1, '#0c1430');
+    const scr = cachedGradient(g, 'linear', [0, sy, 0, sy + sh], [[0, '#1b2a55'], [1, '#0c1430']]);
     g.fillStyle = scr;
     rr(g, sx, sy, sw, sh, pw * 0.1);
     g.fill();
@@ -458,10 +452,7 @@ const INSERTS = {
       g.fillStyle = `rgba(255,${230 + (i % 25)},${220 + (i % 35)},${0.3 + tw * 0.6})`;
       g.fillRect(x, y, w * 0.004 + (i % 7 === 0 ? w * 0.004 : 0), w * 0.004 + (i % 7 === 0 ? w * 0.004 : 0));
     }
-    const band = g.createLinearGradient(0, h, w, 0);
-    band.addColorStop(0.3, 'rgba(180,120,255,0)');
-    band.addColorStop(0.5, 'rgba(200,150,255,0.25)');
-    band.addColorStop(0.7, 'rgba(180,120,255,0)');
+    const band = cachedGradient(g, 'linear', [0, h, w, 0], [[0.3, 'rgba(180,120,255,0)'], [0.5, 'rgba(200,150,255,0.25)'], [0.7, 'rgba(180,120,255,0)']]);
     g.fillStyle = band;
     g.fillRect(0, 0, w, h);
     // Sternschnuppe
@@ -469,9 +460,7 @@ const INSERTS = {
     if (k > 0 && k < 1) {
       const sx = lerp(w * 0.9, w * 0.3, k);
       const sy = lerp(h * 0.1, h * 0.45, k);
-      const tail = g.createLinearGradient(sx, sy, sx + w * 0.25, sy - h * 0.18);
-      tail.addColorStop(0, 'rgba(255,255,255,0.95)');
-      tail.addColorStop(1, 'rgba(255,255,255,0)');
+      const tail = cachedGradient(g, 'linear', [sx, sy, sx + w * 0.25, sy - h * 0.18], [[0, 'rgba(255,255,255,0.95)'], [1, 'rgba(255,255,255,0)']]);
       g.strokeStyle = tail;
       g.lineWidth = w * 0.01;
       g.beginPath();

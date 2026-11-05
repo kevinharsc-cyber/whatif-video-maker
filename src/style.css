@@ -339,7 +339,8 @@ details summary {
   margin: 10px 0;
 }
 
-#livePreview {
+#livePreview,
+.live-canvas {
   width: 180px;
   height: 320px;
   border-radius: 12px;

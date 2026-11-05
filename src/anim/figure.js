@@ -1,3 +1,4 @@
+import { cachedGradient } from '../util.js';
 // Strichmännchen mit Gelenken (Kopf, Rumpf, Arme, Beine).
 // Jede Bewegung ("Aktion") ist eine Funktion, die für einen Zeitpunkt die
 // Winkel aller Gelenke liefert. Daraus wird die Figur gezeichnet.
@@ -355,9 +356,7 @@ function drawBean(g, S, dir, J, look, emotion, t, holdPhone = false) {
   thick(g, [neck, re, rh], armW, look.cloth);
   if (holdPhone) {
     // Handy mit leuchtendem Display, Licht fällt aufs Gesicht
-    const glow = g.createRadialGradient(rh[0], rh[1], 0, rh[0], rh[1], S * 0.35);
-    glow.addColorStop(0, 'rgba(140,180,255,0.45)');
-    glow.addColorStop(1, 'rgba(140,180,255,0)');
+    const glow = cachedGradient(g, 'radial', [rh[0], rh[1], 0, rh[0], rh[1], S * 0.35], [[0, 'rgba(140,180,255,0.45)'], [1, 'rgba(140,180,255,0)']]);
     g.fillStyle = glow;
     g.fillRect(rh[0] - S * 0.35, rh[1] - S * 0.35, S * 0.7, S * 0.7);
     g.save();
