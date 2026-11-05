@@ -18,7 +18,7 @@ export const DEFAULTS = {
   followButton: 'Folgen',
   music: true,
   musicMood: 'dark',
-  exportMode: 'realtime',
+  exportMode: 'auto',
 };
 
 export function loadSettings() {
@@ -30,8 +30,10 @@ export function loadSettings() {
       s.visualMode = '3d'; // neuer Standard: Low-Poly-3D
       s.lowpolyV1 = true;
     }
-    if (!s.stableV1) {
-      s.exportMode = 'realtime';
+    if (!s.segV1) {
+      // neuer speichersicherer Export (Szene für Szene) als Standard
+      s.exportMode = 'auto';
+      s.segV1 = true;
       s.stableV1 = true;
     }
     return s;

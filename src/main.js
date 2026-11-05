@@ -6,10 +6,11 @@ import { parseMp4, qualityReport, remuxToProgressive } from './mp4tools.js';
 import { runDeviceCheck } from './devicecheck.js';
 import { loadSceneImages } from './images.js';
 import { createAnimVisual, normalizeAnim, guessAnim, guessShot, shotSpec } from './anim/scene.js';
-import { createAnim3DVisual, webglAvailable } from './three/lowpoly.js';
+import { createAnim3DVisual, webglAvailable, plan3D, dispose3D } from './three/lowpoly.js';
+import { exportSegmented, segmentedSupported, startJob, loadJob, clearJob, CancelledError } from './exporter.js';
 import { synthesize, VOICES, speechWeight, releaseVoices } from './tts.js';
 import { buildSubtitles, toSrt } from './subtitles.js';
-import { VideoRenderer, pickMimeType, tryResume } from './renderer.js';
+import { VideoRenderer, pickMimeType, tryResume, FPS } from './renderer.js';
 
 const $ = (id) => document.getElementById(id);
 let settings = loadSettings();
@@ -210,6 +211,134 @@ function updateInfo() {
 
 // ----------------------------------------------------------- Schritt 3 --
 
+// Szenen-Bilder (Animationen) für ein Skript aufbauen – immer gleich für dasselbe
+// Skript, damit eine abgebrochene Erstellung exakt fortgesetzt werden kann.
+function buildAnimVisuals(sc, visualMode) {
+  const n = sc.scenes.length;
+  let gotUp = false;
+  let prevShot = null;
+  const use3d = visualMode === '3d' && webglAvailable();
+  if (visualMode === '3d' && !use3d) log('3D wird von diesem Gerät nicht unterstützt – nutze 2D-Animation.', 'warn');
+  const images = sc.scenes.map((scene, i) => {
+    if (scene.black) return createAnimVisual({ place: 'black', time: 'night', props: [], actors: [], crowd: { count: 0, action: 'idle' }, effect: 'none' });
+    // 1) Film-Einstellung (von Gemini gewählt oder aus dem Satz erkannt)
+    //    2) freie Animation von Gemini  3) aus Stichwörtern erraten
+    let shot = scene.shot && shotSpec(scene.shot) ? scene.shot : null;
+    if (!shot && !scene.anim) shot = guessShot(scene.text, prevShot);
+    if (shot === 'wake_up' && gotUp) shot = 'check_phone';
+    prevShot = shot;
+    let spec = shot ? shotSpec(shot) : null;
+    if (spec && scene.anim?.time) spec.time = scene.anim.time;
+    if (!spec) spec = normalizeAnim(scene.anim) || guessAnim(scene.text, sc.topic, i, n);
+    // Nur einmal aufstehen: weitere "get_up"/"sleep" werden zu "walk"
+    const a0 = spec.actors[0];
+    if (a0 && a0.action === 'get_up') {
+      if (gotUp) a0.action = 'walk';
+      gotUp = true;
+    } else if (a0 && a0.action === 'sleep' && gotUp) a0.action = 'think';
+    // Low-Poly-3D (Grafikchip) – Rückfall auf 2D, falls WebGL fehlt
+    if (use3d) return createAnim3DVisual(spec, shot);
+    return createAnimVisual(spec);
+  });
+  // 3D: merken, welche Szene welche Umgebung braucht (für das Aufräumen)
+  if (use3d) plan3D(images);
+  return images;
+}
+
+const cancelFlag = { requested: false };
+
+/**
+ * Erstellt die Videodatei aus fertigen Zutaten (Bilder, Stimme, Untertitel).
+ * Bevorzugt: szenenweiser Export (speichersicher, fortsetzbar).
+ * Rückfall: Echtzeit-Aufnahme.
+ */
+async function produceVideo({ sc, images, width, height, sceneTimes, subtitles, buffer, duration, job, ctx, onStatus }) {
+  const audioStub = buffer || { duration };
+  const renderer = new VideoRenderer({
+    width,
+    height,
+    images,
+    scenes: sc.scenes,
+    sceneTimes,
+    subtitles,
+    title: sc.title,
+    audio: audioStub,
+    follow: await loadFollowConfig(),
+    mood: settings.musicMood,
+  });
+  // Flüssige Vorschau ohne Kopieren: das Arbeitsbild selbst wird verkleinert angezeigt
+  const preview = PREVIEW_EL;
+  document.querySelectorAll('.live-canvas').forEach((el) => el.replaceWith(preview));
+  renderer.canvas.className = 'live-canvas';
+  preview.replaceWith(renderer.canvas);
+  const restorePreview = () => {
+    if (renderer.canvas.isConnected) renderer.canvas.replaceWith(preview);
+  };
+  cancelFlag.requested = false;
+  $('btnCancel').classList.remove('hidden');
+  let blob = null;
+  let method = 'Echtzeit-Aufnahme';
+  let stats = null;
+  try {
+    if (job) {
+      try {
+        blob = await exportSegmented(renderer, ctx, job, {
+          cancel: cancelFlag,
+          log,
+          onProgress: (p, text) => onStatus(text || `Video wird erstellt: ${Math.round(p * 100)} % (Szene ${Math.min(job.segDone + 1, job.segs?.length || 1)} von ${job.segs?.length || '?'})`, p),
+          onHeartbeat: (hb) => {
+            markPhase('export', null, hb);
+            stats = hb;
+          },
+        });
+        method = `Szene für Szene (${FPS} fps konstant)`;
+      } catch (e) {
+        if (e instanceof CancelledError) throw e;
+        if (!buffer) throw e; // Fortsetzen ohne Ton-Rohdaten: kein Rückfall möglich
+        log(`Speichersicherer Export nicht möglich (${e.message}) – nutze Echtzeit-Aufnahme.`, 'warn');
+        markPhase('record', e.message);
+        await clearJob();
+      }
+    }
+    if (!blob) {
+      blob = await renderer.record(ctx, {
+        music: settings.music,
+        mimeType: pickMimeType(),
+        ensureAudio: ensureAudioRunning,
+        onProgress: (p) => onStatus(`Video wird aufgenommen: ${Math.round(p * duration)} / ${Math.round(duration)} s`, p),
+      });
+    }
+  } finally {
+    $('btnCancel').classList.add('hidden');
+    restorePreview();
+    // Grafikspeicher (3D) komplett freigeben, bevor die Datei geprüft wird
+    dispose3D();
+  }
+  // Endkontrolle: Datei prüfen und – falls nötig – in eine normale MP4 umpacken
+  let qc = null;
+  if (blob.type.includes('mp4')) {
+    onStatus('Video wird geprüft …', 1);
+    try {
+      let parsed = await parseMp4(blob, { withData: false });
+      const before = qualityReport(parsed, duration, FPS);
+      if (parsed.info.isFragmented || !before.checks.find((c) => c.name.startsWith('Index'))?.ok) {
+        parsed = null;
+        let full = await parseMp4(blob);
+        const fixed = await remuxToProgressive(full);
+        full = null;
+        qc = qualityReport(await parseMp4(fixed, { withData: false }), duration, FPS);
+        qc.remuxed = true;
+        blob = fixed;
+      } else {
+        qc = before;
+      }
+    } catch (e) {
+      qc = { ok: false, checks: [{ name: 'Prüfung', ok: false, detail: e.message }], facts: {} };
+    }
+  }
+  return { blob, method, qc, stats };
+}
+
 async function onCreateVideo() {
   if (busy || !script) return;
   script.title = $('title').value.trim() || script.topic;
@@ -236,8 +365,7 @@ async function onCreateVideo() {
     } catch {
       /* egal */
     }
-    // Animationen werden in 720p gezeichnet (spart mehr als die Hälfte der
-    // Zeichenarbeit auf dem iPhone); Fotos/KI-Bilder je nach Einstellung.
+    // Animationen in 720 × 1280 (iPhone-Speicher); Fotos/KI-Bilder je nach Einstellung
     const width = settings.visualMode !== 'images' || settings.quality === '720' ? 720 : 1080;
     const height = Math.round((width * 16) / 9);
 
@@ -245,33 +373,7 @@ async function onCreateVideo() {
     setTask('images', 'active');
     let images;
     if (settings.visualMode !== 'images') {
-      // Strichmännchen-Animationen: werden direkt im iPhone gezeichnet
-      const n = script.scenes.length;
-      let gotUp = false;
-      let prevShot = null;
-      const use3d = settings.visualMode === '3d' && webglAvailable();
-      if (settings.visualMode === '3d' && !use3d) log('3D wird von diesem Gerät nicht unterstützt – nutze 2D-Animation.', 'warn');
-      images = script.scenes.map((sc, i) => {
-        if (sc.black) return createAnimVisual({ place: 'black', time: 'night', props: [], actors: [], crowd: { count: 0, action: 'idle' }, effect: 'none' });
-        // 1) Film-Einstellung (von Gemini gewählt oder aus dem Satz erkannt)
-        //    2) freie Animation von Gemini  3) aus Stichwörtern erraten
-        let shot = sc.shot && shotSpec(sc.shot) ? sc.shot : null;
-        if (!shot && !sc.anim) shot = guessShot(sc.text, prevShot);
-        if (shot === 'wake_up' && gotUp) shot = 'check_phone';
-        prevShot = shot;
-        let spec = shot ? shotSpec(shot) : null;
-        if (spec && sc.anim?.time) spec.time = sc.anim.time;
-        if (!spec) spec = normalizeAnim(sc.anim) || guessAnim(sc.text, script.topic, i, n);
-        // Nur einmal aufstehen: weitere "get_up"/"sleep" werden zu "walk"
-        const a0 = spec.actors[0];
-        if (a0 && a0.action === 'get_up') {
-          if (gotUp) a0.action = 'walk';
-          gotUp = true;
-        } else if (a0 && a0.action === 'sleep' && gotUp) a0.action = 'think';
-        // Low-Poly-3D (Grafikchip) – Rückfall auf 2D, falls WebGL fehlt
-        if (use3d) return createAnim3DVisual(spec, shot);
-        return createAnimVisual(spec);
-      });
+      images = buildAnimVisuals(script, settings.visualMode);
       script.credits = [];
       setStatus('Animationen sind bereit', 0.4);
     } else {
@@ -286,7 +388,7 @@ async function onCreateVideo() {
     }
     setTask('images', 'done');
 
-    // 2) Stimme
+    // 2) Stimme (läuft in einem eigenen Prozess, der danach beendet wird)
     setTask('voice', 'active');
     markPhase('voice');
     const { buffer, sceneTimes } = await synthesize(
@@ -305,7 +407,6 @@ async function onCreateVideo() {
       log,
     );
     setTask('voice', 'done');
-    // Stimmen-Modell wird nicht mehr gebraucht → Arbeitsspeicher frei machen
     await releaseVoices();
 
     // 3) Untertitel
@@ -313,133 +414,248 @@ async function onCreateVideo() {
     const subtitles = buildSubtitles(script.scenes, sceneTimes);
     setTask('subs', 'done');
 
-    // 4) Aufnahme
+    // 4) Video
     setTask('render', 'active');
     markPhase('export');
-    const renderer = new VideoRenderer({
+    let job = null;
+    if (settings.exportMode !== 'realtime' && settings.visualMode !== 'images') {
+      const sup = await segmentedSupported(width, height);
+      if (sup.ok) {
+        job = await startJob({ W: width, H: height, music: settings.music, script, sceneTimes, subtitles, duration: buffer.duration, visualMode: settings.visualMode, at: Date.now() });
+      } else {
+        log(`Szene-für-Szene-Export auf diesem Gerät nicht möglich (${sup.why}) – nutze Echtzeit-Aufnahme.`, 'warn');
+      }
+    }
+    const res = await produceVideo({
+      sc: script,
+      images,
       width,
       height,
-      images,
-      scenes: script.scenes,
       sceneTimes,
       subtitles,
-      title: script.title,
-      audio: buffer,
-      follow: await loadFollowConfig(),
-      mood: settings.musicMood,
+      buffer,
+      duration: buffer.duration,
+      job,
+      ctx,
+      onStatus: (text, p) => setStatus(text, 0.65 + p * 0.35),
     });
-    // Flüssige Vorschau ohne Kopieren: das Arbeitsbild selbst wird verkleinert
-    // angezeigt (Kopien des großen Bildes kosteten in Safari viel Speicher).
-    const preview = PREVIEW_EL;
-    document.querySelectorAll('.live-canvas').forEach((el) => el.replaceWith(preview));
-    renderer.canvas.className = 'live-canvas';
-    preview.replaceWith(renderer.canvas);
-    const restorePreview = () => {
-      if (renderer.canvas.isConnected) renderer.canvas.replaceWith(preview);
-    };
-    const mimeType = pickMimeType();
-    const updatePreview = () => {};
-    const onProg = (p) => {
-      updatePreview();
-      setStatus(`Video wird erstellt: ${Math.round(p * 100)} %`, 0.65 + p * 0.35);
-    };
-    let blob = null;
-    let method = 'Echtzeit-Aufnahme';
-    if (settings.exportMode !== 'realtime' && (await VideoRenderer.canExportMp4())) {
-      try {
-        // Sauberer Export Bild für Bild (normale MP4-Datei, ruckelt nicht auf TikTok)
-        // Sicherung: kommt 20 s lang kein Fortschritt, wird abgebrochen
-        let lastProgress = performance.now();
-        let watchdog = null;
-        const stalled = new Promise((_, rej) => {
-          watchdog = setInterval(() => {
-            if (performance.now() - lastProgress > 20000) rej(new Error('keine Rückmeldung vom iPhone-Encoder'));
-          }, 1000);
-        });
-        try {
-          blob = await Promise.race([
-            renderer.exportMp4({
-              music: settings.music,
-              onProgress: (p) => {
-                lastProgress = performance.now();
-                onProg(p);
-              },
-            }),
-            stalled,
-          ]);
-        } finally {
-          clearInterval(watchdog);
-        }
-        method = 'Saubere MP4 (30 fps)';
-      } catch (e) {
-        renderer._cleanupExport?.(); // Speicher des abgebrochenen Exports freigeben
-        log(`Schneller MP4-Export nicht möglich (${e.message}) – nutze Echtzeit-Aufnahme.`, 'warn');
-        markPhase('record', e.message);
-      }
-    }
-    if (!blob) {
-      blob = await renderer.record(ctx, {
-        music: settings.music,
-        mimeType,
-        ensureAudio: ensureAudioRunning,
-        onProgress: (p) => {
-          updatePreview();
-          setStatus(`Video wird aufgenommen: ${Math.round(p * buffer.duration)} / ${Math.round(buffer.duration)} s`, 0.65 + p * 0.35);
-        },
-      });
-    }
-    setTask('render', 'done');
-    restorePreview();
-    try {
-      localStorage.removeItem(RENDER_KEY);
-    } catch {
-      /* egal */
-    }
-    // Endkontrolle: Datei prüfen und – falls nötig – in eine normale MP4 umpacken
-    // (fragmentierte Echtzeit-Aufnahmen können auf TikTok stockenden Ton haben).
-    let qc = null;
-    if (blob.type.includes('mp4')) {
-      setStatus('Video wird geprüft und für TikTok optimiert …', 0.99);
-      try {
-        let parsed = await parseMp4(blob);
-        const before = qualityReport(parsed, buffer.duration);
-        if (parsed.info.isFragmented || !before.checks.find((c) => c.name.startsWith('Index'))?.ok) {
-          const fixed = await remuxToProgressive(parsed);
-          parsed = null;
-          const after = await parseMp4(fixed);
-          qc = qualityReport(after, buffer.duration);
-          qc.remuxed = true;
-          blob = fixed;
-        } else {
-          qc = before;
-        }
-      } catch (e) {
-        qc = { ok: false, checks: [{ name: 'Prüfung', ok: false, detail: e.message }], facts: {} };
-      }
-    }
-    setStatus('Fertig!', 1);
-
-    const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
-    lastVideo = { blob, subtitles, ext, duration: buffer.duration, method, qc };
-    showResult();
+    finishVideo(res, subtitles, buffer.duration);
   } catch (e) {
-    console.error(e);
+    failVideo(e);
+  } finally {
+    busy = false;
     try {
-      localStorage.removeItem(RENDER_KEY); // normaler Fehler, kein Absturz
+      await wakeLock?.release();
     } catch {
       /* egal */
     }
-    log(`Fehler: ${e.message || e}`, 'error');
-    setStatus(`❌ ${e.message || e}`);
-    document.querySelectorAll('[data-task][data-state="active"]').forEach((li) => (li.dataset.state = 'error'));
-    const back = document.createElement('button');
-    back.className = 'ghost wide';
-    back.textContent = '← Zurück zum Skript';
-    back.onclick = () => {
-      back.remove();
-      show(['stepTopic', 'stepScript']);
+  }
+}
+
+function finishVideo({ blob, method, qc, stats }, subtitles, duration) {
+  setTask('render', 'done');
+  try {
+    localStorage.removeItem(RENDER_KEY);
+  } catch {
+    /* egal */
+  }
+  clearJob(); // Zwischenspeicher leeren – das fertige Video liegt jetzt vor
+  setStatus('Fertig!', 1);
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+  lastVideo = { blob, subtitles, ext, duration, method, qc, stats };
+  showResult();
+}
+
+function failVideo(e) {
+  console.error(e);
+  try {
+    localStorage.removeItem(RENDER_KEY); // normaler Fehler, kein Absturz
+  } catch {
+    /* egal */
+  }
+  const cancelled = e instanceof CancelledError;
+  if (cancelled) clearJob();
+  log(cancelled ? 'Abgebrochen.' : `Fehler: ${e.message || e}`, cancelled ? 'info' : 'error');
+  setStatus(cancelled ? '✋ Abgebrochen' : `❌ ${e.message || e}`);
+  document.querySelectorAll('[data-task][data-state="active"]').forEach((li) => (li.dataset.state = 'error'));
+  const back = document.createElement('button');
+  back.className = 'ghost wide';
+  back.textContent = '← Zurück zum Skript';
+  back.onclick = () => {
+    back.remove();
+    show(['stepTopic', 'stepScript']);
+  };
+  $('stepProgress').append(back);
+}
+
+// ----------------------------------------------------------- Selbsttest --
+// Vor einem langen Video: 2 Testszenen à 5 s komplett erstellen (Stimme, 3D,
+// Kodierung, Zusammensetzen), prüfen, ob die Datei abspielt und Ton/Bild synchron
+// sind – und das Ganze ein zweites Mal (prüft, ob der Speicher wieder frei wurde).
+
+async function checkPlayback(blob) {
+  const url = URL.createObjectURL(blob);
+  const v = document.createElement('video');
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = 'auto';
+  const wait = (ev, ms = 10000) =>
+    new Promise((res, rej) => {
+      const t = setTimeout(() => rej(new Error(`${ev}: keine Antwort`)), ms);
+      v.addEventListener(ev, () => (clearTimeout(t), res()), { once: true });
+      v.addEventListener('error', () => (clearTimeout(t), rej(new Error('Datei nicht abspielbar'))), { once: true });
+    });
+  try {
+    v.src = url;
+    await wait('loadedmetadata');
+    const dur = v.duration;
+    for (const at of [2.5, 7.5]) {
+      v.currentTime = at;
+      await wait('seeked');
+    }
+    return { ok: Number.isFinite(dur) && dur > 9, detail: `Dauer ${dur.toFixed(2)} s, Springen zu 2,5 s und 7,5 s klappt` };
+  } catch (e) {
+    return { ok: false, detail: e.message };
+  } finally {
+    v.removeAttribute('src');
+    v.load();
+    URL.revokeObjectURL(url);
+  }
+}
+
+// Ton-Synchronität: Wo beginnt hörbar das 2. Wort? Soll: genau dort, wo es eingeplant war.
+async function checkAudioSync(blob, ctx, expectedAt) {
+  try {
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const d = buf.getChannelData(0);
+    const sr = buf.sampleRate;
+    let peak = 0;
+    for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
+    const thr = peak * 0.2;
+    // Musik ist beim Test aus → erster lauter Abschnitt nach 4,8 s = 2. Satz
+    for (let i = Math.floor(4.8 * sr); i < d.length; i++) {
+      if (Math.abs(d[i]) > thr) {
+        const at = i / sr;
+        const off = (at - expectedAt) * 1000;
+        return { ok: Math.abs(off) < 120, detail: `2. Satz beginnt bei ${at.toFixed(3)} s (geplant ${expectedAt.toFixed(3)} s, Abweichung ${Math.round(off)} ms)` };
+      }
+    }
+    return { ok: false, detail: '2. Satz nicht gefunden' };
+  } catch (e) {
+    return { ok: null, detail: `nicht messbar (${e.message})` };
+  }
+}
+
+async function onSelfTest() {
+  if (busy) return;
+  $('settings').close();
+  busy = true;
+  show('stepProgress');
+  document.querySelectorAll('[data-task]').forEach((li) => (li.dataset.state = ''));
+  const ctx = getAudioCtx();
+  const say = (t, level = 'info') => log(`🧪 ${t}`, level);
+  const results = [];
+  const prevMusic = settings.music;
+  try {
+    const test = {
+      title: 'Test',
+      topic: 'Was wäre, wenn du der letzte Mensch wärst?',
+      scenes: [{ text: 'Du wachst auf und alles ist still.' }, { text: 'Du gehst hinaus auf die leere Straße.' }],
     };
-    $('stepProgress').append(back);
+    setTask('voice', 'active');
+    setStatus('Test: Stimme für 2 Szenen …', 0.1);
+    const { buffer: voice, sceneTimes: st0 } = await synthesize(ctx, test.scenes, settings, () => {}, () => {});
+    await releaseVoices();
+    setTask('voice', 'done');
+    // Die beiden Sätze genau auf 0,3 s und 5,3 s legen → 2 Szenen à 5 s
+    const sr = voice.sampleRate;
+    const buf = ctx.createBuffer(1, Math.round(10 * sr), sr);
+    const ch = buf.getChannelData(0);
+    const src = voice.getChannelData(0);
+    const sceneTimes = st0.map((t, i) => {
+      const from = Math.round(t.start * sr);
+      const to = Math.min(Math.round(t.end * sr), from + Math.round(4.4 * sr));
+      const at = Math.round((i * 5 + 0.3) * sr);
+      ch.set(src.subarray(from, to), at);
+      return { start: at / sr, end: (at + to - from) / sr };
+    });
+    const subtitles = buildSubtitles(test.scenes, sceneTimes);
+    const visualMode = settings.visualMode === 'images' ? '3d' : settings.visualMode;
+    settings.music = false; // für die Ton-Messung
+    for (let run = 1; run <= 2; run++) {
+      setTask('render', 'active');
+      const images = buildAnimVisuals(test, visualMode);
+      const sup = settings.exportMode !== 'realtime' ? await segmentedSupported(720, 1280) : { ok: false, why: 'Echtzeit eingestellt' };
+      if (!sup.ok) say(`Durchlauf ${run}: Szene-für-Szene nicht möglich (${sup.why}) → Echtzeit-Aufnahme`, 'warn');
+      const job = sup.ok ? await startJob({ W: 720, H: 1280, music: false, script: test, sceneTimes, subtitles, duration: 10, visualMode, at: Date.now() }) : null;
+      const t0 = performance.now();
+      const res = await produceVideo({ sc: test, images, width: 720, height: 1280, sceneTimes, subtitles, buffer: buf, duration: 10, job, ctx, onStatus: (text, p) => setStatus(`Test ${run}/2: ${text}`, p) });
+      await clearJob();
+      const secs = ((performance.now() - t0) / 1000).toFixed(1);
+      const play = await checkPlayback(res.blob);
+      const { LEAD } = await import('./exporter.js');
+      const sync = await checkAudioSync(res.blob, ctx, sceneTimes[1].start + (job ? LEAD : 0.15));
+      const bad = (res.qc?.checks || []).filter((c) => !c.ok);
+      const ok = play.ok && sync.ok !== false && bad.length === 0;
+      results.push(ok);
+      say(`Durchlauf ${run}: ${ok ? '✅ bestanden' : '⚠️ auffällig'} – ${res.method}, ${secs} s, ${(res.blob.size / 1048576).toFixed(2)} MB`, ok ? 'info' : 'warn');
+      say(`  Abspielen: ${play.ok ? '✓' : '✗'} ${play.detail}`);
+      say(`  Synchron: ${sync.ok === false ? '✗' : '✓'} ${sync.detail}`);
+      for (const c of res.qc?.checks || []) if (!c.ok) say(`  ✗ ${c.name}: ${c.detail}`, 'warn');
+      if (res.stats) say(`  Zeichnen: ${Math.round(res.stats.msPerFrame)} ms pro Bild${res.stats.heapMB ? `, Speicher ${res.stats.heapMB} MB` : ''}`);
+      if (run === 1) lastVideo = { blob: res.blob, subtitles, ext: 'mp4', duration: 10, method: res.method, qc: res.qc };
+      setTask('render', 'done');
+    }
+    const all = results.every(Boolean);
+    setStatus(all ? '✅ Test bestanden – lange Videos können erstellt werden.' : '⚠️ Test auffällig – bitte Text unten an den Entwickler schicken.', 1);
+    say(all ? 'Alles bestanden. Du kannst jetzt ein ganzes Video erstellen.' : 'Bitte die Test-Zeilen kopieren/Screenshot an den Entwickler schicken.', all ? 'info' : 'warn');
+  } catch (e) {
+    failVideo(e);
+  } finally {
+    settings.music = prevMusic;
+    busy = false;
+  }
+}
+
+// Abgebrochene (abgestürzte) Erstellung an der nächsten Szene fortsetzen
+async function resumeVideo(job) {
+  if (busy) return;
+  busy = true;
+  const ctx = getAudioCtx();
+  let wakeLock = null;
+  try {
+    wakeLock = await navigator.wakeLock?.request('screen');
+  } catch {
+    /* egal */
+  }
+  script = job.script;
+  show('stepProgress');
+  ['images', 'voice', 'subs'].forEach((t) => setTask(t, 'done'));
+  setTask('render', 'active');
+  try {
+    localStorage.setItem(RENDER_KEY, JSON.stringify({ script, at: Date.now(), phase: 'export', resume: true }));
+  } catch {
+    /* egal */
+  }
+  try {
+    const images = buildAnimVisuals(script, job.visualMode);
+    log(`Setze fort bei Szene ${job.segDone + 1} von ${job.segs?.length || '?'} (fertige Szenen bleiben erhalten).`);
+    const res = await produceVideo({
+      sc: script,
+      images,
+      width: job.W,
+      height: job.H,
+      sceneTimes: job.sceneTimes,
+      subtitles: job.subtitles,
+      buffer: null,
+      duration: job.duration,
+      job,
+      ctx,
+      onStatus: (text, p) => setStatus(text, 0.65 + p * 0.35),
+    });
+    finishVideo(res, job.subtitles, job.duration);
+  } catch (e) {
+    failVideo(e);
   } finally {
     busy = false;
     try {
@@ -669,16 +885,18 @@ async function loadFollowConfig() {
 
 const RENDER_KEY = 'whatif-rendering-v1';
 
-function markPhase(phase, reason) {
+// Merkt sich laufend, wo die Erstellung gerade ist (Phase, Szene, Zeichenzeit).
+// Stürzt Safari ab, steht beim nächsten Öffnen genau da, wo es passiert ist.
+function markPhase(phase, reason, heartbeat) {
   try {
     const cur = JSON.parse(localStorage.getItem(RENDER_KEY) || 'null');
-    if (cur) localStorage.setItem(RENDER_KEY, JSON.stringify({ ...cur, phase, ...(reason ? { reason } : {}) }));
+    if (cur) localStorage.setItem(RENDER_KEY, JSON.stringify({ ...cur, phase, ...(reason ? { reason } : {}), ...(heartbeat ? { hb: heartbeat } : {}) }));
   } catch {
     /* egal */
   }
 }
 
-function recoverAfterCrash() {
+async function recoverAfterCrash() {
   let saved = null;
   try {
     saved = JSON.parse(localStorage.getItem(RENDER_KEY) || 'null');
@@ -686,35 +904,51 @@ function recoverAfterCrash() {
   } catch {
     saved = null;
   }
-  if (!saved?.script?.scenes?.length || Date.now() - saved.at > 6 * 3600 * 1000) return;
-  script = saved.script;
+  // Gibt es eine angefangene Szene-für-Szene-Erstellung? → Fortsetzen anbieten
+  let job = null;
+  try {
+    job = await loadJob();
+  } catch {
+    job = null;
+  }
+  const resumable = job && job.audioDone && job.segs && job.segDone < job.segs.length && Date.now() - (job.createdAt || 0) < 24 * 3600 * 1000;
+  if (!resumable && job) clearJob();
+  if (!saved?.script?.scenes?.length && !resumable) return;
+  if (saved && Date.now() - saved.at > 6 * 3600 * 1000 && !resumable) return;
+  script = (resumable ? job.script : saved.script) || saved.script;
   $('topic').value = script.topic || '';
   renderScript();
   show(['stepTopic', 'stepScript']);
   const steps = { start: 'Vorbereitung', voice: 'Sprachaufnahme', export: 'Video-Erstellung', record: 'Echtzeit-Aufnahme' };
-  const where = steps[saved.phase] || 'Erstellung';
+  const where = steps[saved?.phase] || 'Erstellung';
+  const hb = saved?.hb;
+  const detail = hb ? ` (zuletzt fertig: Szene ${hb.seg} von ${hb.segs}, ${Math.round(hb.msPerFrame)} ms pro Bild)` : '';
+  if (resumable) {
+    log(`⚠️ Die Video-Erstellung wurde unterbrochen${detail}. ${job.segDone} von ${job.segs.length} Szenen sind schon fertig gespeichert – du kannst genau dort weitermachen.`, 'warn');
+    const btn = document.createElement('button');
+    btn.className = 'primary';
+    btn.textContent = `▶️ Fortsetzen ab Szene ${job.segDone + 1} von ${job.segs.length}`;
+    btn.onclick = () => {
+      btn.remove();
+      resumeVideo(job);
+    };
+    $('stepScript').append(btn);
+    return;
+  }
   const changes = [];
   if (settings.quality !== '720') {
     settings.quality = '720';
     changes.push('Videoqualität auf 720p gestellt');
   }
-  if (saved.phase === 'voice' && settings.voice.startsWith('piper:')) {
-    if (settings.geminiKey) {
-      settings.voice = 'gemini:Charon';
-      changes.push('die Stimme auf Gemini „Charon“ umgestellt (braucht auf dem iPhone kaum Speicher)');
-    } else {
-      changes.push('nichts an der Stimme geändert – Tipp: Trag unter ⚙️ einen kostenlosen Gemini-Schlüssel ein und wähle die Stimme Gemini „Charon“, die braucht kaum Speicher');
-    }
-  }
-  if (saved.phase === 'export' && settings.exportMode !== 'realtime') {
-    settings.exportMode = 'realtime';
-    changes.push('sparsamere Echtzeit-Aufnahme eingeschaltet');
+  if (saved.phase === 'voice' && settings.voice.startsWith('piper:') && settings.geminiKey) {
+    settings.voice = 'gemini:Charon';
+    changes.push('die Stimme auf Gemini „Charon“ umgestellt (braucht auf dem iPhone kaum Speicher)');
   }
   saveSettings(settings);
   log(
-    `⚠️ Das letzte Video wurde bei der „${where}“ abgebrochen (dem iPhone ging der Arbeitsspeicher aus). Dein Skript ist wiederhergestellt.` +
+    `⚠️ Das letzte Video wurde bei der „${where}“ abgebrochen${detail} (dem iPhone ging vermutlich der Arbeitsspeicher aus). Dein Skript ist wiederhergestellt.` +
       (changes.length ? ` Ich habe ${changes.join(' und ')}.` : ' Tipp: Andere Apps schließen.') +
-      (saved.reason ? ` (Info für den Entwickler: saubere MP4 nicht möglich – ${String(saved.reason).slice(0, 120)})` : '') +
+      (saved.reason ? ` (Info für den Entwickler: ${String(saved.reason).slice(0, 120)})` : '') +
       ' Tippe einfach nochmal auf „Video erstellen“.',
     'warn',
   );
@@ -726,6 +960,11 @@ $('btnScript').onclick = onCreateScript;
 $('btnRegen').onclick = () => (script?.own ? onOwnScript() : onCreateScript());
 $('btnOwn').onclick = onOwnScript;
 $('btnVideo').onclick = onCreateVideo;
+$('btnCancel').onclick = () => {
+  cancelFlag.requested = true;
+  setStatus('Wird abgebrochen …');
+};
+$('btnSelfTest').onclick = onSelfTest;
 $('btnAddScene').onclick = () => {
   script.scenes.push({ text: '', image_prompt: 'dramatic cinematic scene' });
   renderScript();

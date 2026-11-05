@@ -5,10 +5,10 @@
 // entsteht dabei direkt eine MP4-Datei (H.264 + AAC).
 
 import { buildOverlays, drawOverlays, scheduleSfx, addFollowOverlay } from './anim/overlays.js';
-import { h264Candidates } from './devicecheck.js';
 import { cachedGradient, cachedLayer } from './util.js';
 
-const FPS = 30;
+// Konstante 24 Bilder/s: 20 % weniger Arbeit als 30 fps, Kino-/TikTok-üblich
+export const FPS = 24;
 const TRANSITIONS = ['whip', 'zoom', 'slide', 'flash'];
 const easeInOut = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
 
@@ -307,24 +307,11 @@ export class VideoRenderer {
 
   // ----------------------------------------------------------- Aufnahme --
 
-  // ------------------------------------------------- Sauberer MP4-Export --
-  // Erzeugt eine "normale" MP4-Datei: exakt 30 Bilder/s (H.264) + AAC-Ton.
-  // Bild für Bild statt Echtzeit-Aufnahme → kein Ruckeln/Versatz nach dem
-  // Hochladen auf TikTok, und meist schneller als Echtzeit.
-  static async canExportMp4() {
-    return typeof VideoEncoder !== 'undefined' && typeof AudioEncoder !== 'undefined' && typeof VideoFrame !== 'undefined' && typeof OfflineAudioContext !== 'undefined';
-  }
-
-  async exportMp4({ music = true, onProgress, allowNonAac = false } = {}) {
-    const { Muxer, StreamTarget } = await import('mp4-muxer');
-    const W = this.W;
-    const H = this.H;
-    const lead = 0.15;
-    const total = this.duration + lead + 0.35;
-    const sr = 48000;
-
-    // 1) Ton offline mischen (Stimme + Musik + Effekte, mit Limiter)
-    const off = new OfflineAudioContext(2, Math.ceil(total * sr), sr);
+  // ------------------------------------------------------ Ton-Mischung --
+  // Stimme + Musik + Soundeffekte offline (nicht in Echtzeit) mischen, mit Limiter.
+  // lead = Stille am Anfang, total = Gesamtlänge in Sekunden.
+  async mixAudio({ music = true, lead = 0.15, total, sampleRate = 48000 } = {}) {
+    const off = new OfflineAudioContext(2, Math.ceil(total * sampleRate), sampleRate);
     const master = off.createGain();
     const limiter = off.createDynamicsCompressor();
     limiter.threshold.value = -9;
@@ -345,169 +332,7 @@ export class VideoRenderer {
       startAmbientMusic(off, master, this.duration, [], this.mood);
       scheduleSfx(off, master, this.sfx, lead);
     }
-    onProgress?.(0);
-    let mixed = await withTimeout(off.startRendering(), 60000, 'Ton-Mischung');
-
-    // 2) Codecs wählen (H.264 + AAC bevorzugt)
-    const vBase = { width: W, height: H, bitrate: W >= 1080 ? 5_000_000 : 3_500_000, framerate: FPS, latencyMode: 'quality' };
-    let vcfg = null;
-    // Viele Varianten probieren (manche iPhones/iOS-Versionen akzeptieren nur einzelne)
-    for (const cand of h264Candidates(W, H, FPS, vBase.bitrate)) {
-      const cfg = { ...cand, latencyMode: 'quality' };
-      for (const c of [cfg, cand]) {
-        try {
-          if ((await withTimeout(VideoEncoder.isConfigSupported(c), 4000, 'Video-Encoder')).supported) {
-            vcfg = c;
-            break;
-          }
-        } catch {
-          /* weiter */
-        }
-      }
-      if (vcfg) break;
-    }
-    if (!vcfg && allowNonAac) {
-      const cfg = { ...vBase, codec: 'vp09.00.40.08' };
-      if ((await withTimeout(VideoEncoder.isConfigSupported(cfg), 4000, 'Video-Encoder')).supported) vcfg = cfg;
-    }
-    if (!vcfg) throw new Error('H.264-Encoder nicht verfügbar');
-    let acfg = { codec: 'mp4a.40.2', sampleRate: sr, numberOfChannels: 2, bitrate: 192_000 };
-    let aSupported = false;
-    try {
-      aSupported = (await withTimeout(AudioEncoder.isConfigSupported(acfg), 4000, 'Audio-Encoder')).supported;
-    } catch {
-      aSupported = false;
-    }
-    if (!aSupported) {
-      if (!allowNonAac) throw new Error('AAC-Encoder nicht verfügbar');
-      acfg = { codec: 'opus', sampleRate: sr, numberOfChannels: 2, bitrate: 192_000 };
-    }
-
-    // Speichersparend: fertige Datei-Stücke nacheinander einsammeln (nicht doppelt
-    // im Speicher). Spätere Korrekturen am Dateianfang werden direkt eingetragen.
-    const parts = [];
-    let size = 0;
-    const target = new StreamTarget({
-      chunked: true,
-      chunkSize: 2 ** 22,
-      onData: (data, pos) => {
-        const copy = data.slice();
-        if (pos > size) {
-          parts.push({ pos: size, d: new Uint8Array(pos - size) });
-          size = pos;
-        }
-        if (pos === size) {
-          parts.push({ pos, d: copy });
-          size += copy.length;
-          return;
-        }
-        for (const p of parts) {
-          const a = Math.max(pos, p.pos);
-          const b = Math.min(pos + copy.length, p.pos + p.d.length);
-          if (a < b) p.d.set(copy.subarray(a - pos, b - pos), a - p.pos);
-        }
-        if (pos + copy.length > size) {
-          const extra = copy.slice(size - pos);
-          parts.push({ pos: size, d: extra });
-          size += extra.length;
-        }
-      },
-    });
-    const frames = Math.ceil(total * FPS);
-    const muxer = new Muxer({
-      target,
-      video: { codec: vcfg.codec.startsWith('avc') ? 'avc' : 'vp9', width: W, height: H, frameRate: FPS },
-      audio: { codec: acfg.codec === 'opus' ? 'opus' : 'aac', numberOfChannels: 2, sampleRate: sr },
-      // Platz für das Inhaltsverzeichnis am Anfang reservieren → normale MP4, Index vorne
-      fastStart: { expectedVideoChunks: frames + 2, expectedAudioChunks: Math.ceil((total * sr) / 480) + 64 },
-      firstTimestampBehavior: 'offset',
-    });
-    let failure = null;
-    let venc = null;
-    let aenc = null;
-    // Bei Fehler/Abbruch: Encoder schließen und Speicher sofort freigeben, damit die
-    // Echtzeit-Aufnahme danach nicht obendrauf läuft und abstürzt
-    const cleanup = () => {
-      for (const enc of [venc, aenc]) {
-        try {
-          if (enc && enc.state !== 'closed') enc.close();
-        } catch {
-          /* egal */
-        }
-      }
-      parts.length = 0;
-    };
-    this._cleanupExport = cleanup;
-    const safe = (fn) => (c, m) => {
-      try {
-        fn(c, m);
-      } catch (e) {
-        failure = e;
-      }
-    };
-    venc = new VideoEncoder({ output: safe((c, m) => muxer.addVideoChunk(c, m)), error: (e) => (failure = e) });
-    venc.configure(vcfg);
-    aenc = new AudioEncoder({ output: safe((c, m) => muxer.addAudioChunk(c, m)), error: (e) => (failure = e) });
-    aenc.configure(acfg);
-
-    // 3) Ton kodieren
-    let L = mixed.getChannelData(0);
-    let R = mixed.getChannelData(1);
-    const step = 4800;
-    for (let i = 0; i < mixed.length; i += step) {
-      const n = Math.min(step, mixed.length - i);
-      const data = new Float32Array(n * 2);
-      data.set(L.subarray(i, i + n), 0);
-      data.set(R.subarray(i, i + n), n);
-      const ad = new AudioData({ format: 'f32-planar', sampleRate: sr, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round((i / sr) * 1e6), data });
-      aenc.encode(ad);
-      ad.close();
-    }
-    await withTimeout(aenc.flush(), 30000, 'Audio-Encoder');
-    if (failure) throw failure;
-    // Ton-Rohdaten werden nicht mehr gebraucht → Speicher frei
-    L = R = null;
-    mixed = null;
-
-    // 4) Bild für Bild zeichnen und kodieren
-    const yieldUI = () => new Promise((r) => setTimeout(r, 0));
-    for (let n = 0; n < frames; n++) {
-      if (failure) {
-        cleanup();
-        throw failure;
-      }
-      const t = n / FPS - lead;
-      this.drawFrame(Math.max(0, Math.min(t, this.duration)));
-      const frame = new VideoFrame(this.canvas, { timestamp: Math.round((n * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
-      venc.encode(frame, { keyFrame: n % (FPS * 2) === 0 });
-      frame.close();
-      const waitStart = performance.now();
-      while (venc.encodeQueueSize > 2) {
-        if (performance.now() - waitStart > 15000) {
-          cleanup();
-          throw new Error('Video-Encoder hängt');
-        }
-        await new Promise((r) => setTimeout(r, 4));
-      }
-      if (n % 6 === 0) {
-        onProgress?.(n / frames);
-        await yieldUI();
-      }
-      // jede Sekunde Video kurz durchatmen, damit Safari aufräumen kann
-      if (n % FPS === 0) await new Promise((r) => setTimeout(r, 25));
-    }
-    await withTimeout(venc.flush(), 30000, 'Video-Encoder');
-    if (failure) throw failure;
-    muxer.finalize();
-    venc.close();
-    aenc.close();
-    onProgress?.(1);
-    const blob = new Blob(
-      parts.map((p) => p.d),
-      { type: 'video/mp4' },
-    );
-    parts.length = 0;
-    return blob;
+    return withTimeout(off.startRendering(), 90000, 'Ton-Mischung');
   }
 
   async record(ctx, { music = true, monitor = true, onProgress, mimeType, ensureAudio = tryResume } = {}) {

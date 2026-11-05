@@ -10,8 +10,12 @@ import { createFile, DataStream } from 'mp4box';
 
 const US = 1e6;
 
-/** Liest eine MP4 vollständig ein: Track-Infos + alle Samples. */
-export async function parseMp4(blob) {
+/**
+ * Liest eine MP4 ein: Track-Infos + alle Samples.
+ * withData=false: nur Zeitstempel/Größen (für die Prüfung) – spart eine komplette
+ * Kopie des Videos im Arbeitsspeicher.
+ */
+export async function parseMp4(blob, { withData = true } = {}) {
   const buf = await blob.arrayBuffer();
   return new Promise((resolve, reject) => {
     const file = createFile();
@@ -23,10 +27,12 @@ export async function parseMp4(blob) {
       info = i;
       for (const t of i.tracks) {
         samples.set(t.id, []);
-        file.setExtractionOptions(t.id, null, { nbSamples: Infinity });
-        pending++;
+        if (withData) {
+          file.setExtractionOptions(t.id, null, { nbSamples: Infinity });
+          pending++;
+        }
       }
-      file.start();
+      if (withData) file.start();
     };
     file.onSamples = (id, _user, list) => {
       const arr = samples.get(id);
@@ -42,13 +48,16 @@ export async function parseMp4(blob) {
     }
     // onSamples wird synchron während start()/flush() aufgerufen
     setTimeout(() => {
-      if (!info) reject(new Error('MP4 ohne gültige Track-Informationen'));
-      else resolve({ file, info, samples, size: buf.byteLength, pending });
+      if (!info) return reject(new Error('MP4 ohne gültige Track-Informationen'));
+      if (!withData) {
+        for (const t of info.tracks) samples.set(t.id, (file.getTrackSamplesInfo(t.id) || []).map(({ cts, dts, duration, timescale, is_sync, size }) => ({ cts, dts, duration, timescale, is_sync, size })));
+      }
+      resolve({ file: withData ? file : null, info, samples, size: buf.byteLength, pending });
     }, 0);
   });
 }
 
-function descriptionFor(file, trackId) {
+export function descriptionFor(file, trackId) {
   const trak = file.getTrackById(trackId);
   for (const entry of trak.mdia.minf.stbl.stsd.entries) {
     const box = entry.avcC || entry.hvcC || entry.vpcC || entry.av1C;
@@ -93,7 +102,7 @@ function muxerCodec(codec) {
 /**
  * Qualitätskontrolle einer fertigen MP4. Liefert { ok, checks: [{name, ok, detail}], facts }.
  */
-export function qualityReport(parsed, expectedDuration) {
+export function qualityReport(parsed, expectedDuration, expectedFps = 24) {
   const { info, samples } = parsed;
   const v = info.videoTracks?.[0];
   const a = info.audioTracks?.[0];
@@ -115,7 +124,12 @@ export function qualityReport(parsed, expectedDuration) {
     facts.video = { codec: v.codec, width: v.video?.width, height: v.video?.height, frames: vs.length, duration: vDur, fps, maxGap };
     add('Video-Codec H.264', /^avc1|^avc3/.test(v.codec), v.codec);
     add('Hochformat 9:16', v.video && Math.abs(v.video.width / v.video.height - 9 / 16) < 0.01, `${v.video?.width} × ${v.video?.height}`);
-    add('Bildrate ca. 30 fps', fps > 27 && fps < 33, `${fps.toFixed(1)} fps`);
+    add(`Bildrate ${expectedFps} fps`, Math.abs(fps - expectedFps) < expectedFps * 0.1, `${fps.toFixed(1)} fps`);
+    // Konstante Bildrate: alle Bild-Abstände gleich (± 2 ms)
+    const durs = vs.map((s) => s.duration / s.timescale);
+    const cfr = durs.length > 1 && Math.max(...durs.slice(0, -1)) - Math.min(...durs.slice(0, -1)) < 0.002;
+    facts.video_cfr = cfr;
+    add('Konstante Bildrate (CFR)', cfr, cfr ? 'ja' : 'schwankend (VFR)');
     add('Keine eingefrorenen Bilder', maxGap < 0.25, `größte Lücke ${(maxGap * 1000).toFixed(0)} ms`);
   } else {
     add('Videospur vorhanden', false, 'fehlt');
@@ -221,6 +235,7 @@ export async function remuxToProgressive(parsed) {
     const cto = Math.round(((s.cts - s.dts) / s.timescale) * US);
     const meta = i === 0 ? { decoderConfig: { codec: v.codec, codedWidth: v.video.width, codedHeight: v.video.height, description: vDesc, colorSpace: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false } } } : undefined;
     muxer.addVideoChunkRaw(new Uint8Array(s.data), s.is_sync ? 'key' : 'delta', Math.max(0, ts), dur, meta, cto);
+    s.data = null; // sofort freigeben
   });
   if (aCodec) {
     const aDesc = descriptionFor(file, a.id);
@@ -229,6 +244,7 @@ export async function remuxToProgressive(parsed) {
       const dur = Math.max(1, Math.round((s.duration / s.timescale) * US));
       const meta = i === 0 ? { decoderConfig: { codec: a.codec, sampleRate: a.audio.sample_rate, numberOfChannels: a.audio.channel_count, description: aDesc } } : undefined;
       muxer.addAudioChunkRaw(new Uint8Array(s.data), 'key', Math.max(0, ts), dur, meta);
+      s.data = null;
     });
   }
   muxer.finalize();
