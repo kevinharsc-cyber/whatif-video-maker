@@ -128,6 +128,28 @@ export function actionPose(action, p, t, ev = 0.3) {
       const shake = p > 0.45 && p < 0.6 ? Math.sin(t * 40) * 0.12 : 0;
       return { pose: { ...idle(t), head: 0.35, ra1: 0.55 + shake, ra2: 1.75, la1: 0.1 }, holdPhone: true };
     }
+    case 'look_out':
+      // steht am Fenster, schaut hinaus, Hand an der Scheibe
+      return { pose: { ...idle(t), head: -0.1 + Math.sin(t * 0.6) * 0.06, ra1: 1.5, ra2: 0.1 } };
+    case 'call': {
+      // Handy am Ohr, wartet … niemand geht ran
+      const tap = Math.sin(t * 3) * 0.04;
+      return { pose: { ...idle(t), head: 0.1 + tap, ra1: 0.45, ra2: 2.55 }, holdPhone: true, bubble: p > 0.25 ? '…' : null };
+    }
+    case 'shout':
+      // Hände am Mund, ruft laut
+      return {
+        pose: { ...BASE, torso: 0.12 + Math.sin(t * 2) * 0.02, head: -0.25, la1: 1.0, la2: 2.3, ra1: 1.1, ra2: 2.2, lt1: 0.2, rt1: -0.2 },
+      };
+    case 'grab': {
+      // greift ins Regal
+      const reach = Math.max(0, Math.sin(t * 2.2));
+      return { pose: { ...idle(t), ra1: 1.2 + reach * 0.9, ra2: 0.3 - reach * 0.2, head: -0.1 * reach } };
+    }
+    case 'talk': {
+      // redet mit sich selbst, gestikuliert
+      return { pose: { ...idle(t), ra1: 0.9 + Math.sin(t * 4) * 0.35, ra2: 1.2, la1: 0.5 + Math.sin(t * 3 + 1) * 0.3, la2: 1.0 } };
+    }
     case 'point':
       return { pose: { ...idle(t), ra1: 1.9, ra2: 0 } };
     case 'swim': {
@@ -456,6 +478,15 @@ function face(g, c, r, dir, emo, t, look) {
     g.moveTo(mx - r * 0.12, my + r * 0.02);
     g.lineTo(mx + r * 0.12, my - r * 0.04);
     g.stroke();
+  } else if (emo === 'talk') {
+    const open = Math.abs(Math.sin(t * 9)) * 0.12 + 0.02;
+    g.fillStyle = '#1a0d06';
+    g.ellipse(mx, my, r * 0.11, r * open, 0, 0, Math.PI * 2);
+    g.fill();
+  } else if (emo === 'shout') {
+    g.fillStyle = '#1a0d06';
+    g.ellipse(mx, my, r * 0.13, r * 0.17, 0, 0, Math.PI * 2);
+    g.fill();
   } else if (emo === 'sleep') {
     g.ellipse(mx, my, r * 0.06, r * 0.04, 0, 0, Math.PI * 2);
     g.stroke();
@@ -468,6 +499,16 @@ function face(g, c, r, dir, emo, t, look) {
 // Gefühl passend zur Aktion
 export function emotionFor(action, p, ev = 0.3, lying = 0) {
   switch (action) {
+    case 'look_out':
+      return p < 0.4 ? 'think' : 'worried';
+    case 'call':
+      return p < 0.3 ? 'neutral' : 'worried';
+    case 'shout':
+      return 'shout';
+    case 'talk':
+      return 'talk';
+    case 'grab':
+      return 'happy';
     case 'sleep':
       return 'sleep';
     case 'get_up':

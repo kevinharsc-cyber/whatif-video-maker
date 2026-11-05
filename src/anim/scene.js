@@ -7,7 +7,7 @@ import { PLACES, drawSportsCar, drawSkyProps, drawGroundProps, drawEffect, effec
 
 // Das Labor wirkte unverständlich und wird nicht mehr verwendet
 export const PLACE_LIST = Object.keys(PLACES).filter((pl) => pl !== 'lab');
-export const ACTIONS = ['drive', 'phone', 'idle', 'walk', 'run', 'sit', 'sleep', 'get_up', 'scared', 'flee', 'look_up', 'wave', 'shiver', 'fall', 'cheer', 'think', 'sad', 'point', 'swim', 'jump', 'float'];
+export const ACTIONS = ['look_out', 'call', 'shout', 'grab', 'talk', 'drive', 'phone', 'idle', 'walk', 'run', 'sit', 'sleep', 'get_up', 'scared', 'flee', 'look_up', 'wave', 'shiver', 'fall', 'cheer', 'think', 'sad', 'point', 'swim', 'jump', 'float'];
 export const PROPS = ['animals', 'shop', 'sun', 'moon', 'earth', 'clouds', 'birds', 'plane', 'rocket', 'meteor', 'cars', 'bees', 'dinosaur', 'trees', 'house', 'money'];
 export const PROP_STATES = ['normal', 'explode', 'vanish', 'grow', 'dim', 'stop', 'fall', 'big', 'red_giant', 'dead', 'storm'];
 export const EFFECTS = ['none', 'explosion', 'flash', 'darkness', 'fire', 'flood', 'quake', 'rain', 'storm', 'snow', 'freeze', 'heat'];
@@ -339,7 +339,7 @@ function drawForeground(g, W, H, c, spec, t, p) {
   const shift = (p - 0.5) * W * 0.06;
   g.save();
   g.fillStyle = 'rgba(12,6,16,0.92)';
-  const indoor = ['bedroom', 'living_room', 'lab'].includes(spec.place);
+  const indoor = ['bedroom', 'living_room', 'lab', 'window_view', 'supermarket'].includes(spec.place);
   if (indoor) {
     // drinnen: nur leichte Abdunklung der unteren Ecken
     const v = g.createLinearGradient(0, H * 0.85, 0, H);
@@ -441,4 +441,94 @@ function cinematicGrade(g, W, H, t, spec) {
   g.fillStyle = v;
   g.fillRect(0, 0, W, H);
   g.restore();
+}
+
+// ------------------------------------------------- Film-Einstellungen ---
+// Feste "Storyboard"-Einstellungen: ein Satz → eine passende Einstellung.
+
+export const SHOTS = {
+  wake_up: { place: 'bedroom', actors: [{ action: 'get_up' }] },
+  check_phone: { place: 'bedroom', actors: [{ action: 'phone' }] },
+  phone_call: { place: 'living_room', actors: [{ action: 'call' }] },
+  look_window: { place: 'window_view', actors: [{ action: 'look_out', from: 'left' }] },
+  leave_house: { place: 'house_front', actors: [{ action: 'walk', from: 'center', to: 'right' }] },
+  empty_street: { place: 'street', actors: [{ action: 'walk', from: 'left', to: 'right' }] },
+  empty_city: { place: 'empty_city', actors: [{ action: 'look_up' }] },
+  silence: { place: 'empty_city', actors: [{ action: 'think' }] },
+  shout: { place: 'empty_city', actors: [{ action: 'shout' }] },
+  supermarket: { place: 'supermarket', actors: [{ action: 'grab' }] },
+  drive_car: { place: 'street', time: 'sunset', actors: [{ action: 'drive' }] },
+  enter_house: { place: 'house_front', time: 'sunset', actors: [{ action: 'walk', from: 'right', to: 'center' }] },
+  travel: { place: 'earth', props: [{ type: 'plane' }], actors: [] },
+  freedom: { place: 'beach', props: [{ type: 'clouds' }], actors: [{ action: 'cheer' }] },
+  party_alone: { place: 'empty_city', time: 'sunset', actors: [{ action: 'jump' }] },
+  rooftop_alone: { place: 'rooftop', time: 'sunset', empty: true, actors: [{ action: 'sad' }] },
+  talk_to_self: { place: 'living_room', actors: [{ action: 'talk' }] },
+  days_pass: { place: 'living_room', actors: [{ action: 'sit' }] },
+  night_alone: { place: 'empty_city', time: 'night', actors: [{ action: 'sad' }] },
+  stars: { place: 'meadow', time: 'night', actors: [{ action: 'look_up' }] },
+  miss_people: { place: 'window_view', time: 'night', actors: [{ action: 'sad', from: 'left' }] },
+  earth_view: { place: 'earth', props: [], actors: [] },
+  black: { place: 'black', actors: [] },
+};
+export const SHOT_LIST = Object.keys(SHOTS);
+const SHOT_ALTERNATIVES = {
+  empty_city: ['empty_street', 'rooftop_alone'],
+  empty_street: ['empty_city', 'silence'],
+  silence: ['empty_street', 'look_window'],
+  night_alone: ['rooftop_alone', 'stars'],
+  rooftop_alone: ['night_alone', 'miss_people'],
+  miss_people: ['rooftop_alone', 'night_alone'],
+  days_pass: ['talk_to_self', 'miss_people'],
+  freedom: ['party_alone', 'drive_car'],
+  party_alone: ['freedom', 'drive_car'],
+};
+
+export const SHOT_PROMPT_HELP = `"shot": wähle für JEDEN Satz die passendste Film-Einstellung aus dieser Liste:
+wake_up (aufwachen/aufstehen), check_phone (aufs Handy schauen, Nachrichten), phone_call (jemanden anrufen, niemand geht ran),
+look_window (aus dem Fenster schauen), leave_house (aus der Haustür nach draußen gehen), empty_street (leere Straße entlanggehen),
+empty_city (leere Stadt, Hochhäuser), silence (Stille, keine Geräusche), shout (laut rufen/schreien), supermarket (im Supermarkt Sachen nehmen),
+drive_car (Auto fahren), enter_house (in ein fremdes Haus gehen), travel (um die Welt reisen), freedom (Freiheit, keine Regeln, Spaß),
+party_alone (allein feiern/tanzen), rooftop_alone (allein auf einem Hochhausdach), talk_to_self (mit sich selbst reden),
+days_pass (Zeit vergeht, Tage/Wochen), night_alone (nachts allein in der Stadt), stars (Sternenhimmel), miss_people (Menschen vermissen, Einsamkeit),
+earth_view (die Erde von oben, "stell dir vor"), black (schwarzer Bildschirm).
+Passt keine Einstellung (z. B. bei anderen Themen wie Explosionen), setze "shot": null und beschreibe die Szene stattdessen mit "anim".`;
+
+const SHOT_RULES = [
+  [/fenster/, 'look_window'],
+  [/(rufst .*an|anruf|anrufen|telefonier|geht ran|niemand nimmt ab)/, 'phone_call'],
+  [/(handy|whatsapp|nachricht|instagram|smartphone|tiktok)/, 'check_phone'],
+  [/(aufwach|wachst .*auf|aufstehst|stehst .*auf|wecker|im bett)/, 'wake_up'],
+  [/(schreist|brüllst|rufst laut|hallo)/, 'shout'],
+  [/(haustür|vor die tür|nach draußen|gehst raus|rausgehst|verlässt das haus)/, 'leave_house'],
+  [/(supermarkt|regal|nimmst dir|nehmen, was|einkauf)/, 'supermarket'],
+  [/(steigst in .*auto|fährst|sportwagen|autobahn|jedes auto)/, 'drive_car'],
+  [/(jedes haus|in .*häuser|fremde wohnung)/, 'enter_house'],
+  [/(reisen|hinreisen|um die welt|fliegst)/, 'travel'],
+  [/(redest mit dir|mit dir selbst|selbstgespräch)/, 'talk_to_self'],
+  [/(vermisst|vermissen|einsam|fehlt dir|guten morgen)/, 'miss_people'],
+  [/(stell dir vor|auf der erde|die welt .*weiter)/, 'earth_view'],
+  [/(keine regeln|keine verpflichtung|keine schule|keine arbeit|geil|frei\b|freiheit)/, 'freedom'],
+  [/(nach (einer|ein paar|einigen|zwei|drei|vier|einem|\d+) (tag|tagen|woche|wochen|monat|monaten|jahr|jahren))/, 'days_pass'],
+  [/(nachts|in der nacht|dunkel|sterne)/, 'night_alone'],
+  [/(geräusch|stille|totenstill|still\b|stimme)/, 'silence'],
+  [/(straße|straßen|autos|verkehr|bewegung)/, 'empty_street'],
+  [/(stadt|städte|hochhäuser|niemand|kein einziger mensch|keiner|menschen)/, 'empty_city'],
+];
+
+/** Errät die Film-Einstellung aus dem Satz (null = keine passt). */
+export function guessShot(text, prev = null) {
+  const t = String(text).toLowerCase();
+  const hit = SHOT_RULES.find(([re]) => re.test(t));
+  // kein Hinweis im Satz → in der vorherigen Einstellung bleiben (durchgehende Szene)
+  if (!hit) return prev;
+  let shot = hit[1];
+  if (shot === prev && SHOT_ALTERNATIVES[shot]) shot = SHOT_ALTERNATIVES[shot].find((x) => x !== prev) || shot;
+  return shot;
+}
+
+export function shotSpec(shot) {
+  const base = SHOTS[shot];
+  if (!base) return null;
+  return normalizeAnim(JSON.parse(JSON.stringify(base)));
 }

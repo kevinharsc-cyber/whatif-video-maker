@@ -49,7 +49,7 @@ export class VideoRenderer {
       return Math.max(0, st.start - 0.12);
     });
     // Motion Graphics (Pop-ups, Labels) + Soundeffekte
-    const withEffects = scenes.map((sc, i) => ({ ...sc, _effect: images[i]?.spec?.effect }));
+    const withEffects = scenes.map((sc, i) => ({ ...sc, _effect: images[i]?.spec?.effect, _action: images[i]?.spec?.actors?.[0]?.action }));
     const { overlays, sfx } = buildOverlays(withEffects, this.sceneStarts, sceneTimes, subtitles, this.duration);
     addFollowOverlay(overlays, sfx, follow, this.duration);
     this.overlays = overlays;

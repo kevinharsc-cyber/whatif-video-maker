@@ -3,7 +3,7 @@ import { loadSettings, saveSettings } from './settings.js';
 import { generateScript, normalizeTopic } from './script.js';
 import { buildOwnScript } from './ownscript.js';
 import { loadSceneImages } from './images.js';
-import { createAnimVisual, normalizeAnim, guessAnim } from './anim/scene.js';
+import { createAnimVisual, normalizeAnim, guessAnim, guessShot, shotSpec } from './anim/scene.js';
 import { synthesize, VOICES, speechWeight } from './tts.js';
 import { buildSubtitles, toSrt } from './subtitles.js';
 import { VideoRenderer, pickMimeType, tryResume } from './renderer.js';
@@ -235,9 +235,18 @@ async function onCreateVideo() {
       // Strichmännchen-Animationen: werden direkt im iPhone gezeichnet
       const n = script.scenes.length;
       let gotUp = false;
+      let prevShot = null;
       images = script.scenes.map((sc, i) => {
         if (sc.black) return createAnimVisual({ place: 'black', time: 'night', props: [], actors: [], crowd: { count: 0, action: 'idle' }, effect: 'none' });
-        const spec = normalizeAnim(sc.anim) || guessAnim(sc.text, script.topic, i, n);
+        // 1) Film-Einstellung (von Gemini gewählt oder aus dem Satz erkannt)
+        //    2) freie Animation von Gemini  3) aus Stichwörtern erraten
+        let shot = sc.shot && shotSpec(sc.shot) ? sc.shot : null;
+        if (!shot && !sc.anim) shot = guessShot(sc.text, prevShot);
+        if (shot === 'wake_up' && gotUp) shot = 'check_phone';
+        prevShot = shot;
+        let spec = shot ? shotSpec(shot) : null;
+        if (spec && sc.anim?.time) spec.time = sc.anim.time;
+        if (!spec) spec = normalizeAnim(sc.anim) || guessAnim(sc.text, script.topic, i, n);
         // Nur einmal aufstehen: weitere "get_up"/"sleep" werden zu "walk"
         const a0 = spec.actors[0];
         if (a0 && a0.action === 'get_up') {
