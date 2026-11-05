@@ -93,6 +93,8 @@ export const C = {
 
 // ------------------------------------------------------------ Welt ---
 // Eine einzige Welt (4000 × 1920) – alle Szenen zeigen dasselbe Gelände.
+// Plätze auf der Tribüne (3 Reihen × 25) – 1 Follower = 1 Platz
+export const STAND_SEATS = 75;
 export const WORLD = { w: 4000, h: 1920, horizon: 830 };
 
 export const PLACES = {
@@ -326,7 +328,8 @@ export function drawStand(g, t, fans = 0, fanPop = [], opts = {}) {
     const x1 = x + w - r * 18;
     P(g, C.woodL, 5, rect(x0, y - 18, x1 - x0, 20));
     P(g, C.wood, 5, rect(x0, y + 2, x1 - x0, 30));
-    for (let s = 0; s < 10; s++) seats.push({ x: x0 + 40 + (s * (x1 - x0 - 80)) / 9, y: y - 18, row: r });
+    const per = STAND_SEATS / rows;
+    for (let s = 0; s < per; s++) seats.push({ x: x0 + 26 + (s * (x1 - x0 - 52)) / (per - 1), y: y - 18, row: r });
   }
   // kaputtes Brett
   g.save();
@@ -339,7 +342,7 @@ export function drawStand(g, t, fans = 0, fanPop = [], opts = {}) {
   for (let i = 0; i < vis; i++) {
     const s = seats[(i * 7) % seats.length];
     const pop = Math.min(1, fanPop[i] ?? 1);
-    fan(g, s.x, s.y, 0.85 * easeOutBack(pop), i, t);
+    fan(g, s.x, s.y, 0.68 * easeOutBack(pop), i, t);
   }
   // Namensschilder (Namen aus den Kommentaren)
   const names = opts.names || [];
@@ -348,8 +351,8 @@ export function drawStand(g, t, fans = 0, fanPop = [], opts = {}) {
     const pop = Math.min(1, fanPop[i] ?? 1);
     if (pop <= 0.05) return;
     g.save();
-    g.translate(s.x, s.y - 80);
-    g.scale(easeOutBack(pop), easeOutBack(pop));
+    g.translate(s.x, s.y - 66);
+    g.scale(easeOutBack(pop) * 0.85, easeOutBack(pop) * 0.85);
     nameTag(g, 0, 0, n);
     g.restore();
   });
@@ -375,6 +378,7 @@ export function drawStand(g, t, fans = 0, fanPop = [], opts = {}) {
   const board = Math.floor(opts.board ?? fans);
   label(g, String(board), x + w + 105, base - 172, board > 999 ? 34 : 50, board ? '#7CFC00' : '#ff5a4f', { sw: 0 });
   line(g, [[x + w + 105, base - 140], [x + w + 105, base]], 9, '#666');
+  label(g, `von ${STAND_SEATS} Plätzen`, x + w + 105, base - 122, 20, '#ffffff', { sw: 5 });
 }
 function nameTag(g, x, y, text, bg = '#ffffff') {
   g.font = '18px "Lilita One", "Arial Black", sans-serif';
