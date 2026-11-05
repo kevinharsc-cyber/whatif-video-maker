@@ -60,7 +60,12 @@ function getAudioCtx() {
   // Muss direkt beim Antippen eines Knopfes passieren (Apple-Regel für Ton).
   if (!audioCtx || audioCtx.state === 'closed') {
     const AC = window.AudioContext || window.webkitAudioContext;
-    audioCtx = new AC();
+    // 48 kHz = Standard für Videos (TikTok/YouTube); vermeidet Umrechnungsfehler
+    try {
+      audioCtx = new AC({ sampleRate: 48000, latencyHint: 'playback' });
+    } catch {
+      audioCtx = new AC();
+    }
     // Unhörbarer Dauerton: verhindert, dass iOS den Ton während der
     // langen Vorbereitung (Bilder, Stimme) einschlafen lässt.
     try {

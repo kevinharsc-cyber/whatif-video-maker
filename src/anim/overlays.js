@@ -466,7 +466,7 @@ export function scheduleSfx(ctx, out, list, t0) {
       hp.frequency.value = 1800;
       const gn = ctx.createGain();
       for (let k = 0; k < 6; k++) {
-        gn.gain.setValueAtTime(k % 2 ? 0.02 : 0.25, at + k * 0.04);
+        gn.gain.setValueAtTime(k % 2 ? 0.02 : 0.14, at + k * 0.04);
       }
       gn.gain.exponentialRampToValueAtTime(0.0001, at + 0.5);
       src.connect(hp).connect(gn).connect(out);
@@ -527,7 +527,7 @@ export function scheduleSfx(ctx, out, list, t0) {
       o.frequency.setValueAtTime(90, at);
       o.frequency.exponentialRampToValueAtTime(35, at + 1);
       gn.gain.setValueAtTime(0.0001, at);
-      gn.gain.exponentialRampToValueAtTime(0.5, at + 0.02);
+      gn.gain.exponentialRampToValueAtTime(0.28, at + 0.02);
       gn.gain.exponentialRampToValueAtTime(0.0001, at + 1.4);
       o.connect(gn).connect(out);
       o.start(at);
@@ -538,7 +538,7 @@ export function scheduleSfx(ctx, out, list, t0) {
       lp.type = 'lowpass';
       lp.frequency.value = 400;
       const ng = ctx.createGain();
-      ng.gain.setValueAtTime(0.35, at);
+      ng.gain.setValueAtTime(0.18, at);
       ng.gain.exponentialRampToValueAtTime(0.0001, at + 0.9);
       src.connect(lp).connect(ng).connect(out);
       src.start(at);

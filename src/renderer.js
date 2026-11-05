@@ -311,13 +311,25 @@ export class VideoRenderer {
     await ensureAudio(ctx);
 
     const dest = ctx.createMediaStreamDestination();
+    // Tonmischung: alles läuft durch einen Limiter, damit nichts übersteuert
+    // (TikTok macht beim Hochladen lauter – Übersteuerung klingt dann verzerrt).
     const master = ctx.createGain();
     master.gain.value = 1;
-    master.connect(dest);
-    if (monitor) master.connect(ctx.destination);
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -9;
+    limiter.knee.value = 4;
+    limiter.ratio.value = 12;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.2;
+    const outGain = ctx.createGain();
+    outGain.gain.value = 0.9;
+    master.connect(limiter);
+    limiter.connect(outGain);
+    outGain.connect(dest);
+    if (monitor) outGain.connect(ctx.destination);
 
     const voice = ctx.createBufferSource();
-    voice.buffer = this.audio;
+    voice.buffer = normalizeBuffer(ctx, this.audio, 0.8);
     voice.connect(master);
 
     let stopMusic = () => {};
@@ -326,7 +338,7 @@ export class VideoRenderer {
     this.drawFrame(0);
     const videoStream = this.canvas.captureStream(FPS);
     const stream = new MediaStream([...videoStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-    const opts = { videoBitsPerSecond: this.W >= 1080 ? 8_000_000 : 5_000_000, audioBitsPerSecond: 128_000 };
+    const opts = { videoBitsPerSecond: this.W >= 1080 ? 8_000_000 : 5_000_000, audioBitsPerSecond: 192_000 };
     if (mt) opts.mimeType = mt;
     const rec = new MediaRecorder(stream, opts);
     const chunks = [];
@@ -373,12 +385,34 @@ export class VideoRenderer {
     try {
       voice.disconnect();
       master.disconnect();
+      outGain.disconnect();
     } catch {
       /* egal */
     }
     const type = (rec.mimeType || mt || 'video/mp4').split(';')[0];
     return new Blob(chunks, { type });
   }
+}
+
+// Stimme auf einheitliche Lautstärke bringen (Spitze = peak), ohne Übersteuerung
+function normalizeBuffer(ctx, buf, peak) {
+  let max = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) {
+      const v = Math.abs(d[i]);
+      if (v > max) max = v;
+    }
+  }
+  if (!max) return buf;
+  const k = peak / max;
+  const out = ctx.createBuffer(buf.numberOfChannels, buf.length, buf.sampleRate);
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const src = buf.getChannelData(c);
+    const dst = out.getChannelData(c);
+    for (let i = 0; i < src.length; i++) dst[i] = src[i] * k;
+  }
+  return out;
 }
 
 // Versucht den Ton fortzusetzen, wartet aber nicht ewig darauf.
