@@ -337,6 +337,7 @@ function assemble(ctx, parts, sr, scenes = []) {
 
 export function cleanForSpeech(text) {
   return text
+    .replace(/[*_#•▪►]/g, '') // Formatierungszeichen nicht vorlesen
     .replace(/[„“”"«»]/g, '')
     .replace(/\s*[–—]\s*/g, ', ')
     // Auslassungspunkte → normale Sprechpause (vermeidet Probleme der Stimme)
