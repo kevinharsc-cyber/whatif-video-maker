@@ -18,13 +18,19 @@ export const DEFAULTS = {
   followButton: 'Folgen',
   music: true,
   musicMood: 'dark',
-  exportMode: 'auto',
+  exportMode: 'realtime',
 };
 
 export function loadSettings() {
   try {
     const raw = localStorage.getItem(KEY);
-    return { ...DEFAULTS, ...(raw ? JSON.parse(raw) : {}) };
+    const s = { ...DEFAULTS, ...(raw ? JSON.parse(raw) : {}) };
+    // Stabiler Weg (Echtzeit-Aufnahme) wieder als Standard – einmalige Umstellung
+    if (!s.stableV1) {
+      s.exportMode = 'realtime';
+      s.stableV1 = true;
+    }
+    return s;
   } catch {
     return { ...DEFAULTS };
   }

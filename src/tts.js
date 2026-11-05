@@ -278,46 +278,18 @@ async function piperTTS(ctx, scenes, settings, voiceId, onProgress, log) {
   log('Lade kostenlose Piper-Stimme (beim ersten Mal kann das 1–2 Minuten dauern) …');
   const speed = Math.min(1.5, Math.max(0.7, Number(settings.speed) || 1));
   const texts = scenes.map((s) => cleanForSpeech(s.text) || '…');
-  // Speichersparender Weg: Lautschrift in einem Durchgang, Stimme im Hintergrund-Prozess
-  try {
-    let { config, model, modelUrl } = await fetchPiperFiles(voiceId, onProgress);
-    // Liegt das Modell im Browser-Speicher, lädt der Hintergrund-Prozess es selbst –
-    // dann muss die App keine eigene 63-MB-Kopie im Arbeitsspeicher halten.
-    let cached = false;
-    try {
-      cached = !!(await (await caches.open(CACHE_NAME)).match(modelUrl));
-    } catch {
-      cached = false;
-    }
-    if (cached) model = null;
-    onProgress({ phase: 'speak', index: 0, count: scenes.length });
-    const idsList = await phonemizeAll(texts, config.espeak.voice);
-    // Kleine Pakete (4 Sätze); danach wird der Hintergrund-Prozess beendet,
-    // damit sein Speicher nicht immer weiter wächst.
-    const BATCH = 4;
-    const raw = [];
-    for (let b = 0; b < idsList.length; b += BATCH) {
-      const part = await inferInWorker(
-        cached ? null : model.slice(0),
-        config,
-        idsList.slice(b, b + BATCH),
-        speed,
-        (i) => onProgress({ phase: 'speak', index: Math.min(b + i + 1, scenes.length - 1), count: scenes.length }),
-        cached ? modelUrl : null,
-      );
-      raw.push(...part);
-      await sleep(400); // dem Browser Zeit zum Aufräumen geben
-    }
-    model = null;
-    const sr = config.audio.sample_rate;
-    return assemble(ctx, raw.map((d) => trimSilence(d, sr)), sr, scenes);
-  } catch (e) {
-    console.warn('Speichersparende Stimme nicht möglich, nutze normalen Weg:', e);
-  }
-  // Rückfall: alles im Haupt-Thread (wie früher)
+  // Bewährter Weg (wie in der Version, die bei dir lief): Stimme direkt in der App.
+  // Sparsamer als früher: Lautschrift für alle Sätze in EINEM Durchgang.
   const voice = await loadPiperVoice(voiceId, onProgress);
   const { config, session, ort } = voice;
   const sr = config.audio.sample_rate;
+  onProgress({ phase: 'speak', index: 0, count: scenes.length });
+  let idsList;
+  try {
+    idsList = await phonemizeAll(texts, config.espeak.voice);
+  } catch {
+    idsList = null; // Rückfall: Satz für Satz
+  }
   const scales = new Float32Array([
     config.inference.noise_scale,
     config.inference.length_scale / speed,
@@ -327,7 +299,7 @@ async function piperTTS(ctx, scenes, settings, voiceId, onProgress, log) {
   for (let i = 0; i < scenes.length; i++) {
     onProgress({ phase: 'speak', index: i, count: scenes.length });
     await sleep(30);
-    const ids = await phonemize(texts[i], config.espeak.voice);
+    const ids = idsList ? idsList[i] : await phonemize(texts[i], config.espeak.voice);
     const feeds = {
       input: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
       input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),

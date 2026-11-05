@@ -363,6 +363,7 @@ async function onCreateVideo() {
         }
         method = 'Saubere MP4 (30 fps)';
       } catch (e) {
+        renderer._cleanupExport?.(); // Speicher des abgebrochenen Exports freigeben
         log(`Schneller MP4-Export nicht möglich (${e.message}) – nutze Echtzeit-Aufnahme.`, 'warn');
         markPhase('record', e.message);
       }
@@ -440,7 +441,7 @@ function showResult() {
   $('btnDownload').download = fileName();
   const mb = (lastVideo.blob.size / 1048576).toFixed(1);
   let info = `${Math.round(lastVideo.duration)} Sekunden · ${mb} MB · ${lastVideo.method || lastVideo.ext.toUpperCase()}`;
-  if (lastVideo.method === 'Echtzeit-Aufnahme') info += ' – Tipp: Für eine ruckelfreie Datei iOS aktualisieren (Einstellungen → Allgemein → Softwareupdate).';
+
   if (lastVideo.ext !== 'mp4') {
     info += ' – Dein Browser kann kein MP4 aufnehmen. Auf dem iPhone mit Safari entsteht automatisch MP4.';
   }
