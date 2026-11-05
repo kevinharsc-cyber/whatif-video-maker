@@ -16,8 +16,10 @@ export const VOICES = [
   { id: 'piper:de_DE-kerstin-low', label: 'Kerstin (weiblich, kostenlos)' },
   { id: 'piper:de_DE-ramona-low', label: 'Ramona (weiblich, kostenlos)' },
   { id: 'piper:de_DE-eva_k-x_low', label: 'Eva (weiblich, kostenlos, klein)' },
-  { id: 'gemini:Puck', label: 'Gemini „Puck“ (männlich, gut gelaunt – empfohlen für SV Kieselbach)' },
-  { id: 'gemini:Achird', label: 'Gemini „Achird“ (männlich, freundlich)' },
+  { id: 'gemini:Achird', label: 'Gemini „Achird“ (männlich, freundlich – empfohlen für SV Kieselbach)' },
+  { id: 'gemini:Umbriel', label: 'Gemini „Umbriel“ (männlich, locker & entspannt)' },
+  { id: 'gemini:Iapetus', label: 'Gemini „Iapetus“ (männlich, klar & ruhig)' },
+  { id: 'gemini:Puck', label: 'Gemini „Puck“ (männlich, aufgedreht)' },
   { id: 'gemini:Sadachbia', label: 'Gemini „Sadachbia“ (männlich, lebhaft)' },
   { id: 'gemini:Charon', label: 'Gemini „Charon“ (männlich, ruhiger Erzähler, braucht Schlüssel)' },
   { id: 'gemini:Fenrir', label: 'Gemini „Fenrir“ (männlich, aufgeregt, braucht Schlüssel)' },
@@ -76,7 +78,7 @@ export async function synthesize(ctx, scenes, settings, onProgress, log) {
   // Lange Skripte + Gemini-Schlüssel: Gemini-Stimme nehmen. Die kostenlose Piper-
   // Stimme läuft auf dem iPhone und braucht dort sehr viel Arbeitsspeicher.
   if (settings.geminiKey && scenes.length > 12 && settings.autoGeminiVoice !== false) {
-    const auto = settings.visualMode === 'verein' ? 'Puck' : 'Charon';
+    const auto = settings.visualMode === 'verein' ? 'Achird' : 'Charon';
     try {
       log(`Langes Skript: nutze die Gemini-Stimme „${auto}“ (braucht auf dem iPhone kaum Speicher) …`);
       return await withInfo(geminiTTS(ctx, scenes, settings, auto, onProgress), `Gemini „${auto}“`);
@@ -415,9 +417,9 @@ export function speakInstruction(settings) {
   const fast = settings.speed > 1.05;
   if (settings.visualMode === 'verein') {
     return (
-      'Sprich den folgenden deutschen Text als gut gelaunter, freundlicher und selbstbewusster Fußballtrainer, ' +
-      'der seinen kleinen Verein vorstellt: locker, herzlich, mit einem Lächeln in der Stimme und etwas Humor, ' +
-      `${fast ? 'flottes, zügiges' : 'zügiges'} Tempo, energisch und motivierend – nicht düster, nicht geheimnisvoll, nicht dramatisch. ` +
+      'Sprich den folgenden deutschen Text freundlich, warm und entspannt, wie ein sympathischer Erzähler, ' +
+      'der seinen Zuschauern locker und natürlich von seinem kleinen Fußballverein erzählt – mit einem Lächeln in der Stimme. ' +
+      `${fast ? 'Flüssiges, eher zügiges' : 'Flüssiges, natürliches'} Tempo. Nicht übertrieben, nicht aufgeregt, nicht dramatisch, nicht düster. ` +
       'Mache nur kurze Pausen:'
     );
   }
