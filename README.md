@@ -87,7 +87,7 @@ Danach wird die App bei jeder Änderung auf `main` automatisch neu veröffentlic
 - **Google-Gemini-Schlüssel (optional, empfohlen):** Damit werden die Skripte besser und zuverlässiger, und du bekommst sehr natürliche Gemini-Stimmen.
   So bekommst du ihn kostenlos:
   1. [aistudio.google.com/apikey](https://aistudio.google.com/apikey) öffnen und mit deinem Google-Konto anmelden.
-  2. **„Create API key“** antippen und den Schlüssel (beginnt mit `AIza…`) kopieren.
+  2. **„Create API key“** antippen und den Schlüssel (beginnt mit `AIza…` oder `AQ.…`) kopieren.
   3. In der App unter ⚙️ einfügen und **Speichern** antippen.
 
 - **Pollinations-Schlüssel (für KI-Bilder, kostenlos):**

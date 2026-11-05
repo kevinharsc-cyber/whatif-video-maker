@@ -3,7 +3,7 @@
 //              2) Pollinations.ai (kostenlos, ohne Anmeldung)
 //              3) Eingebaute Vorlage (funktioniert immer, auch offline)
 
-import { fetchWithTimeout } from './util.js';
+import { geminiFetch, fetchWithTimeout } from './util.js';
 import { ANIM_PROMPT_HELP, SHOT_PROMPT_HELP, SHOT_LIST } from './anim/scene.js';
 
 const SYSTEM = `Du bist Autor und Cutter für virale deutschsprachige TikTok- und YouTube-Shorts im Format "Was wäre, wenn …?" – im Stil hochwertiger YouTube-Dokumentationen mit cinematic Storytelling.
@@ -66,17 +66,14 @@ export function normalizeTopic(topic) {
 }
 
 async function viaGemini(topic, key) {
-  const res = await fetchWithTimeout(
+  const res = await geminiFetch(
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    key,
     {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM }] },
         contents: [{ role: 'user', parts: [{ text: `Thema: ${topic}` }] }],
         generationConfig: { responseMimeType: 'application/json', temperature: 0.9 },
-      }),
-    },
+      },
     60000,
   );
   if (!res.ok) throw new Error(`HTTP ${res.status} ${(await res.text()).slice(0, 120)}`);
