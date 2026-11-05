@@ -78,7 +78,13 @@ const ENC_KEY = 'whatif-encoder-v2';
  * Ergebnis wird gemerkt (beim nächsten Mal sofort da).
  * Ergebnis: { cfg } oder { cfg: null, why }.
  */
+// iPhone/iPad-Safari: Der WebCodecs-Encoder antwortet dort nicht und blockiert
+// danach sogar die normale Video-Aufnahme (MediaRecorder lieferte keine Daten mehr).
+// Deshalb wird er auf iOS gar nicht erst angefasst.
+export const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 export async function findVideoConfig(W, H, onStep = () => {}) {
+  if (isIOS() && !window.__forceWebCodecs) return { cfg: null, why: 'auf dem iPhone abgeschaltet (Safari-Encoder hängt und blockiert sonst die Aufnahme)' };
   const key = `${W}x${H}|${navigator.userAgent}`;
   if (pickCache?.key === key) return pickCache.res;
   try {
