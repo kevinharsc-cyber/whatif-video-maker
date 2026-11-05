@@ -381,8 +381,48 @@ dialog {
   background: var(--card);
   color: var(--text);
   width: min(560px, calc(100vw - 24px));
-  max-height: calc(100vh - 40px);
-  padding: 18px;
+  /* Auf dem iPhone: Fenster passt in den sichtbaren Bereich und scrollt selbst */
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);
+  padding: 0;
+  overflow: hidden;
+}
+
+dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 18px 18px 0;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.settings-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-head h2 {
+  margin: 0;
+}
+
+.settings-save {
+  position: sticky;
+  bottom: 0;
+  background: var(--card);
+  padding: 4px 0 18px;
+  margin-top: 8px;
+}
+
+html.modal-open,
+html.modal-open body {
+  overflow: hidden;
 }
 
 dialog::backdrop {
