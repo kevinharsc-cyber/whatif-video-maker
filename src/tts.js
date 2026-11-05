@@ -95,22 +95,25 @@ async function getOrt() {
   return ortModule;
 }
 
-async function cachedFetch(url, onBytes) {
+// Lädt eine Datei (aus dem Browser-Speicher, falls vorhanden). Mit keep=false
+// wird sie nur gespeichert und NICHT in den Arbeitsspeicher geholt (null zurück),
+// sofern das Speichern geklappt hat.
+async function cachedFetch(url, onBytes, keep = true) {
   let cache = null;
   try {
     cache = await caches.open(CACHE_NAME);
     const hit = await cache.match(url);
-    if (hit) return await hit.arrayBuffer();
+    if (hit) return keep ? await hit.arrayBuffer() : null;
   } catch {
     cache = null;
   }
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Download fehlgeschlagen (HTTP ${res.status})`);
   const total = +(res.headers.get('Content-Length') || 0);
-  let buf;
+  let blob;
   if (res.body && onBytes) {
     const reader = res.body.getReader();
-    const chunks = [];
+    let chunks = [];
     let loaded = 0;
     for (;;) {
       const { done, value } = await reader.read();
@@ -119,24 +122,22 @@ async function cachedFetch(url, onBytes) {
       loaded += value.length;
       onBytes(loaded, total);
     }
-    const out = new Uint8Array(loaded);
-    let off = 0;
-    for (const c of chunks) {
-      out.set(c, off);
-      off += c.length;
-    }
-    buf = out.buffer;
+    blob = new Blob(chunks); // keine zusätzliche Kopie als großes Array
+    chunks = null;
   } else {
-    buf = await res.arrayBuffer();
+    blob = await res.blob();
   }
+  let stored = false;
   if (cache) {
     try {
-      await cache.put(url, new Response(buf.slice(0), { headers: { 'Content-Type': 'application/octet-stream' } }));
+      await cache.put(url, new Response(blob, { headers: { 'Content-Type': 'application/octet-stream' } }));
+      stored = true;
     } catch {
       /* Speicher voll oder privat – egal */
     }
   }
-  return buf;
+  if (!keep && stored) return null;
+  return await blob.arrayBuffer();
 }
 
 async function loadPiperVoice(voiceId, onProgress) {
@@ -195,17 +196,25 @@ function phonemizeAll(texts, espeakVoice) {
   });
 }
 
-// Lädt Stimmen-Konfiguration + Modell (aus dem Browser-Speicher, falls vorhanden)
-async function fetchPiperFiles(voiceId, onProgress) {
+// Stellt sicher, dass Konfiguration + Modell im Browser-Speicher (Cache) liegen.
+// Das Modell selbst wird NICHT in die App geladen – der Hintergrund-Prozess
+// liest es direkt aus dem Cache. Nur ohne Cache wird es mitgeschickt.
+async function ensurePiperFiles(voiceId, onProgress) {
   const path = PIPER_PATHS[voiceId] || PIPER_PATHS['de_DE-thorsten-medium'];
   let lastErr = null;
+  let cache = null;
+  try {
+    cache = await caches.open(CACHE_NAME);
+  } catch {
+    cache = null;
+  }
   for (const base of HF_BASES) {
     try {
       const cfgBuf = await cachedFetch(`${base}/${path}.json`);
       const config = JSON.parse(new TextDecoder().decode(cfgBuf));
       const modelUrl = `${base}/${path}`;
-      const model = await cachedFetch(modelUrl, (loaded, total) => onProgress({ phase: 'download', loaded, total }));
-      return { config, model, modelUrl };
+      const model = await cachedFetch(modelUrl, (loaded, total) => onProgress({ phase: 'download', loaded, total }), !cache);
+      return model ? { config, modelUrl: null, model } : { config, modelUrl, model: null };
     } catch (e) {
       lastErr = e;
     }
@@ -214,7 +223,7 @@ async function fetchPiperFiles(voiceId, onProgress) {
 }
 
 // Sprachausgabe im Hintergrund-Prozess; danach wird er beendet (Speicher frei)
-function inferInWorker(model, config, idsList, speed, onPart, modelUrl = null) {
+function inferInWorker({ model, modelUrl, config, texts, speed }, onPart) {
   return new Promise((resolve, reject) => {
     let worker;
     try {
@@ -223,26 +232,39 @@ function inferInWorker(model, config, idsList, speed, onPart, modelUrl = null) {
       reject(e);
       return;
     }
-    const parts = new Array(idsList.length);
+    const parts = new Array(texts.length);
+    let timer = null;
+    const end = (fn) => {
+      clearTimeout(timer);
+      worker.terminate(); // gibt den gesamten Speicher des Sprachprogramms frei
+      fn();
+    };
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => end(() => reject(new Error('Stimme antwortet nicht'))), 120000);
+    };
+    arm();
     worker.onmessage = (e) => {
       const m = e.data;
+      arm();
       if (m.type === 'part') {
         parts[m.index] = m.data;
         onPart(m.index);
-      } else if (m.type === 'done') {
-        worker.terminate();
-        resolve(parts);
-      } else if (m.type === 'error') {
-        worker.terminate();
-        reject(new Error(m.message));
-      }
+      } else if (m.type === 'done') end(() => resolve(parts));
+      else if (m.type === 'error') end(() => reject(new Error(m.message)));
     };
-    worker.onerror = (e) => {
-      worker.terminate();
-      reject(new Error(e.message || 'Hintergrund-Prozess fehlgeschlagen'));
-    };
+    worker.onerror = (e) => end(() => reject(new Error(e.message || 'Hintergrund-Prozess fehlgeschlagen')));
     worker.postMessage(
-      { model, modelUrl, cacheName: CACHE_NAME, config, idsList, speed, wasmBase: new URL('ort/', document.baseURI).href },
+      {
+        model,
+        modelUrl,
+        cacheName: CACHE_NAME,
+        config,
+        texts,
+        speed,
+        wasmBase: new URL('ort/', document.baseURI).href,
+        piperBase: new URL('piper/', document.baseURI).href,
+      },
       model ? [model] : [],
     );
   });
@@ -288,26 +310,36 @@ async function piperTTS(ctx, scenes, settings, voiceId, onProgress, log) {
   log('Lade kostenlose Piper-Stimme (beim ersten Mal kann das 1–2 Minuten dauern) …');
   const speed = Math.min(1.5, Math.max(0.7, Number(settings.speed) || 1));
   const texts = scenes.map((s) => cleanForSpeech(s.text) || '…');
-  // Bewährter Weg (wie in der Version, die bei dir lief): Stimme direkt in der App.
-  // Sparsamer als früher: Lautschrift für alle Sätze in EINEM Durchgang.
-  const voice = await loadPiperVoice(voiceId, onProgress);
-  const { config, session, ort } = voice;
+  // Stimme läuft KOMPLETT in einem Hintergrund-Prozess, der danach beendet wird.
+  // So wird der große Speicher des Sprachprogramms vor der Videoaufnahme wieder frei.
+  const { config, model, modelUrl } = await ensurePiperFiles(voiceId, onProgress);
   const sr = config.audio.sample_rate;
   onProgress({ phase: 'speak', index: 0, count: scenes.length });
+  let parts;
+  try {
+    parts = await inferInWorker({ model, modelUrl, config, texts, speed }, (i) => onProgress({ phase: 'speak', index: Math.min(i + 1, scenes.length - 1), count: scenes.length }));
+  } catch (e) {
+    if (/Speicher|memory/i.test(e.message)) throw e;
+    log(`Stimme im Hintergrund nicht möglich (${e.message}) – nutze direkten Weg.`, 'warn');
+    parts = await piperDirect(texts, voiceId, speed, sr, onProgress);
+  }
+  return assemble(ctx, parts.map((p) => trimSilence(p, sr)), sr, scenes);
+}
+
+// Rückfall (nur falls Hintergrund-Prozesse nicht gehen): Stimme direkt in der App
+async function piperDirect(texts, voiceId, speed, sr, onProgress) {
+  const voice = await loadPiperVoice(voiceId, onProgress);
+  const { config, session, ort } = voice;
   let idsList;
   try {
     idsList = await phonemizeAll(texts, config.espeak.voice);
   } catch {
-    idsList = null; // Rückfall: Satz für Satz
+    idsList = null;
   }
-  const scales = new Float32Array([
-    config.inference.noise_scale,
-    config.inference.length_scale / speed,
-    config.inference.noise_w,
-  ]);
+  const scales = new Float32Array([config.inference.noise_scale, config.inference.length_scale / speed, config.inference.noise_w]);
   const parts = [];
-  for (let i = 0; i < scenes.length; i++) {
-    onProgress({ phase: 'speak', index: i, count: scenes.length });
+  for (let i = 0; i < texts.length; i++) {
+    onProgress({ phase: 'speak', index: i, count: texts.length });
     await sleep(30);
     const ids = idsList ? idsList[i] : await phonemize(texts[i], config.espeak.voice);
     const feeds = {
@@ -315,14 +347,11 @@ async function piperTTS(ctx, scenes, settings, voiceId, onProgress, log) {
       input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)]), [1]),
       scales: new ort.Tensor('float32', scales, [3]),
     };
-    if (Object.keys(config.speaker_id_map || {}).length) {
-      feeds.sid = new ort.Tensor('int64', BigInt64Array.from([0n]), [1]);
-    }
+    if (Object.keys(config.speaker_id_map || {}).length) feeds.sid = new ort.Tensor('int64', BigInt64Array.from([0n]), [1]);
     const out = await session.run(feeds);
-    const data = (out.output || Object.values(out)[0]).data;
-    parts.push(trimSilence(new Float32Array(data), sr));
+    parts.push(new Float32Array((out.output || Object.values(out)[0]).data));
   }
-  return assemble(ctx, parts, sr, scenes);
+  return parts;
 }
 
 function assemble(ctx, parts, sr, scenes = []) {

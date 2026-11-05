@@ -23,7 +23,10 @@ let rSize = '';
 export function webglAvailable() {
   try {
     const c = document.createElement('canvas');
-    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+    const gl = c.getContext('webgl2') || c.getContext('webgl');
+    // Test-Zeichenfläche sofort wieder freigeben (sonst bleibt ein Grafik-Kontext belegt)
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return !!gl;
   } catch {
     return false;
   }
@@ -31,7 +34,9 @@ export function webglAvailable() {
 
 function getRenderer(W, H) {
   if (!renderer) {
-    renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+    // preserveDrawingBuffer aus: spart einen kompletten zusätzlichen Bildspeicher.
+    // Das Bild wird direkt nach dem Zeichnen übernommen, daher nicht nötig.
+    renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
     renderer.setPixelRatio(1);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -771,8 +776,11 @@ function stars(group) {
 }
 
 const sceneCache = new Map();
+function placeKey(spec) {
+  return `${spec.place}|${spec.time}|${spec.empty ? 1 : 0}|${spec.props.find((p) => p.type === 'shop')?.label || ''}`;
+}
 function getPlace(spec) {
-  const key = `${spec.place}|${spec.time}|${spec.empty ? 1 : 0}|${spec.props.find((p) => p.type === 'shop')?.label || ''}`;
+  const key = placeKey(spec);
   let e = sceneCache.get(key);
   if (e) return e;
   const g = new THREE.Group();
@@ -791,8 +799,8 @@ function getPlace(spec) {
   if (spec.time === 'night' || space) stars(g);
   const bg = space ? new THREE.Color('#02020a') : interior && spec.place !== 'window_view' ? new THREE.Color('#e9e2d6') : skyTex(spec.time);
   e = { group: g, info: res.info, bg, interior, space };
-  // Umgebungen bleiben im Speicher (pro Video nur wenige verschiedene; Formen und
-  // Materialien sind geteilt) – so wird nichts doppelt aufgebaut.
+  // Umgebung bleibt im Speicher, solange eine spätere Szene sie noch braucht
+  // (siehe plan3D/releaseUnused) – so wird nichts doppelt aufgebaut.
   sceneCache.set(key, e);
   return e;
 }
@@ -861,6 +869,17 @@ function chooseCam(spec, action, shot) {
 // ---------------------------------------------------------- Szene ---
 
 const scene = new THREE.Scene();
+// Nebel-Objekte wiederverwenden (ein neues pro Bild zwang Three.js, bei JEDEM
+// Bild alle Materialien neu zu prüfen – unnötige Rechenarbeit und Speicher-Müll)
+const fogs = new Map();
+function fogFor(time) {
+  let f = fogs.get(time);
+  if (!f) {
+    f = new THREE.Fog(time === 'night' ? '#0b1030' : time === 'sunset' ? '#f0a070' : '#cfe3f5', 25, 90);
+    fogs.set(time, f);
+  }
+  return f;
+}
 const camera = new THREE.PerspectiveCamera(50, 9 / 16, 0.1, 400);
 const worldX = (x) => (x - 0.5) * 7;
 
@@ -869,20 +888,119 @@ const worldX = (x) => (x - 0.5) * 7;
  * spec = Szenenbeschreibung (Ort, Zeit, Figuren, Effekte), shot = Film-Einstellung.
  */
 export function createAnim3DVisual(spec, shot = null) {
-  return {
+  const v = {
     isAnim: true,
     is3d: true,
     needsShade: true,
     spec,
+    placeKey: spec.place === 'black' ? null : placeKey(spec),
+    order: -1,
     draw(g, W, H, t, dur) {
       if (spec.place === 'black') {
         g.fillStyle = '#000';
         g.fillRect(0, 0, W, H);
         return;
       }
+      if (v.order > maxOrder) {
+        maxOrder = v.order;
+        releaseUnused(maxOrder);
+      }
       render3D(g, W, H, spec, shot, t, Math.max(0.5, dur));
     },
   };
+  return v;
+}
+
+// ------------------------------------------------- Speicherverwaltung ---
+// Jede Umgebung wird nur so lange im Grafikspeicher gehalten, wie sie noch von
+// einer späteren Szene gebraucht wird. Teile, die andere Szenen (oder die Figur)
+// noch nutzen, werden NICHT gelöscht.
+
+let lastUse = new Map(); // placeKey → letzte Szene, die sie braucht
+let maxOrder = -1;
+
+/** Vor dem Video aufrufen: merkt sich, welche Szene welche Umgebung braucht. */
+export function plan3D(visuals) {
+  lastUse = new Map();
+  maxOrder = -1;
+  visuals.forEach((v, i) => {
+    if (!v?.is3d) return;
+    v.order = i;
+    if (v.placeKey) lastUse.set(v.placeKey, i);
+  });
+}
+
+function collect(obj, into) {
+  obj.traverse((o) => {
+    if (o.geometry) into.add(o.geometry);
+    const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of ms) {
+      into.add(m);
+      if (m.map) into.add(m.map);
+    }
+  });
+  return into;
+}
+
+function disposePlace(key) {
+  const e = sceneCache.get(key);
+  if (!e) return;
+  sceneCache.delete(key);
+  scene.remove(e.group);
+  // Alles, was noch woanders gebraucht wird, behalten
+  const keep = new Set();
+  for (const o of sceneCache.values()) {
+    collect(o.group, keep);
+    if (o.bg?.isTexture) keep.add(o.bg);
+  }
+  if (hero) {
+    collect(hero.root, keep);
+    collect(hero.shadow, keep);
+  }
+  if (sky3d) for (const o of Object.values(sky3d)) if (o) collect(o, keep);
+  for (const o of fogs.values()) keep.add(o);
+  const mine = collect(e.group, new Set());
+  if (e.bg?.isTexture) mine.add(e.bg);
+  for (const r of mine) {
+    if (keep.has(r) || !r.dispose) continue;
+    r.dispose();
+    for (const cache of [geoCache, matCache, texCache]) {
+      for (const [k, v] of cache) if (v === r) cache.delete(k);
+    }
+  }
+}
+
+function releaseUnused(current) {
+  for (const key of [...sceneCache.keys()]) {
+    const last = lastUse.get(key);
+    // vorherige Szene noch behalten (Überblendung), alles davor freigeben
+    if (last === undefined || last < current - 1) disposePlace(key);
+  }
+}
+
+/** Nach dem Video: kompletten Grafikspeicher freigeben. */
+export function dispose3D() {
+  for (const key of [...sceneCache.keys()]) disposePlace(key);
+  const all = new Set();
+  if (hero) collect(hero.root, all), collect(hero.shadow, all);
+  if (sky3d) for (const o of Object.values(sky3d)) if (o) collect(o, all);
+  for (const c of [geoCache, matCache, texCache]) for (const v of c.values()) all.add(v);
+  for (const r of all) r.dispose?.();
+  geoCache.clear();
+  matCache.clear();
+  texCache.clear();
+  hero = null;
+  sky3d = null;
+  scene.clear();
+  scene.background = null;
+  if (renderer) {
+    renderer.dispose();
+    renderer.forceContextLoss?.();
+    renderer = null;
+    rSize = '';
+  }
+  lastUse = new Map();
+  maxOrder = -1;
 }
 
 function render3D(g2, W, H, spec, shot, t, dur) {
@@ -895,7 +1013,7 @@ function render3D(g2, W, H, spec, shot, t, dur) {
   scene.clear();
   scene.add(place.group);
   scene.background = place.bg;
-  scene.fog = place.interior || place.space ? null : new THREE.Fog(spec.time === 'night' ? '#0b1030' : spec.time === 'sunset' ? '#f0a070' : '#cfe3f5', 25, 90);
+  scene.fog = place.interior || place.space ? null : fogFor(spec.time);
 
   // Dunkelheit (Stromausfall etc.)
   const dark = effectSkyDarkness(spec.effect, p);
@@ -1083,3 +1201,10 @@ function render3D(g2, W, H, spec, shot, t, dur) {
     drawEffect(g2, W, H, c, spec.effect, { x: W * 0.72, y: H * 0.2 });
   }
 }
+
+// Diagnose: wie viele 3D-Ressourcen liegen gerade im Grafikspeicher?
+export function stats3D() {
+  const m = renderer?.info?.memory || {};
+  return { geometries: m.geometries || 0, textures: m.textures || 0, programs: renderer?.info?.programs?.length || 0, calls: renderer?.info?.render?.calls || 0, places: sceneCache.size, canvasTextures: texCache.size, materials: matCache.size };
+}
+if (typeof window !== 'undefined') window.__stats3D = stats3D;

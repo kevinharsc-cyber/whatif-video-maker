@@ -65,12 +65,13 @@
           <li data-task="images">Bilder / Animationen vorbereiten</li>
           <li data-task="voice">Deutsche Stimme erzeugen</li>
           <li data-task="subs">Untertitel synchronisieren</li>
-          <li data-task="render">Video aufnehmen (Echtzeit)</li>
+          <li data-task="render">Video erstellen (Szene für Szene)</li>
         </ol>
         <div class="bar"><div id="bar"></div></div>
         <p id="status" class="status"></p>
         <div class="preview-wrap"><canvas id="livePreview" width="270" height="480"></canvas></div>
         <p class="hint">📱 Bitte die App geöffnet und den Bildschirm an lassen, bis das Video fertig ist.</p>
+        <button id="btnCancel" class="ghost wide hidden">✋ Abbrechen</button>
       </section>
 
       <!-- Schritt 4: Ergebnis -->
@@ -99,9 +100,10 @@
           <button class="icon-btn" value="close" aria-label="Schließen">✕</button>
         </div>
         <p class="small">👆 Mit dem Finger <b>im Fenster</b> nach oben wischen, um alle Einstellungen zu sehen.</p>
-        <p class="small">App-Version: <b>26 (3D)</b></p>
+        <p class="small">App-Version: <b>27 (speichersicher)</b></p>
         <button type="button" id="btnDeviceCheck" class="ghost wide">🔍 Gerät prüfen (Video-Encoder)</button>
         <pre id="deviceCheck" class="device-check hidden"></pre>
+        <button type="button" id="btnSelfTest" class="ghost wide">🧪 Test: 2 kurze Szenen erstellen</button>
 
         <label class="lbl" for="sVoice">Stimme</label>
         <select id="sVoice"></select>
@@ -128,8 +130,8 @@
 
         <label class="lbl" for="sExport">Video-Erstellung</label>
         <select id="sExport">
-          <option value="realtime">Echtzeit-Aufnahme (stabil, empfohlen)</option>
-          <option value="auto">Saubere MP4 (experimentell, kann bei langen Videos abstürzen)</option>
+          <option value="auto">Szene für Szene (speichersicher, fortsetzbar, empfohlen)</option>
+          <option value="realtime">Echtzeit-Aufnahme (alter Weg)</option>
         </select>
 
         <label class="lbl" for="sQuality">Videoqualität</label>
