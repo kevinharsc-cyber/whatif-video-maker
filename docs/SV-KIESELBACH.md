@@ -51,9 +51,15 @@ Werbebanden: „Metzgerei Kies“, „Fahrschule Roller“.
 
 ## Laufende Serie (bitte nach jeder Folge aktualisieren)
 
+Skripte der Folgen: `docs/skripte/`
+
+Stand nach Tag 2: **Tornetze neu** (in der App ⚙️ „Neue Tornetze“ anhaken), **Teamkasse 0 €**, 1 Follower = 5 €.
+
+
 | Folge | Inhalt | Abstimmung | Ergebnis |
 |---|---|---|---|
-| Tag 1 | Vereinsgründung, Kader, Stadion, 0 Fans | A: neues Tornetz / B: richtige Toilette | offen |
+| Tag 1 | Vereinsgründung, Kader, Stadion, 0 Fans | A: neues Tornetz / B: richtige Toilette | **A gewonnen** |
+| Tag 2 | 30 Follower = 150 € Teamkasse, Tornetze repariert (Kasse 0 €), Stellen: Maskottchen, Kassenwart, Co-Trainer, Stadionsprecher; Sonntag erstes Spiel | – (Bewerbungen in den Kommentaren) | offen |
 
 - **Fans (Follower):** in der App unter ⚙️ → „Fans aktuell“ eintragen
 - **Namen auf der Tribüne:** in der App unter ⚙️ → „Namen auf der Tribüne“ (aus den Kommentaren)

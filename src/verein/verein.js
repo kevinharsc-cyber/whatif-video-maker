@@ -75,6 +75,18 @@ const SHOTS = {
   money: [{ a: [1180, 1260, 1.3], b: [1180, 1270, 1.4], rudi: { ...RUDI_HOUSE, pose: 'thumbs' }, players: true }],
   clubhouse: [{ a: [1020, 760, 1.6], b: [1000, 770, 1.75], rudi: { ...RUDI_HOUSE, pose: 'pocket' } }],
   follow: [{ a: [2250, 1330, 1.7], b: [2250, 1310, 1.9], rudi: { ...RUDI_MAIN, pose: 'crossed' }, players: true }],
+  growth: [{ a: [2330, 790, 1.15], b: [2380, 775, 1.22] }],
+  voteresult: [
+    { a: [1180, 1240, 1.25], b: [1180, 1250, 1.32], rudi: { ...RUDI_HOUSE, pose: 'open' }, players: true },
+    { a: [1180, 1280, 1.4], b: [1180, 1290, 1.5], rudi: { ...RUDI_HOUSE, pose: 'thumbs' }, players: true },
+  ],
+  repair: [{ a: [560, 1110, 1.6], b: [520, 1105, 1.75], players: true }],
+  jobs: [
+    { a: [1180, 1250, 1.3], b: [1180, 1260, 1.38], rudi: { ...RUDI_HOUSE, pose: 'point' }, players: true },
+    { a: [1180, 1280, 1.4], b: [1180, 1290, 1.48], rudi: { ...RUDI_HOUSE, pose: 'open' }, players: true },
+  ],
+  apply: [{ a: [2250, 1250, 1.4], b: [2250, 1240, 1.5], rudi: { ...RUDI_MAIN, pose: 'point' }, players: true }],
+  matchday: [{ a: [2050, 1010, 0.66], b: [2050, 985, 0.76], players: true }],
   slogan: [{ a: [2250, 1310, 1.95], b: [2250, 1300, 2.05], rudi: { ...RUDI_MAIN, pose: 'crossed' }, players: true, end: true }],
 };
 
@@ -82,9 +94,16 @@ const SHOTS = {
 export function pickShot(text, i, n, black) {
   const s = text.toLowerCase();
   if (black || /aus kies geboren|für großes bestimmt|fuer grosses bestimmt/.test(s)) return 'slogan';
-  if (/\ba\s*[:)]|\bb\s*[:)]|a oder b|abstimm|stimmt ab/.test(s)) return 'vote';
+  if (/ergebnis|gewonnen|gewinnt|meisten von euch|mehrheit/.test(s)) return 'voteresult';
+  if (/\ba\s*[:)]|\bb\s*[:)]|a oder b|abstimm|stimmt ab|\ba für\b/.test(s)) return 'vote';
+  if (/reparatur|reparier|investier/.test(s)) return 'repair';
+  if (/bewerb/.test(s)) return 'apply';
+  if (/verstärkung|offene stellen|maskottchen|kassenwart|co-trainer|stadionsprecher|platzwart|zeugwart|physio/.test(s)) return 'jobs';
   if (/namen?\b/.test(s) && /kommentar/.test(s)) return 'nametag';
-  if (/folgt|folge uns|abonnier|folgen/.test(s) && !/je mehr|follower/.test(s)) return 'follow';
+  if (/sonntag|samstag|montag|dienstag|mittwoch|donnerstag|freitag|erstes spiel|spiel statt|anpfiff/.test(s)) return 'matchday';
+  if (/folgt|folge uns|abonnier|folgen\b|follow da/.test(s) && !/je mehr/.test(s)) return 'follow';
+  if (/unterstützt|community|\d+\s*(leute|follower|fans|unterstützer)/.test(s)) return 'growth';
+  if (/geld|kasse|euro|€/.test(s)) return 'money';
   if (/toilett|klo\b|\bwc\b|dixi/.test(s)) return 'toilet';
   if (/getränk|kühlbox|trinken|bier|limo/.test(s)) return 'cooler';
   if (/auswechsel|ersatzspieler|ersatzbank|auswechselbank/.test(s)) return 'bench';
@@ -92,12 +111,11 @@ export function pickShot(text, i, n, black) {
   if (/tornetz|pfosten|latte|\btor\b|tore\b/.test(s)) return 'goalpost';
   if (/tribüne|tribuene|fans?\b|zuschauer|follower/.test(s)) {
     if (/null|leer|keine|wenig/.test(s)) return 'stand_empty';
-    if (/voller|voll\b|anbau|ausbau|je mehr/.test(s)) return 'stand_fill';
+    if (/voll|anbau|ausbau|je mehr/.test(s)) return 'stand_fill';
     if (/follower|platz/.test(s)) return 'stand_point';
     return 'stand_empty';
   }
   if (/spieler|mannschaft|startelf|team|kader/.test(s)) return 'team';
-  if (/geld|kasse|euro|€/.test(s)) return 'money';
   if (/morgen|jeden tag|neues spiel|täglich/.test(s)) return 'daily';
   if (/champions|liga|ganz nach oben|ziel/.test(s)) return 'goal';
   if (/stadion|schotter|platz|arena|gelände/.test(s)) return 'stadium';
@@ -108,10 +126,25 @@ export function pickShot(text, i, n, black) {
 
 const NUMWORDS = { eins: 1, zwei: 2, drei: 3, vier: 4, fünf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10, elf: 11, zwölf: 12 };
 function parseVote(text) {
-  const m = text.match(/\bA\s*[:)]\s*(.+?)\s*(?:[.!?,]\s*|\s+)(?:oder\s+)?B\s*[:)]\s*(.+?)(?:[.!?]|$)/i);
-  const clean = (x) => x.replace(/^(ein|eine|einen)\s+/i, '').replace(/[.!?]+$/, '').trim().toUpperCase();
+  const m = text.match(/\bA\s*(?:[:)]|für)\s*(.+?)\s*(?:[.!?,]\s*|\s+)(?:oder\s+)?B\s*(?:[:)]|für)\s*(.+?)(?:[.!?]|$)/i);
+  const clean = (x) => x.replace(/^(ein|eine|einen|unsere|unser|unseren|die|den|das)\s+/i, '').replace(/[.!?]+$/, '').trim().toUpperCase();
   return m ? [clean(m[1]), clean(m[2])] : null;
 }
+const stem = (w) => w.toLowerCase().replace(/[^a-zäöüß]/g, '').slice(0, 6);
+const firstNumber = (t) => {
+  const m = t.match(/(\d+(?:[.,]\d+)?)/);
+  return m ? Number(m[1].replace(',', '.')) : null;
+};
+const euros = (t) => [...t.matchAll(/(\d+(?:[.,]\d+)?)\s*(?:€|euro)/gi)].map((m) => Number(m[1].replace(',', '.')));
+const JOBS = [
+  ['maskottchen', 'MASKOTTCHEN', 'bear'],
+  ['kassenwart', 'KASSENWART', 'money'],
+  ['co-trainer', 'CO-TRAINER', 'ball'],
+  ['stadionsprecher', 'STADIONSPRECHER', 'mic'],
+  ['platzwart', 'PLATZWART', 'ball'],
+  ['zeugwart', 'ZEUGWART', 'shirt'],
+  ['physio', 'PHYSIO', 'plus'],
+];
 
 /**
  * Baut die Szenen-Bilder für ein Skript.
@@ -122,6 +155,9 @@ export function createVereinVisuals(scenes, opts = {}) {
   const names = (opts.names || []).filter(Boolean).slice(0, 30);
   const seen = {};
   let prevVote = null;
+  let netsFixed = !!opts.nets;
+  let lastEuro = null;
+  let perFollower = null;
   return scenes.map((sc, i) => {
     let kind = pickShot(sc.text || '', i, scenes.length, sc.black);
     if (kind === 'intro' && seen.intro !== undefined) kind = 'talk'; // nur einmal Eröffnungsfahrt
@@ -130,9 +166,24 @@ export function createVereinVisuals(scenes, opts = {}) {
     const shot = variants[k % variants.length];
     const text = sc.text || '';
     const low = text.toLowerCase();
-    const vote = kind === 'vote' ? parseVote(text) || prevVote : null;
+    let vote = kind === 'vote' || kind === 'voteresult' ? parseVote(text) || prevVote : null;
     if (vote) prevVote = vote;
-    const ctx = { kind, k, shot, text, low, fans, names, vote, first: i === 0 };
+    // Wer hat gewonnen? ("A hat gewonnen" oder Stichwort der Antwort in den nächsten Sätzen)
+    let winner = 0;
+    if (kind === 'voteresult') {
+      const around = [text, scenes[i + 1]?.text || '', scenes[i + 2]?.text || ''].join(' ').toLowerCase();
+      if (/\bb\b[^.!?]*gewonnen|\bb\s+gewinnt/.test(around)) winner = 1;
+      else if (!/\ba\b[^.!?]*gewonnen|\ba\s+gewinnt/.test(around) && vote && around.includes(stem(vote[1])) && !around.includes(stem(vote[0]))) winner = 1;
+    }
+    const eu = euros(text);
+    const amount = eu.length ? eu[0] : lastEuro;
+    if (eu.length) lastEuro = eu[0];
+    if (eu.length > 1 && /follower/.test(low)) perFollower = eu[1];
+    const fixedBefore = netsFixed;
+    if (kind === 'repair') netsFixed = true;
+    const growTo = kind === 'growth' ? firstNumber(text) ?? fans : null;
+    const jobs = kind === 'jobs' ? JOBS.filter(([k2]) => low.includes(k2)) : [];
+    const ctx = { kind, k, shot, text, low, fans, names, vote, winner, amount, perFollower, netsFixed: fixedBefore, growTo, jobs, first: i === 0 };
     return {
       isAnim: true,
       verein: true,
@@ -173,19 +224,30 @@ function drawWorld(g, W, H, t, dur, c, info) {
   // Tribüne: Fans je nach Einstellung
   let seated = Math.min(30, c.fans);
   let pop = [];
-  if (kind === 'stand_fill') {
+  let board = c.fans;
+  if (kind === 'growth') {
+    // Zähler + Tribüne füllen sich gleichzeitig
+    const n = Math.round(clamp((t - 0.4) / Math.max(0.8, dur * 0.7)) * (c.growTo || 0));
+    board = n;
+    seated = Math.min(30, n);
+    const G = Math.max(1, c.growTo || 1);
+    pop = Array.from({ length: 30 }, (_, j) => (t - 0.4 - (j / G) * Math.max(0.8, dur * 0.7)) / 0.25 + 0.2);
+  } else if (kind === 'stand_fill') {
     const n = clamp((t - 0.3) / Math.max(0.5, dur - 1.3)) * 30;
     seated = Math.max(seated, Math.ceil(n));
     pop = Array.from({ length: 30 }, (_, j) => (t - 0.3 - (j / 30) * (dur - 1.3)) / 0.25);
   }
-  A.drawStand(g, t, seated, pop, { board: c.fans, names: c.names, nameTag: kind === 'nametag' });
+  A.drawStand(g, t, seated, pop, { board, names: c.names, nameTag: kind === 'nametag' });
   A.drawBench(g, t);
   A.drawToilet(g, t, kind === 'toilet' ? toiletDoor(t, dur, c) : 0);
   A.drawCooler(g, t, kind === 'cooler' ? smooth(clamp((t - 0.5) / 0.5)) : 0);
   const bt = ballTimes();
   const hit = kind === 'goalpost' && t > bt.hit && t < bt.hit + 0.8 ? 1 - (t - bt.hit) / 0.8 : 0;
-  A.drawGoal(g, t, 'L', hit);
-  A.drawGoal(g, t, 'R');
+  const fixAt = dur * 0.55;
+  const nets = c.netsFixed || (kind === 'repair' && t > fixAt);
+  A.drawGoal(g, t, 'L', hit, nets);
+  A.drawGoal(g, t, 'R', 0, nets);
+  if (kind === 'repair') repairPuff(g, t, dur, fixAt);
   A.drawFlag(g, t, 'L');
   A.drawFlag(g, t, 'R');
   A.drawLawnSign(g, t);
@@ -200,6 +262,42 @@ function drawWorld(g, W, H, t, dur, c, info) {
     A.drawRudi(g, r.x, r.y, r.H, { pose, mouth: info.mouth || 0, t, talk: (info.mouth || 0) > 0.05, look: Math.sin(t * 0.7) * 0.5 });
   }
   g.restore();
+}
+// Reparatur-Übergang: Staubwolke mit Werkzeug, danach neues Netz
+function repairPuff(g, t, dur, fixAt) {
+  const a = fixAt - 0.5;
+  const k = (t - a) / 1.0;
+  if (k <= 0 || k >= 1) return;
+  const x = 510;
+  const y = 1110;
+  const s = Math.sin(k * Math.PI);
+  g.save();
+  g.globalAlpha = s;
+  for (let i = 0; i < 9; i++) {
+    const ang = i * 0.7 + t * 2;
+    P(g, '#f4efe6', 4, ell(x + Math.cos(ang) * 90 * s, y - 60 + Math.sin(ang) * 50 * s, 70 * s + 20, 55 * s + 15));
+  }
+  // Hammer + Schraubenschlüssel wirbeln
+  g.translate(x, y - 70);
+  g.rotate(t * 9);
+  P(g, '#8a5a30', 4, rr(-6, -10, 12, 80, 4));
+  P(g, '#9aa5ad', 4, rr(-30, -26, 60, 24, 6));
+  g.restore();
+  for (let i = 0; i < 5; i++) {
+    const ang = i * 1.3 + t * 4;
+    star(g, x + Math.cos(ang) * 160 * s, y - 80 + Math.sin(ang) * 90 * s, 14 * s);
+  }
+}
+function star(g, x, y, r) {
+  if (r <= 0.5) return;
+  P(g, '#fff6a8', 3, (g2) => {
+    for (let i = 0; i < 8; i++) {
+      const rr2 = i % 2 ? r * 0.4 : r;
+      const a2 = (i / 8) * Math.PI * 2;
+      g2[i ? 'lineTo' : 'moveTo'](x + Math.cos(a2) * rr2, y + Math.sin(a2) * rr2);
+    }
+    g2.closePath();
+  });
 }
 function toiletDoor(t, dur, c) {
   const slam = /zu hause|vorher|lieber/.test(c.low);
@@ -288,6 +386,30 @@ function sfxFor(c) {
       break;
     case 'slogan':
       add(0.05, 'boom');
+      break;
+    case 'growth':
+      for (let j = 0; j < 10; j++) add(0.45 + j * 0.3, 'pop');
+      add(3.2, 'cheer');
+      break;
+    case 'voteresult':
+      add(0.2, 'whoosh');
+      add(1.4, 'ding');
+      add(1.6, 'cheer');
+      break;
+    case 'repair':
+      add(0.4, 'whoosh');
+      add(1.2, 'hammer');
+      add(2.2, 'ding');
+      break;
+    case 'jobs':
+      for (let j = 0; j < Math.max(1, c.jobs.length); j++) add(0.3 + j * 0.7, 'whoosh');
+      break;
+    case 'apply':
+      add(0.5, 'pop');
+      break;
+    case 'matchday':
+      add(0.1, 'whistle');
+      add(0.6, 'cheer');
       break;
     default:
   }
@@ -451,7 +573,9 @@ function overlays(g, t, dur, c) {
     const v = popIn(t, T(0.5), end);
     if (v > 0) {
       card(g, VW / 2, 400, 820, 170, '#ffffff', v, 0.02);
-      label(g, `VEREINSKASSE: ${m ? m[1] : '50'} €`, 0, 0, 64, '#2f9e4f', { sw: 0 });
+      const kasse = /teamkasse/.test(low) ? 'TEAMKASSE' : 'VEREINSKASSE';
+      const plus = /bedeutet|bringt|plus|dazu|bekommen/.test(low) ? '+' : '';
+      label(g, `${kasse}: ${plus}${m ? m[1] : '50'} €`, 0, 0, 64, '#2f9e4f', { sw: 0 });
       g.restore();
     }
   }
@@ -477,6 +601,172 @@ function overlays(g, t, dur, c) {
     }
   }
   if (kind === 'slogan') endCard(g, t, dur, c);
+  if (kind === 'growth') {
+    const v = popIn(t, T(0.2), end);
+    if (v > 0) {
+      const n = Math.round(clamp((t - 0.4) / Math.max(0.8, dur * 0.7)) * (c.growTo || 0));
+      card(g, VW / 2, 400, 700, 200, '#ffffff', v, -0.02);
+      label(g, 'FOLLOWER', 0, -45, 50, BLUE, { sw: 0 });
+      label(g, String(n), 0, 40, 110, '#2f9e4f', { sw: 0 });
+      g.restore();
+    }
+  }
+  if (kind === 'money' && c.perFollower) {
+    const v = popIn(t, T(1.4), end);
+    if (v > 0) {
+      card(g, VW / 2, 600, 760, 130, '#ffd60a', v, 0.03);
+      label(g, `1 FOLLOWER = ${c.perFollower} €`, 0, 2, 60, OL, { sw: 0 });
+      g.restore();
+    }
+  }
+  if (kind === 'voteresult') resultBars(g, t, end, c, T);
+  if (kind === 'repair') {
+    const v = popIn(t, T(0.2), end);
+    if (v > 0) {
+      const amt = c.amount ?? 150;
+      const spend = clamp((t - dur * 0.25) / 0.6);
+      const now = Math.round(amt * (1 - smooth(spend)));
+      card(g, VW / 2, 380, 700, 200, '#ffffff', v, 0.02);
+      label(g, 'TEAMKASSE', 0, -50, 50, BLUE, { sw: 0 });
+      label(g, `${now} €`, 0, 35, 100, now ? '#2f9e4f' : '#e53935', { sw: 0 });
+      g.restore();
+      if (spend > 0 && spend < 1) label(g, `−${amt} €`, VW / 2 + 260, 300 - spend * 80, 70, '#e53935', { sw: 12, stroke: '#fff' });
+    }
+    const done = popIn(t, dur * 0.62, end);
+    if (done > 0) {
+      card(g, VW / 2, 640, 700, 130, '#a5e3b6', done, -0.03);
+      label(g, 'TORNETZE REPARIERT!', 0, 2, 60, OL, { sw: 0 });
+      g.restore();
+    }
+  }
+  if (kind === 'jobs') jobCards(g, t, dur, c);
+  if (kind === 'apply') {
+    const v = popIn(t, T(0.4), end);
+    if (v > 0) {
+      card(g, VW / 2, 420, 900, 210, '#ffffff', v, -0.02);
+      bubble(g, -340, 0, 60);
+      label(g, 'BEWIRB DICH', 60, -40, 70, BLUE, { sw: 0 });
+      label(g, 'IN DEN KOMMENTAREN!', 60, 40, 56, OL, { sw: 0 });
+      g.restore();
+    }
+  }
+  if (kind === 'follow' && /kasse|follow da/.test(low)) {
+    const v = popIn(t, T(0.4), end);
+    if (v > 0) {
+      card(g, VW / 2, 420, 820, 150, '#ffd60a', v, 0.02);
+      label(g, `JEDER FOLLOW = +${c.perFollower || 5} € 💰`.replace(' 💰', ''), 0, 2, 64, OL, { sw: 0 });
+      g.restore();
+    }
+  }
+  if (kind === 'matchday') {
+    const v = popIn(t, T(0.3), end);
+    if (v > 0) {
+      const day = (low.match(/montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag/) || ['bald'])[0].toUpperCase();
+      card(g, VW / 2, 430, 900, 260, '#ffd60a', v, -0.03);
+      A.drawBall(g, -360, -10, 60, t * 3);
+      label(g, day, 40, -60, 96, '#e53935', { sw: 0 });
+      label(g, 'UNSER ERSTES SPIEL!', 40, 50, 66, OL, { sw: 0 });
+      g.restore();
+    }
+  }
+}
+
+// Abstimmungsergebnis: Balken wachsen, Gewinner-Karte
+function resultBars(g, t, end, c, T) {
+  const [a, b] = c.vote || ['A', 'B'];
+  const win = c.winner;
+  const pct = [win ? 31 : 69, win ? 69 : 31];
+  const m = c.low.match(/(\d+)\s*%/);
+  if (m) {
+    pct[win] = Math.min(100, Number(m[1]));
+    pct[1 - win] = 100 - pct[win];
+  }
+  if (c.k === 0) {
+    const v = popIn(t, T(0.2), end);
+    if (v <= 0) return;
+    card(g, VW / 2, 420, 920, 360, '#ffffff', v, 0);
+    const grow = smooth(clamp((t - 0.5) / 1.0));
+    [a, b].forEach((lbl, i) => {
+      const y = -90 + i * 150;
+      label(g, i ? 'B' : 'A', -400, y, 70, i ? OL : BLUE, { sw: 0 });
+      P(g, '#e9edf5', 5, rr(-340, y - 40, 600, 80, 20));
+      P(g, i === win ? '#2f9e4f' : '#9aa5ad', 0, rr(-338, y - 38, Math.max(1, 596 * (pct[i] / 100) * grow), 76, 18));
+      label(g, lbl.length > 14 ? `${lbl.slice(0, 13)}…` : lbl, -320, y, 40, '#fff', { sw: 6, align: 'left' });
+      label(g, `${Math.round(pct[i] * grow)} %`, 350, y, 52, OL, { sw: 0 });
+    });
+    g.restore();
+  }
+  const w = popIn(t, c.k === 0 ? T(1.5) : T(0.3), end);
+  if (w > 0) {
+    card(g, VW / 2, c.k === 0 ? 760 : 430, 820, 170, '#2f9e4f', w, -0.03);
+    label(g, `${win ? 'B' : 'A'} HAT GEWONNEN!`, 0, c.k === 0 ? 0 : -30, 72, '#ffffff', { sw: 10 });
+    if (c.k !== 0) label(g, (win ? b : a) || '', 0, 45, 50, '#ffd60a', { sw: 8 });
+    g.restore();
+  }
+}
+
+// Stellenanzeigen fliegen abwechselnd von links und rechts herein
+function jobCards(g, t, dur, c) {
+  if (!c.jobs.length) {
+    const v = popIn(t, Math.min(0.3, dur * 0.2), dur - 0.05);
+    if (v > 0) {
+      card(g, VW / 2, 420, 880, 220, '#ffd60a', v, -0.03);
+      label(g, 'WIR SUCHEN', 0, -45, 70, OL, { sw: 0 });
+      label(g, 'VERSTÄRKUNG!', 0, 45, 84, '#e53935', { sw: 0 });
+      g.restore();
+    }
+    return;
+  }
+  const step = Math.min(0.75, Math.max(0.35, (dur - 0.6) / c.jobs.length));
+  c.jobs.forEach(([, title, icon], i) => {
+    const t0 = 0.25 + i * step;
+    const k = clamp((t - t0) / 0.35);
+    if (k <= 0) return;
+    const fromLeft = i % 2 === 0;
+    const x = VW / 2 + (fromLeft ? -1 : 1) * (1 - A.easeOutBack(k)) * 900;
+    const y = 280 + i * 165;
+    g.save();
+    g.translate(x, y);
+    g.rotate((fromLeft ? -1 : 1) * 0.025);
+    P(g, OL, 0, rr(-420, -62, 840, 136, 24));
+    P(g, '#ffffff', 7, rr(-420, -72, 840, 136, 24));
+    P(g, BLUE, 0, rr(-414, -66, 140, 124, [20, 0, 0, 20]));
+    jobIcon(g, -344, -4, icon);
+    label(g, 'GESUCHT:', -250, -28, 34, '#e53935', { sw: 0, align: 'left' });
+    label(g, title, -250, 20, 60, OL, { sw: 0, align: 'left' });
+    g.restore();
+  });
+}
+function jobIcon(g, x, y, kind) {
+  if (kind === 'bear') {
+    P(g, '#9a6537', 4, ell(x - 28, y - 28, 15, 15));
+    P(g, '#9a6537', 4, ell(x + 28, y - 28, 15, 15));
+    P(g, '#b47843', 5, ell(x, y + 2, 42, 38));
+    P(g, '#e8c9a0', 3, ell(x, y + 14, 18, 13));
+    P(g, OL, 0, ell(x - 14, y - 6, 5, 6));
+    P(g, OL, 0, ell(x + 14, y - 6, 5, 6));
+    P(g, OL, 0, ell(x, y + 9, 6, 4));
+  } else if (kind === 'money') {
+    P(g, '#d9a441', 5, ell(x, y + 8, 38, 34));
+    P(g, '#d9a441', 5, rr(x - 14, y - 38, 28, 16, 6));
+    label(g, '€', x, y + 10, 46, '#fff', { sw: 6 });
+  } else if (kind === 'mic') {
+    P(g, '#3a3a3a', 5, rr(x - 16, y - 40, 32, 50, 16));
+    line(g, [[x - 26, y], [x - 26, y + 10], [x, y + 26], [x + 26, y + 10], [x + 26, y]], 6, '#ffffff');
+    line(g, [[x, y + 26], [x, y + 44]], 6, '#ffffff');
+  } else if (kind === 'shirt') {
+    P(g, '#ffffff', 5, poly([[x - 40, y - 20], [x - 20, y - 36], [x + 20, y - 36], [x + 40, y - 20], [x + 26, y - 6], [x + 22, y + 40], [x - 22, y + 40], [x - 26, y - 6]]));
+  } else if (kind === 'plus') {
+    P(g, '#ffffff', 0, rect(x - 12, y - 38, 24, 76));
+    P(g, '#ffffff', 0, rect(x - 38, y - 12, 76, 24));
+  } else A.drawBall(g, x, y, 40, 0.3);
+}
+function bubble(g, x, y, r) {
+  P(g, BLUE, 6, (g2) => {
+    g2.ellipse(x, y - 8, r, r * 0.8, 0, 0, Math.PI * 2);
+  });
+  P(g, BLUE, 0, poly([[x - 20, y + 30], [x - 30, y + 62], [x + 6, y + 36]]));
+  for (const dx of [-24, 0, 24]) P(g, '#fff', 0, ell(x + dx, y - 8, 7, 7));
 }
 function voteCards(g, t, end, c) {
   const [a, b] = c.vote || ['A', 'B'];
@@ -495,7 +785,7 @@ function voteCards(g, t, end, c) {
     wrapLabel(g, b, 0, 55, 400, 46, OL);
     g.restore();
   }
-  const vc = popIn(t, T(1.9), end);
+  const vc = /gestern|durftet|habt ihr/.test(c.low) ? 0 : popIn(t, T(1.9), end); // Rückblick: keine neue Abstimmung
   if (vc > 0) {
     card(g, VW / 2, 760, 820, 120, '#ffd60a', vc, 0);
     label(g, 'KOMMENTIERE A ODER B!', 0, 2, 56, OL, { sw: 0 });
@@ -613,6 +903,7 @@ export function drawVereinTitle(g, W, H, t, title) {
   let sub = String(title || '')
     .replace(/^.*?tag\s*\d+\s*[–—:-]?\s*/i, '')
     .replace(/[🎬⚽]/gu, '')
+    .replace(/[?？]+\s*$/, '')
     .trim()
     .toUpperCase();
   if (!sub || sub.length > 34) sub = 'SV KIESELBACH';
