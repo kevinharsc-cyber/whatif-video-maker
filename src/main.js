@@ -301,20 +301,37 @@ async function onCreateVideo() {
     const preview = $('livePreview');
     const pg = preview.getContext('2d');
     const mimeType = pickMimeType();
-    const blob = await renderer.record(ctx, {
-      music: settings.music,
-      mimeType,
-      ensureAudio: ensureAudioRunning,
-      onProgress: (p) => {
-        pg.drawImage(renderer.canvas, 0, 0, preview.width, preview.height);
-        setStatus(`Video wird aufgenommen: ${Math.round(p * buffer.duration)} / ${Math.round(buffer.duration)} s`, 0.65 + p * 0.35);
-      },
-    });
+    const onProg = (p) => {
+      pg.drawImage(renderer.canvas, 0, 0, preview.width, preview.height);
+      setStatus(`Video wird erstellt: ${Math.round(p * 100)} %`, 0.65 + p * 0.35);
+    };
+    let blob = null;
+    let method = 'Echtzeit-Aufnahme';
+    if (await VideoRenderer.canExportMp4()) {
+      try {
+        // Sauberer Export Bild für Bild (normale MP4-Datei, ruckelt nicht auf TikTok)
+        blob = await renderer.exportMp4({ music: settings.music, onProgress: onProg });
+        method = 'Saubere MP4 (30 fps)';
+      } catch (e) {
+        log(`Schneller MP4-Export nicht möglich (${e.message}) – nutze Echtzeit-Aufnahme.`, 'warn');
+      }
+    }
+    if (!blob) {
+      blob = await renderer.record(ctx, {
+        music: settings.music,
+        mimeType,
+        ensureAudio: ensureAudioRunning,
+        onProgress: (p) => {
+          pg.drawImage(renderer.canvas, 0, 0, preview.width, preview.height);
+          setStatus(`Video wird aufgenommen: ${Math.round(p * buffer.duration)} / ${Math.round(buffer.duration)} s`, 0.65 + p * 0.35);
+        },
+      });
+    }
     setTask('render', 'done');
     setStatus('Fertig!', 1);
 
     const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
-    lastVideo = { blob, subtitles, ext, duration: buffer.duration };
+    lastVideo = { blob, subtitles, ext, duration: buffer.duration, method };
     showResult();
   } catch (e) {
     console.error(e);
@@ -360,7 +377,8 @@ function showResult() {
   $('btnDownload').href = url;
   $('btnDownload').download = fileName();
   const mb = (lastVideo.blob.size / 1048576).toFixed(1);
-  let info = `${Math.round(lastVideo.duration)} Sekunden · ${mb} MB · ${lastVideo.ext.toUpperCase()}`;
+  let info = `${Math.round(lastVideo.duration)} Sekunden · ${mb} MB · ${lastVideo.method || lastVideo.ext.toUpperCase()}`;
+  if (lastVideo.method === 'Echtzeit-Aufnahme') info += ' – Tipp: Für eine ruckelfreie Datei iOS aktualisieren (Einstellungen → Allgemein → Softwareupdate).';
   if (lastVideo.ext !== 'mp4') {
     info += ' – Dein Browser kann kein MP4 aufnehmen. Auf dem iPhone mit Safari entsteht automatisch MP4.';
   }
