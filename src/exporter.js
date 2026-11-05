@@ -34,20 +34,100 @@ export function totalSeconds(duration) {
   return duration + LEAD + TAIL;
 }
 
-/** Sucht eine H.264-Einstellung, die dieses Gerät kodieren kann. */
-export async function pickVideoConfig(W, H) {
-  if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') return null;
-  const bitrate = 3_500_000;
-  for (const cand of h264Candidates(W, H, FPS, bitrate)) {
-    for (const c of [{ ...cand, latencyMode: 'quality' }, cand]) {
-      try {
-        if ((await withTimeout(VideoEncoder.isConfigSupported(c), 4000, 'Video-Encoder')).supported) return { ...c, bitrate, framerate: FPS };
-      } catch {
-        /* nächste Variante */
-      }
+// Echte Probe: Encoder einstellen und EIN Testbild kodieren. Manche Safari-
+// Versionen melden bei isConfigSupported "nein", können es aber trotzdem.
+async function probeEncode(cfg, W, H) {
+  let enc = null;
+  let got = false;
+  let err = null;
+  try {
+    enc = new VideoEncoder({ output: () => (got = true), error: (e) => (err = e) });
+    enc.configure(cfg);
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const g = c.getContext('2d');
+    g.fillStyle = '#7c3aed';
+    g.fillRect(0, 0, W, H);
+    const f = new VideoFrame(c, { timestamp: 0, duration: Math.round(1e6 / FPS) });
+    enc.encode(f, { keyFrame: true });
+    f.close();
+    await withTimeout(enc.flush(), 6000, 'Probe');
+    c.width = c.height = 1;
+    if (err) throw err;
+    return got ? null : 'kein Bild ausgegeben';
+  } catch (e) {
+    return (e?.message || String(e)).slice(0, 90);
+  } finally {
+    try {
+      if (enc && enc.state !== 'closed') enc.close();
+    } catch {
+      /* egal */
     }
   }
-  return null;
+}
+
+const HEVC = ['hvc1.1.6.L120.90', 'hvc1.1.6.L93.B0', 'hev1.1.6.L120.90', 'hvc1.2.4.L120.90'];
+
+let pickCache = null;
+/**
+ * Sucht eine Video-Einstellung, die dieses Gerät kodieren kann:
+ * zuerst H.264 (fragen), dann H.264 (echte Probe), dann HEVC/H.265 (wie iPhone-Kamera).
+ * Ergebnis: { cfg } oder { cfg: null, why }.
+ */
+export async function findVideoConfig(W, H) {
+  if (pickCache?.key === `${W}x${H}`) return pickCache.res;
+  const res = await findVideoConfigUncached(W, H);
+  pickCache = { key: `${W}x${H}`, res };
+  return res;
+}
+
+async function findVideoConfigUncached(W, H) {
+  if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
+    return { cfg: null, why: `VideoEncoder fehlt in diesem Browser (${(navigator.userAgent.match(/OS [\d_]+|Version\/[\d.]+/g) || []).join(', ')})` };
+  }
+  const bitrate = 3_500_000;
+  const ask = async (c) => {
+    try {
+      return (await withTimeout(VideoEncoder.isConfigSupported(c), 4000, 'Video-Encoder')).supported ? null : 'nein';
+    } catch (e) {
+      return (e?.message || 'Fehler').slice(0, 60);
+    }
+  };
+  // 1) H.264 fragen
+  let firstAnswer = null;
+  for (const cand of h264Candidates(W, H, FPS, bitrate)) {
+    for (const c of [{ ...cand, latencyMode: 'quality' }, cand]) {
+      const r = await ask(c);
+      if (!r) return { cfg: { ...c, bitrate, framerate: FPS } };
+      firstAnswer ??= r;
+    }
+  }
+  // 2) H.264 echt ausprobieren
+  let probeErr = null;
+  for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028', 'avc1.42001f']) {
+    for (const c of [{ codec, width: W, height: H, bitrate, framerate: FPS, avc: { format: 'avc' } }, { codec, width: W, height: H }]) {
+      const e = await probeEncode(c, W, H);
+      if (!e) return { cfg: { ...c, bitrate, framerate: FPS } };
+      probeErr ??= e;
+    }
+  }
+  // 3) HEVC (H.265) – iPhones kodieren das in Hardware, TikTok nimmt es an
+  let hevcErr = null;
+  for (const codec of HEVC) {
+    for (const c of [{ codec, width: W, height: H, bitrate, framerate: FPS, hevc: { format: 'hevc' } }, { codec, width: W, height: H, bitrate, framerate: FPS }]) {
+      const r = await ask(c);
+      if (!r) return { cfg: c };
+      const e = await probeEncode(c, W, H);
+      if (!e) return { cfg: c };
+      hevcErr ??= e || r;
+    }
+  }
+  return { cfg: null, why: `H.264 abgelehnt (${firstAnswer}; Probe: ${probeErr}), HEVC abgelehnt (${hevcErr})` };
+}
+
+export async function pickVideoConfig(W, H) {
+  return (await findVideoConfig(W, H)).cfg;
 }
 
 async function aacEncoderOk() {
@@ -66,8 +146,8 @@ function aacRecorderType() {
 
 /** Prüft, ob der speichersichere Export auf diesem Gerät möglich ist. */
 export async function segmentedSupported(W, H) {
-  const v = await pickVideoConfig(W, H);
-  if (!v) return { ok: false, why: 'kein H.264-Encoder (WebCodecs)' };
+  const { cfg: v, why } = await findVideoConfig(W, H);
+  if (!v) return { ok: false, why };
   if (await aacEncoderOk()) return { ok: true, video: v, audio: 'encoder' };
   if (aacRecorderType()) return { ok: true, video: v, audio: 'recorder' };
   return { ok: false, why: 'kein AAC-Encoder' };
@@ -372,7 +452,7 @@ export async function muxJob(job) {
   const aCodec = /^mp4a/i.test(audio.codec) ? 'aac' : 'opus';
   const muxer = new Muxer({
     target,
-    video: { codec: 'avc', width: job.W, height: job.H, frameRate: FPS },
+    video: { codec: /^(hvc1|hev1)/.test(job.videoCodec || '') ? 'hevc' : 'avc', width: job.W, height: job.H, frameRate: FPS },
     audio: { codec: aCodec, numberOfChannels: audio.channels, sampleRate: audio.sampleRate },
     fastStart: { expectedVideoChunks: videoCount + 2, expectedAudioChunks: audio.chunks.length + 2 },
     firstTimestampBehavior: 'offset',

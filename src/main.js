@@ -419,6 +419,7 @@ async function onCreateVideo() {
     markPhase('export');
     let job = null;
     if (settings.exportMode !== 'realtime' && settings.visualMode !== 'images') {
+      setStatus('Prüfe Video-Encoder des Geräts …', 0.66);
       const sup = await segmentedSupported(width, height);
       if (sup.ok) {
         job = await startJob({ W: width, H: height, music: settings.music, script, sceneTimes, subtitles, duration: buffer.duration, visualMode: settings.visualMode, at: Date.now() });
@@ -988,7 +989,10 @@ $('btnDeviceCheck').onclick = async () => {
   const out = $('deviceCheck');
   out.classList.remove('hidden');
   out.textContent = 'Prüfe …';
-  const txt = await runDeviceCheck();
+  let txt = await runDeviceCheck();
+  const { findVideoConfig } = await import('./exporter.js');
+  const fv = await findVideoConfig(720, 1280);
+  txt += `\nSzene-für-Szene-Export: ${fv.cfg ? `JA (${fv.cfg.codec})` : `nein – ${fv.why}`}`;
   out.textContent = `${txt}\n\n(Text wurde kopiert – einfach dem Entwickler schicken.)`;
   try {
     await navigator.clipboard.writeText(txt);
