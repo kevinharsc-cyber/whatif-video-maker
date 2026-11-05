@@ -370,7 +370,9 @@ export class VideoRenderer {
     if (music) stopMusic = startAmbientMusic(ctx, master, this.duration, [], this.mood);
 
     this.drawFrame(0);
-    const videoStream = this.canvas.captureStream(FPS);
+    // Ohne Bildraten-Grenze: jedes gezeichnete Bild wird übernommen (die Grenze
+    // warf bei unregelmäßigem 60-Hz-Takt jedes zweite Bild weg)
+    const videoStream = this.canvas.captureStream();
     const stream = new MediaStream([...videoStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
     const opts = { videoBitsPerSecond: this.W >= 1080 ? 8_000_000 : 5_000_000, audioBitsPerSecond: 192_000 };
     if (mt) opts.mimeType = mt;
@@ -390,7 +392,7 @@ export class VideoRenderer {
     const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
     let lastCt = ctx.currentTime;
     let lastChange = performance.now();
-    let lastDraw = -1e9;
+    let lastDraw = performance.now();
     // Zeitachse: normalerweise die Ton-Uhr. Bleibt die stehen, obwohl iOS "läuft"
     // meldet (passiert auf dem iPhone am Ende), läuft die Zeit mit der normalen Uhr weiter.
     let t = 0;
@@ -399,9 +401,10 @@ export class VideoRenderer {
     for (;;) {
       await nextFrame();
       const now = performance.now();
-      // Nur ~24 Bilder/s zeichnen (120-Hz-iPhones würden sonst 120/s zeichnen)
-      if (now - lastDraw < 1000 / FPS - 3) continue;
-      lastDraw = now;
+      // Genau 24 Bilder/s im Mittel: fester Takt (bei 60 Hz abwechselnd 33/50 ms),
+      // statt "mindestens 41 ms warten" (das ergab bei 60 Hz nur 20 Bilder/s)
+      if (now < lastDraw - 8) continue;
+      lastDraw = Math.max(lastDraw + 1000 / FPS, now - 60);
       if (ctx.currentTime !== lastCt) {
         lastCt = ctx.currentTime;
         lastChange = now;
@@ -421,7 +424,8 @@ export class VideoRenderer {
       tAt = now;
       this.drawFrame(Math.max(0, Math.min(t, this.duration)));
       onProgress?.(Math.max(0, Math.min(1, t / this.duration)));
-      if (t >= this.duration + 0.25) break;
+      // kurz nachlaufen lassen: Safari schneidet beim Stoppen das letzte Stück Ton ab
+      if (t >= this.duration + 0.9) break;
       // Notbremse: nie länger als Videolänge + 20 s aufnehmen
       if (now - wallStart > (this.duration + 20) * 1000) break;
     }

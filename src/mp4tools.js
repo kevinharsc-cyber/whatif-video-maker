@@ -129,7 +129,8 @@ export function qualityReport(parsed, expectedDuration, expectedFps = 24) {
     const durs = vs.map((s) => s.duration / s.timescale);
     const cfr = durs.length > 1 && Math.max(...durs.slice(0, -1)) - Math.min(...durs.slice(0, -1)) < 0.002;
     facts.video_cfr = cfr;
-    add('Konstante Bildrate (CFR)', cfr, cfr ? 'ja' : 'schwankend (VFR)');
+    // Hinweis statt Fehler: Echtzeit-Aufnahmen (iPhone) haben immer leicht schwankende Abstände
+    checks.push({ name: 'Konstante Bildrate (CFR)', ok: cfr, soft: true, detail: cfr ? 'ja' : 'leicht schwankend (normal bei Echtzeit-Aufnahme)' });
     add('Keine eingefrorenen Bilder', maxGap < 0.25, `größte Lücke ${(maxGap * 1000).toFixed(0)} ms`);
   } else {
     add('Videospur vorhanden', false, 'fehlt');
@@ -165,7 +166,7 @@ export function qualityReport(parsed, expectedDuration, expectedFps = 24) {
   if (expectedDuration && facts.audio) {
     add('Ton vollständig', facts.audio.duration > expectedDuration - 0.5, `${facts.audio.duration.toFixed(1)} von ${expectedDuration.toFixed(1)} s`);
   }
-  return { ok: checks.every((c) => c.ok), checks, facts };
+  return { ok: checks.every((c) => c.ok || c.soft), checks, facts };
 }
 
 /**
