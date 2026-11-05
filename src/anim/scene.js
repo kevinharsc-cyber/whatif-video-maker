@@ -42,7 +42,7 @@ export function normalizeAnim(a) {
     actors: (Array.isArray(a.actors) ? a.actors : [])
       .map((x) => (typeof x === 'string' ? { action: x } : x))
       .filter(Boolean)
-      .map((x) => ({ action: pick(x.action === 'work' ? 'think' : x.action, ACTIONS, 'idle'), from: pick(x.from, Object.keys(POS), null), to: pick(x.to, Object.keys(POS), null) }))
+      .map((x) => ({ action: pick(x.action === 'work' ? 'think' : x.action, ACTIONS, 'idle'), from: pick(x.from, Object.keys(POS), null), to: pick(x.to, Object.keys(POS), null), ...(Number.isFinite(x.fromX) ? { fromX: x.fromX } : {}), ...(Number.isFinite(x.toX) ? { toX: x.toX } : {}) }))
       .slice(0, 2),
     crowd: { count: Math.max(0, Math.min(4, Number(a.crowd?.count) || 0)), action: pick(a.crowd?.action, ACTIONS, 'idle') },
     effect: pick(a.effect, EFFECTS, 'none'),
@@ -245,7 +245,7 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
     const st = actionPose(a.action, Math.min(1, Math.max(0, p - (a.crowd != null ? a.crowd * 0.015 : 0))), t + idx * 0.37, ev);
     let fromX = a.fromX ?? (a.from ? POS[a.from] : idx === 0 ? (actors.length > 1 ? 0.5 : 0.5) : 0.72);
     if (idx === 0 && actors.length > 2 && !a.from) fromX = 0.5;
-    let toX = a.to ? POS[a.to] : fromX;
+    let toX = a.toX ?? (a.to ? POS[a.to] : fromX);
     let groundY = a.crowd != null ? c.groundY - H * 0.035 : c.groundY;
     let lying = st.lying || 0;
     const moving = ['walk', 'run', 'flee', 'swim', 'get_up'].includes(a.action);
@@ -458,7 +458,7 @@ export const SHOTS = {
   wake_up: { place: 'bedroom', actors: [{ action: 'get_up' }] },
   check_phone: { place: 'bedroom', actors: [{ action: 'phone' }] },
   phone_call: { place: 'living_room', actors: [{ action: 'call' }] },
-  look_window: { place: 'window_view', actors: [{ action: 'look_out', from: 'left' }] },
+  look_window: { place: 'window_view', actors: [{ action: 'look_out', fromX: 0.13 }] }, // Figur am Rand → Fenster frei
   leave_house: { place: 'house_front', actors: [{ action: 'walk', from: 'center', to: 'right' }] },
   empty_street: { place: 'street', actors: [{ action: 'walk', from: 'left', to: 'right' }] },
   empty_city: { place: 'empty_city', actors: [{ action: 'look_up' }] },
@@ -475,14 +475,14 @@ export const SHOTS = {
   days_pass: { place: 'living_room', actors: [{ action: 'sit' }] },
   night_alone: { place: 'empty_city', time: 'night', actors: [{ action: 'sad' }] },
   stars: { place: 'meadow', time: 'night', actors: [{ action: 'look_up' }] },
-  miss_people: { place: 'window_view', time: 'night', actors: [{ action: 'sad', from: 'left' }] },
+  miss_people: { place: 'window_view', time: 'night', actors: [{ action: 'sad', fromX: 0.13 }] },
   earth_view: { place: 'earth', props: [], actors: [] },
   look_ocean: { place: 'beach', props: [{ type: 'clouds' }], actors: [{ action: 'look_out', from: 'center' }] },
   park_walk: { place: 'meadow', props: [{ type: 'clouds' }, { type: 'birds' }], actors: [{ action: 'walk', from: 'left', to: 'right' }] },
   park_bench: { place: 'meadow', actors: [{ action: 'sit' }] },
-  enter_supermarket: { place: 'street', props: [{ type: 'shop', label: 'SUPERMARKT' }], actors: [{ action: 'walk', from: 'left', to: 'center' }] },
-  bank: { place: 'street', props: [{ type: 'shop', label: 'BANK' }], actors: [{ action: 'walk', from: 'right', to: 'center' }] },
-  money: { place: 'street', props: [{ type: 'shop', label: 'BANK' }, { type: 'money' }], actors: [{ action: 'cheer' }] },
+  enter_supermarket: { place: 'street', props: [{ type: 'shop', label: 'SUPERMARKT' }], actors: [{ action: 'walk', fromX: -0.05, toX: 0.3 }] }, // Laden bleibt sichtbar
+  bank: { place: 'street', props: [{ type: 'shop', label: 'BANK' }], actors: [{ action: 'walk', fromX: -0.05, toX: 0.3 }] },
+  money: { place: 'street', props: [{ type: 'shop', label: 'BANK' }, { type: 'money' }], actors: [{ action: 'cheer', fromX: 0.2 }] },
   forest_walk: { place: 'forest', actors: [{ action: 'walk', from: 'left', to: 'right' }] },
   animals_return: { place: 'empty_city', time: 'sunset', props: [{ type: 'animals' }], actors: [{ action: 'look_up' }] },
   black: { place: 'black', actors: [] },

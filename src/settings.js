@@ -10,7 +10,7 @@ export const DEFAULTS = {
   speed: 1.0,
   quality: '1080',
   imageStyle: 'cinematic',
-  visualMode: 'poly2d',
+  visualMode: 'animation',
   followEnabled: true,
   followName: '',
   followImage: '',
@@ -29,6 +29,11 @@ export function loadSettings() {
     if (!s.lowpolyV1) {
       s.visualMode = '3d'; // neuer Standard: Low-Poly-3D
       s.lowpolyV1 = true;
+    }
+    if (!s.clear2dV1) {
+      s.visualMode = 'animation'; // Wunsch: klare 2D-Grafik ohne Polygone
+      s.clear2dV1 = true;
+      s.poly2dV1 = true;
     }
     if (!s.poly2dV1) {
       s.visualMode = 'poly2d'; // neuer Standard: Low-Poly-Look in 2D (kein 3D-Grafikspeicher)
