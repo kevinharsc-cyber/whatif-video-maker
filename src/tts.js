@@ -55,6 +55,16 @@ export async function synthesize(ctx, scenes, settings, onProgress, log) {
     }
     return piperTTS(ctx, scenes, settings, 'de_DE-thorsten-medium', onProgress, log);
   }
+  // Lange Skripte + Gemini-Schlüssel: Gemini-Stimme nehmen. Die kostenlose Piper-
+  // Stimme läuft auf dem iPhone und braucht dort sehr viel Arbeitsspeicher.
+  if (settings.geminiKey && scenes.length > 12 && settings.autoGeminiVoice !== false) {
+    try {
+      log('Langes Skript: nutze die Gemini-Stimme „Charon“ (braucht auf dem iPhone kaum Speicher) …');
+      return await geminiTTS(ctx, scenes, settings, 'Charon', onProgress);
+    } catch (e) {
+      log(`Gemini-Stimme fehlgeschlagen (${e.message}) – nutze kostenlose Piper-Stimme.`, 'warn');
+    }
+  }
   return piperTTS(ctx, scenes, settings, name, onProgress, log);
 }
 
