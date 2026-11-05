@@ -36,8 +36,6 @@ export function redX(g, cx, cy, s, k, lw) {
   g.strokeStyle = '#ff3b4d';
   g.lineCap = 'round';
   g.lineWidth = lw;
-  g.shadowColor = 'rgba(255,40,60,0.8)';
-  g.shadowBlur = lw * 1.5;
   const k1 = clamp(k * 2);
   const k2 = clamp(k * 2 - 1);
   g.beginPath();

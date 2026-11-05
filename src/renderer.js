@@ -462,6 +462,8 @@ export class VideoRenderer {
         onProgress?.(n / frames);
         await yieldUI();
       }
+      // jede Sekunde Video kurz durchatmen, damit Safari aufräumen kann
+      if (n % FPS === 0) await new Promise((r) => setTimeout(r, 25));
     }
     await withTimeout(venc.flush(), 30000, 'Video-Encoder');
     if (failure) throw failure;

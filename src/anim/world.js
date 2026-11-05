@@ -922,8 +922,6 @@ export function drawGroundProps(g, W, H, c, props) {
       g.font = `900 ${Math.round(H * 0.035)}px "Arial Black", system-ui, sans-serif`;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.shadowColor = 'rgba(255,200,120,0.95)';
-      g.shadowBlur = W * 0.03;
       g.fillStyle = '#fff1d6';
       g.fillText(label, W / 2, sy + H * 0.031);
       g.restore();
