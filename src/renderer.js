@@ -391,35 +391,52 @@ export class VideoRenderer {
     let lastCt = ctx.currentTime;
     let lastChange = performance.now();
     let lastDraw = -1e9;
+    // Zeitachse: normalerweise die Ton-Uhr. Bleibt die stehen, obwohl iOS "läuft"
+    // meldet (passiert auf dem iPhone am Ende), läuft die Zeit mit der normalen Uhr weiter.
+    let t = 0;
+    let tAt = performance.now();
+    const wallStart = performance.now();
     for (;;) {
       await nextFrame();
       const now = performance.now();
-      // Genau ~30 Bilder/s zeichnen – iPhones mit 120-Hz-Bildschirm würden sonst
-      // 120 Bilder/s zeichnen (4× so viel Arbeit wie nötig).
+      // Nur ~24 Bilder/s zeichnen (120-Hz-iPhones würden sonst 120/s zeichnen)
       if (now - lastDraw < 1000 / FPS - 3) continue;
       lastDraw = now;
       if (ctx.currentTime !== lastCt) {
         lastCt = ctx.currentTime;
         lastChange = now;
-      } else if (now - lastChange > 1200) {
-        // Audio-Uhr steht: Aufnahme pausieren, Ton wieder starten, weitermachen.
+        t = ctx.currentTime - t0;
+      } else if (now - lastChange > 1200 && ctx.state !== 'running') {
+        // Ton wirklich angehalten (z. B. Anruf): pausieren, Ton fortsetzen, weiter
         if (rec.state === 'recording') rec.pause();
         await ensureAudio(ctx);
         if (rec.state === 'paused') rec.resume();
         lastCt = ctx.currentTime;
         lastChange = performance.now();
+        tAt = performance.now();
         continue;
+      } else if (now - lastChange > 250) {
+        t += (now - tAt) / 1000; // Ton-Uhr steht → mit normaler Uhr weiterzählen
       }
-      const t = ctx.currentTime - t0;
+      tAt = now;
       this.drawFrame(Math.max(0, Math.min(t, this.duration)));
       onProgress?.(Math.max(0, Math.min(1, t / this.duration)));
       if (t >= this.duration + 0.25) break;
+      // Notbremse: nie länger als Videolänge + 20 s aufnehmen
+      if (now - wallStart > (this.duration + 20) * 1000) break;
     }
 
+    try {
+      rec.requestData?.();
+    } catch {
+      /* egal */
+    }
     rec.stop();
     stopMusic();
     stopSfx();
-    await stopped;
+    // Safari meldet das Ende manchmal nicht → nach 8 s mit den vorhandenen Daten weiter
+    const timedOut = await Promise.race([stopped.then(() => false), new Promise((r) => setTimeout(() => r(true), 8000))]);
+    if (timedOut && !chunks.length) throw new Error('Aufnahme wurde von Safari nicht beendet');
     videoStream.getTracks().forEach((tr) => tr.stop());
     try {
       voice.disconnect();
