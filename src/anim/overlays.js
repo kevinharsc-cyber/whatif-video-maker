@@ -35,6 +35,12 @@ function emojiSprite(emoji) {
   g.textBaseline = 'middle';
   g.fillText(emoji, 80, 86);
   emojiCache.set(emoji, c);
+  // Als ImageBitmap ist das Zeichnen in Safari am sparsamsten (keine Kopie pro Bild)
+  if (typeof createImageBitmap === 'function') {
+    createImageBitmap(c)
+      .then((bmp) => emojiCache.set(emoji, bmp))
+      .catch(() => {});
+  }
   return c;
 }
 // Emoji mit Mittelpunkt (x, y) in der Größe size zeichnen

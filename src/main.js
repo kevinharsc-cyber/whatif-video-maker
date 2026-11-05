@@ -321,8 +321,17 @@ async function onCreateVideo() {
     const preview = $('livePreview');
     const pg = preview.getContext('2d');
     const mimeType = pickMimeType();
-    const onProg = (p) => {
+    // Vorschau nur alle 2 s aktualisieren: jedes Kopieren des großen Bildes
+    // kostet in Safari Speicher, der nur langsam freigegeben wird.
+    let lastPreview = 0;
+    const updatePreview = () => {
+      const now = performance.now();
+      if (now - lastPreview < 2000) return;
+      lastPreview = now;
       pg.drawImage(renderer.canvas, 0, 0, preview.width, preview.height);
+    };
+    const onProg = (p) => {
+      updatePreview();
       setStatus(`Video wird erstellt: ${Math.round(p * 100)} %`, 0.65 + p * 0.35);
     };
     let blob = null;
@@ -364,7 +373,7 @@ async function onCreateVideo() {
         mimeType,
         ensureAudio: ensureAudioRunning,
         onProgress: (p) => {
-          pg.drawImage(renderer.canvas, 0, 0, preview.width, preview.height);
+          updatePreview();
           setStatus(`Video wird aufgenommen: ${Math.round(p * buffer.duration)} / ${Math.round(buffer.duration)} s`, 0.65 + p * 0.35);
         },
       });

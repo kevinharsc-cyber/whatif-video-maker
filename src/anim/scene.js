@@ -369,23 +369,6 @@ function drawForeground(g, W, H, c, spec, t, p) {
   g.restore();
 }
 
-// Filmkorn (einmal erzeugt, dann wiederverwendet)
-let grainCanvas = null;
-function grain() {
-  if (grainCanvas) return grainCanvas;
-  grainCanvas = document.createElement('canvas');
-  grainCanvas.width = grainCanvas.height = 192;
-  const gg = grainCanvas.getContext('2d');
-  const img = gg.createImageData(192, 192);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = Math.random() * 255;
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-    img.data[i + 3] = 255;
-  }
-  gg.putImageData(img, 0, 0);
-  return grainCanvas;
-}
-
 // Figuren-Looks: Hauptfigur mit orangem Hoodie, andere in dunklen Warmtönen
 const LOOK_MAIN = { skin: '#f6f1ec', cloth: '#7c3aed', pants: '#2b2140', rim: '#ffffff', hoodie: true, eye: '#2a1f3d', ink: '#231a33', shoe: '#17111f' };
 const LOOK_OTHER = { skin: '#3a1d10', cloth: '#2f6fd6', pants: '#23140c', rim: '#ffb067', hoodie: true, eye: '#fff1dc', shoe: '#140a05' };
@@ -405,7 +388,7 @@ function cinematicGrade(g, W, H, t, spec) {
   g.globalCompositeOperation = 'source-over';
   // Lichtpartikel
   const rnd = seededRandom(99);
-  const n = spec.place === 'space' || spec.place === 'earth' ? 20 : 45;
+  const n = spec.place === 'space' || spec.place === 'earth' ? 12 : 22;
   for (let i = 0; i < n; i++) {
     const sp = 0.01 + rnd() * 0.03;
     const x = rnd() * W + Math.sin(t * 0.5 + i) * W * 0.02;
@@ -421,19 +404,7 @@ function cinematicGrade(g, W, H, t, spec) {
     g.arc(x, y, r, 0, Math.PI * 2);
     g.fill();
   }
-  // Filmkorn
-  try {
-    const pat = g.createPattern(grain(), 'repeat');
-    g.save();
-    g.globalAlpha = 0.07;
-    g.globalCompositeOperation = 'overlay';
-    g.translate(Math.floor(Math.random() * 192), Math.floor(Math.random() * 192));
-    g.fillStyle = pat;
-    g.fillRect(-192, -192, W + 384, H + 384);
-    g.restore();
-  } catch {
-    /* ohne Korn */
-  }
+  // (Filmkorn entfernt: kostete in Safari bei jedem Bild eine Kopie im Speicher)
   // Vignette
   const v = g.createRadialGradient(W / 2, H * 0.48, H * 0.25, W / 2, H * 0.5, H * 0.75);
   v.addColorStop(0, 'rgba(0,0,0,0)');
