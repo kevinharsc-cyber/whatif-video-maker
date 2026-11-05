@@ -5,6 +5,7 @@ const KEY = 'whatif-settings-v1';
 
 export const DEFAULTS = {
   geminiKey: '',
+  pollinationsKey: '',
   voice: 'piper:de_DE-thorsten-medium',
   speed: 1.0,
   quality: '1080',

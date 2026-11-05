@@ -4,7 +4,7 @@ import { generateScript, normalizeTopic } from './script.js';
 import { loadSceneImages } from './images.js';
 import { synthesize, VOICES, speechWeight } from './tts.js';
 import { buildSubtitles, toSrt } from './subtitles.js';
-import { VideoRenderer, pickMimeType } from './renderer.js';
+import { VideoRenderer, pickMimeType, tryResume } from './renderer.js';
 
 const $ = (id) => document.getElementById(id);
 let settings = loadSettings();
@@ -59,9 +59,46 @@ function getAudioCtx() {
   if (!audioCtx || audioCtx.state === 'closed') {
     const AC = window.AudioContext || window.webkitAudioContext;
     audioCtx = new AC();
+    // Unhörbarer Dauerton: verhindert, dass iOS den Ton während der
+    // langen Vorbereitung (Bilder, Stimme) einschlafen lässt.
+    try {
+      const osc = audioCtx.createOscillator();
+      const silent = audioCtx.createGain();
+      silent.gain.value = 0;
+      osc.connect(silent);
+      silent.connect(audioCtx.destination);
+      osc.start();
+    } catch {
+      /* egal */
+    }
   }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
   return audioCtx;
+}
+
+// Falls iOS den Ton angehalten hat: Knopf anzeigen, ein Tippen startet ihn wieder.
+async function ensureAudioRunning(ctx) {
+  if (await tryResume(ctx)) return;
+  const oldStatus = $('status').textContent;
+  setStatus('⏸️ iOS hat den Ton pausiert. Bitte unten auf „Aufnahme fortsetzen“ tippen.');
+  const btn = document.createElement('button');
+  btn.className = 'primary';
+  btn.textContent = '▶️ Aufnahme fortsetzen';
+  $('status').after(btn);
+  btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  await new Promise((resolve) => {
+    btn.onclick = async () => {
+      if (await tryResume(ctx, 2000)) {
+        resolve();
+      } else {
+        setStatus(
+          '⚠️ Ton startet nicht. Spielt eine andere App gerade Musik oder Ton ab (z. B. Musik, Podcast, Video)? Bitte dort stoppen und erneut tippen.',
+        );
+      }
+    };
+  });
+  btn.remove();
+  setStatus(oldStatus);
 }
 
 // ------------------------------------------------------- Schritt 1 + 2 --
@@ -212,6 +249,7 @@ async function onCreateVideo() {
     const blob = await renderer.record(ctx, {
       music: settings.music,
       mimeType,
+      ensureAudio: ensureAudioRunning,
       onProgress: (p) => {
         pg.drawImage(renderer.canvas, 0, 0, preview.width, preview.height);
         setStatus(`Video wird aufgenommen: ${Math.round(p * buffer.duration)} / ${Math.round(buffer.duration)} s`, 0.65 + p * 0.35);
@@ -322,6 +360,7 @@ function openSettings() {
   $('sQuality').value = settings.quality;
   $('sMusic').checked = settings.music;
   $('sKey').value = settings.geminiKey;
+  $('sPolKey').value = settings.pollinationsKey;
   $('settings').showModal();
 }
 
@@ -334,6 +373,7 @@ function readSettingsForm() {
     quality: $('sQuality').value,
     music: $('sMusic').checked,
     geminiKey: $('sKey').value.trim(),
+    pollinationsKey: $('sPolKey').value.trim(),
   };
   saveSettings(settings);
 }

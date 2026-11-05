@@ -18,16 +18,31 @@ export async function loadSceneImages(scenes, settings, onProgress, log) {
   const style = STYLES[settings.imageStyle] || STYLES.cinematic;
   const images = [];
   let failedInRow = 0; // Ist der Dienst komplett down, nicht ewig weiterprobieren.
+  let quotaHit = false; // HTTP 401/402: ohne (gültigen) Schlüssel geht nichts mehr
   // Nacheinander laden: der kostenlose Dienst erlaubt nur wenige parallele Anfragen.
   for (let i = 0; i < scenes.length; i++) {
     onProgress(i, scenes.length);
     const prompt = `${scenes[i].image_prompt}, ${style}, vertical composition, no text, no watermark`;
     let img = null;
+    if (quotaHit) {
+      images.push(fallbackImage(scenes[i].image_prompt, w, h, i));
+      continue;
+    }
     const attempts = failedInRow >= 2 ? 1 : 3;
     for (let attempt = 0; attempt < attempts && !img; attempt++) {
       try {
-        img = await fetchPollinations(prompt, w, h, hashString(prompt) + attempt);
+        img = await fetchPollinations(prompt, w, h, hashString(prompt) + attempt, settings.pollinationsKey);
       } catch (e) {
+        if (e.status === 401 || e.status === 402 || e.status === 403) {
+          quotaHit = true;
+          log(
+            settings.pollinationsKey
+              ? `Bilddienst lehnt ab (HTTP ${e.status}): Schlüssel ungültig oder Guthaben aufgebraucht – nutze Ersatzbilder.`
+              : `Bilddienst verlangt einen Schlüssel (HTTP ${e.status}) – nutze Ersatzbilder. Kostenlosen Pollinations-Schlüssel unter ⚙️ eintragen.`,
+            'warn',
+          );
+          break;
+        }
         if (attempt < attempts - 1) await sleep(2500 * (attempt + 1));
         else log(`Bild ${i + 1} konnte nicht geladen werden (${e.message}) – nutze Ersatzbild.`, 'warn');
       }
@@ -39,12 +54,17 @@ export async function loadSceneImages(scenes, settings, onProgress, log) {
   return images;
 }
 
-async function fetchPollinations(prompt, w, h, seed) {
-  const url =
-    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
-    `?width=${w}&height=${h}&seed=${seed % 1000000}&nologo=true&model=flux`;
-  const res = await fetchWithTimeout(url, { mode: 'cors' }, 90000);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+async function fetchPollinations(prompt, w, h, seed, key) {
+  const params = `width=${w}&height=${h}&seed=${seed % 1000000}&nologo=true&model=flux`;
+  const url = key
+    ? `https://gen.pollinations.ai/image/${encodeURIComponent(prompt)}?${params}&key=${encodeURIComponent(key)}`
+    : `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?${params}`;
+  const res = await fetchWithTimeout(url, { mode: 'cors' }, 60000);
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   const blob = await res.blob();
   if (!blob.type.startsWith('image/') || blob.size < 2000) throw new Error('kein gültiges Bild');
   return await blobToBitmap(blob);

@@ -196,12 +196,14 @@ export class VideoRenderer {
 
   // ----------------------------------------------------------- Aufnahme --
 
-  async record(ctx, { music = true, monitor = true, onProgress, mimeType } = {}) {
+  async record(ctx, { music = true, monitor = true, onProgress, mimeType, ensureAudio = tryResume } = {}) {
     const mt = mimeType ?? pickMimeType();
     if (mt === null || typeof this.canvas.captureStream !== 'function') {
       throw new Error('Dein Browser kann keine Videos aufnehmen. Bitte Safari (iOS 15+) oder Chrome verwenden.');
     }
-    if (ctx.state !== 'running') await ctx.resume();
+    // iOS hält die Audio-Uhr manchmal an (z. B. wenn eine andere App Ton
+    // abspielt). Ohne laufende Audio-Uhr würde die Aufnahme bei 0 s hängen.
+    await ensureAudio(ctx);
 
     const dest = ctx.createMediaStreamDestination();
     const master = ctx.createGain();
@@ -233,16 +235,29 @@ export class VideoRenderer {
     const t0 = ctx.currentTime + 0.15;
     voice.start(t0);
 
-    await new Promise((resolve) => {
-      const tick = () => {
-        const t = ctx.currentTime - t0;
-        this.drawFrame(Math.max(0, Math.min(t, this.duration)));
-        onProgress?.(Math.max(0, Math.min(1, t / this.duration)));
-        if (t >= this.duration + 0.25) resolve();
-        else requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
+    const nextFrame = () => new Promise((r) => requestAnimationFrame(r));
+    let lastCt = ctx.currentTime;
+    let lastChange = performance.now();
+    for (;;) {
+      await nextFrame();
+      const now = performance.now();
+      if (ctx.currentTime !== lastCt) {
+        lastCt = ctx.currentTime;
+        lastChange = now;
+      } else if (now - lastChange > 1200) {
+        // Audio-Uhr steht: Aufnahme pausieren, Ton wieder starten, weitermachen.
+        if (rec.state === 'recording') rec.pause();
+        await ensureAudio(ctx);
+        if (rec.state === 'paused') rec.resume();
+        lastCt = ctx.currentTime;
+        lastChange = performance.now();
+        continue;
+      }
+      const t = ctx.currentTime - t0;
+      this.drawFrame(Math.max(0, Math.min(t, this.duration)));
+      onProgress?.(Math.max(0, Math.min(1, t / this.duration)));
+      if (t >= this.duration + 0.25) break;
+    }
 
     rec.stop();
     stopMusic();
@@ -257,6 +272,17 @@ export class VideoRenderer {
     const type = (rec.mimeType || mt || 'video/mp4').split(';')[0];
     return new Blob(chunks, { type });
   }
+}
+
+// Versucht den Ton fortzusetzen, wartet aber nicht ewig darauf.
+export async function tryResume(ctx, ms = 1500) {
+  if (ctx.state === 'running') return true;
+  try {
+    await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, ms))]);
+  } catch {
+    /* egal */
+  }
+  return ctx.state === 'running';
 }
 
 // Leiser, selbst erzeugter Hintergrund-Sound (keine Urheberrechtsprobleme):
