@@ -872,7 +872,9 @@ async function onTestVoice() {
   btn.disabled = true;
   try {
     const info = $('voiceInfo');
-    info.classList.add('hidden');
+    info.textContent = '⏳ Teste Stimme …';
+    info.style.color = '';
+    info.classList.remove('hidden');
     const sample = settings.visualMode === 'verein' ? 'Hallo zusammen, ich bin Rudi Kiesel vom SV Kieselbach! Heute wird es richtig gut!' : 'Was wäre, wenn die Erde plötzlich stehen bleibt? Die Antwort wird dich überraschen.';
     const { buffer, used, why } = await synthesize(
       ctx,
@@ -896,6 +898,9 @@ async function onTestVoice() {
     await new Promise((r) => (src.onended = r));
   } catch (e) {
     log(`Stimmtest fehlgeschlagen: ${e.message}`, 'error');
+    $('voiceInfo').textContent = `❌ Stimmtest fehlgeschlagen: ${e.message}`;
+    $('voiceInfo').style.color = '#f87171';
+    $('voiceInfo').classList.remove('hidden');
   } finally {
     btn.textContent = old;
     btn.disabled = false;
