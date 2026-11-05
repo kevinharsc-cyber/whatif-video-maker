@@ -410,6 +410,21 @@ export class VideoRenderer {
       firstTimestampBehavior: 'offset',
     });
     let failure = null;
+    let venc = null;
+    let aenc = null;
+    // Bei Fehler/Abbruch: Encoder schließen und Speicher sofort freigeben, damit die
+    // Echtzeit-Aufnahme danach nicht obendrauf läuft und abstürzt
+    const cleanup = () => {
+      for (const enc of [venc, aenc]) {
+        try {
+          if (enc && enc.state !== 'closed') enc.close();
+        } catch {
+          /* egal */
+        }
+      }
+      parts.length = 0;
+    };
+    this._cleanupExport = cleanup;
     const safe = (fn) => (c, m) => {
       try {
         fn(c, m);
@@ -417,9 +432,9 @@ export class VideoRenderer {
         failure = e;
       }
     };
-    const venc = new VideoEncoder({ output: safe((c, m) => muxer.addVideoChunk(c, m)), error: (e) => (failure = e) });
+    venc = new VideoEncoder({ output: safe((c, m) => muxer.addVideoChunk(c, m)), error: (e) => (failure = e) });
     venc.configure(vcfg);
-    const aenc = new AudioEncoder({ output: safe((c, m) => muxer.addAudioChunk(c, m)), error: (e) => (failure = e) });
+    aenc = new AudioEncoder({ output: safe((c, m) => muxer.addAudioChunk(c, m)), error: (e) => (failure = e) });
     aenc.configure(acfg);
 
     // 3) Ton kodieren
@@ -444,7 +459,10 @@ export class VideoRenderer {
     // 4) Bild für Bild zeichnen und kodieren
     const yieldUI = () => new Promise((r) => setTimeout(r, 0));
     for (let n = 0; n < frames; n++) {
-      if (failure) throw failure;
+      if (failure) {
+        cleanup();
+        throw failure;
+      }
       const t = n / FPS - lead;
       this.drawFrame(Math.max(0, Math.min(t, this.duration)));
       const frame = new VideoFrame(this.canvas, { timestamp: Math.round((n * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
@@ -452,7 +470,10 @@ export class VideoRenderer {
       frame.close();
       const waitStart = performance.now();
       while (venc.encodeQueueSize > 2) {
-        if (performance.now() - waitStart > 15000) throw new Error('Video-Encoder hängt');
+        if (performance.now() - waitStart > 15000) {
+          cleanup();
+          throw new Error('Video-Encoder hängt');
+        }
         await new Promise((r) => setTimeout(r, 4));
       }
       if (n % 6 === 0) {
