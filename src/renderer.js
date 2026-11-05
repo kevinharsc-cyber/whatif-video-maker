@@ -4,7 +4,7 @@
 // zusammen mit der Sprachspur als Video auf. Auf dem iPhone (Safari)
 // entsteht dabei direkt eine MP4-Datei (H.264 + AAC).
 
-import { buildOverlays, drawOverlays, scheduleSfx } from './anim/overlays.js';
+import { buildOverlays, drawOverlays, scheduleSfx, addFollowOverlay } from './anim/overlays.js';
 
 const FPS = 30;
 const TRANSITIONS = ['whip', 'zoom', 'slide', 'flash'];
@@ -25,7 +25,7 @@ export function pickMimeType() {
 }
 
 export class VideoRenderer {
-  constructor({ width, height, images, scenes, sceneTimes, subtitles, title, audio }) {
+  constructor({ width, height, images, scenes, sceneTimes, subtitles, title, audio, follow = null }) {
     this.W = width;
     this.H = height;
     this.images = images;
@@ -45,6 +45,7 @@ export class VideoRenderer {
     // Motion Graphics (Pop-ups, Labels) + Soundeffekte
     const withEffects = scenes.map((sc, i) => ({ ...sc, _effect: images[i]?.spec?.effect }));
     const { overlays, sfx } = buildOverlays(withEffects, this.sceneStarts, sceneTimes, subtitles, this.duration);
+    addFollowOverlay(overlays, sfx, follow, this.duration);
     this.overlays = overlays;
     this.sfx = sfx;
     this.punches = overlays.filter((o) => o.type === 'popup' || o.type === 'insert').map((o) => o.start);

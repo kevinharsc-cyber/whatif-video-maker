@@ -454,3 +454,54 @@ input[type='range'] {
 a {
   color: var(--accent);
 }
+
+.sub-head {
+  font-size: 0.95rem;
+  margin: 22px 0 4px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.follow-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: linear-gradient(135deg, #7c3aed, #ff3d7f);
+  border: 3px solid #fff;
+  flex: none;
+}
+
+.follow-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.follow-btns .button {
+  margin: 0;
+  width: 100%;
+  padding: 10px 12px;
+}
+
+.small-btn {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}

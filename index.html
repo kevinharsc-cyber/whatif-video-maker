@@ -119,6 +119,32 @@
 
         <label class="check"><input id="sMusic" type="checkbox" /> Hintergrund-Sound &amp; Übergangseffekte</label>
 
+        <h3 class="sub-head">📣 Folgen-Pop-up</h3>
+        <label class="check"><input id="sFollow" type="checkbox" /> In jedem Video „Folgen“-Pop-up zeigen</label>
+        <div class="follow-row">
+          <img id="sFollowPreview" class="avatar" alt="Profilbild" />
+          <div class="follow-btns">
+            <label class="button ghost" for="sFollowFile">🖼️ Profilbild auswählen</label>
+            <input id="sFollowFile" type="file" accept="image/*" class="visually-hidden" />
+            <button type="button" id="sFollowRemove" class="ghost small-btn">Bild entfernen</button>
+          </div>
+        </div>
+        <label class="lbl" for="sFollowName">Dein Name im Pop-up</label>
+        <input id="sFollowName" type="text" autocomplete="off" placeholder="@deinname" />
+        <label class="lbl" for="sFollowAt">Wann soll es erscheinen?</label>
+        <select id="sFollowAt">
+          <option value="0.15">bei 15 % des Videos</option>
+          <option value="0.2">bei 20 % des Videos (empfohlen)</option>
+          <option value="0.25">bei 25 % des Videos</option>
+          <option value="0.3">bei 30 % des Videos</option>
+        </select>
+        <label class="lbl" for="sFollowBtn">Text auf dem Button</label>
+        <select id="sFollowBtn">
+          <option value="Folgen">Folgen (TikTok)</option>
+          <option value="Abonnieren">Abonnieren (YouTube)</option>
+        </select>
+
+        <h3 class="sub-head">🔑 Schlüssel</h3>
         <label class="lbl" for="sKey">Google-Gemini-API-Schlüssel <small>(optional, kostenlos)</small></label>
         <input id="sKey" type="password" autocomplete="off" placeholder="AIza…" />
         <p class="small">

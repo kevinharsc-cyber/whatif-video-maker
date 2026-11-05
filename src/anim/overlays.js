@@ -180,6 +180,7 @@ export function drawOverlays(g, W, H, t, overlays, font) {
     if (o.type === 'popup') drawPopup(g, W, H, o, age, left, font, t);
     if (o.type === 'label') drawLabel(g, W, H, o, age, left, font);
     if (o.type === 'insert') drawInsert(g, W, H, o, t);
+    if (o.type === 'follow') drawFollow(g, W, H, o, t, font);
   }
 }
 
@@ -372,4 +373,185 @@ export function scheduleSfx(ctx, out, list, t0) {
       /* schon gestoppt */
     }
   });
+}
+
+// ----------------------------------------------------- Folgen-Pop-up ---
+// Karte mit Profilbild + Name, ein Finger tippt auf "Folgen" → "Gefolgt ✓".
+
+export const FOLLOW_DURATION = 3.0;
+const TAP_AT = 1.35;
+
+export function addFollowOverlay(overlays, sfx, follow, duration) {
+  if (!follow || duration < 8) return;
+  const target = Math.max(3.8, Math.min(duration * (follow.at || 0.2), duration - FOLLOW_DURATION - 1));
+  // Zeitpunkt leicht verschieben, damit keine B-Roll-Einblendung verdeckt wird
+  const hitsInsert = (st) => overlays.some((o) => o.type === 'insert' && o.start < st + FOLLOW_DURATION + 0.2 && o.end > st - 0.2);
+  let start = target;
+  for (const d of [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 6, -0.5, -1, -1.5, -2, -3]) {
+    const st = target + d;
+    if (st < 3.5 || st > duration - FOLLOW_DURATION - 0.5) continue;
+    if (!hitsInsert(st)) {
+      start = st;
+      break;
+    }
+  }
+  const end = start + FOLLOW_DURATION;
+  // Emoji-Karten in dieser Zeit weglassen (sonst zu unruhig)
+  for (let k = overlays.length - 1; k >= 0; k--) {
+    const o = overlays[k];
+    // nur kleine Emoji-Karten weglassen; große B-Roll-Einblendungen (oben) bleiben sichtbar
+    if (o.type === 'popup' && o.start < end + 0.2 && o.end > start - 0.2) overlays.splice(k, 1);
+  }
+  overlays.push({ type: 'follow', start, end, follow });
+  sfx.push({ type: 'whoosh', at: start - 0.05 }, { type: 'pop', at: start + TAP_AT }, { type: 'ding', at: start + TAP_AT + 0.08 });
+}
+
+export function drawFollow(g, W, H, o, t, font) {
+  const a = t - o.start;
+  const left = o.end - t;
+  const inK = clamp(a / 0.5);
+  const outK = clamp(left / 0.35);
+  const f = o.follow;
+  const cw = W * 0.86;
+  const ch = W * 0.24;
+  const cx = W / 2;
+  const cy = H * 0.575 + (1 - backOut(inK)) * H * 0.5 + (1 - outK) * H * 0.5;
+  const followed = a >= TAP_AT;
+  g.save();
+  g.translate(cx, cy);
+  const sc = 0.9 + 0.1 * inK;
+  g.scale(sc, sc);
+  // Karte
+  g.fillStyle = 'rgba(0,0,0,0.35)';
+  roundRect(g, -cw / 2 + W * 0.01, -ch / 2 + W * 0.018, cw, ch, ch * 0.28);
+  g.fill();
+  g.fillStyle = 'rgba(22,20,30,0.94)';
+  roundRect(g, -cw / 2, -ch / 2, cw, ch, ch * 0.28);
+  g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.18)';
+  g.lineWidth = W * 0.004;
+  g.stroke();
+  // Profilbild
+  const r = ch * 0.34;
+  const ax = -cw / 2 + ch * 0.5;
+  g.save();
+  g.beginPath();
+  g.arc(ax, 0, r, 0, Math.PI * 2);
+  g.clip();
+  if (f.img) {
+    g.drawImage(f.img, ax - r, -r, r * 2, r * 2);
+  } else {
+    const gr = g.createLinearGradient(ax - r, -r, ax + r, r);
+    gr.addColorStop(0, '#7c3aed');
+    gr.addColorStop(1, '#ff3d7f');
+    g.fillStyle = gr;
+    g.fillRect(ax - r, -r, r * 2, r * 2);
+    g.fillStyle = '#fff';
+    g.font = `900 ${Math.round(r * 0.9)}px ${font}`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('?!', ax, r * 0.05);
+  }
+  g.restore();
+  g.strokeStyle = '#ffffff';
+  g.lineWidth = r * 0.12;
+  g.beginPath();
+  g.arc(ax, 0, r, 0, Math.PI * 2);
+  g.stroke();
+  // kleines Plus am Profilbild (verschwindet nach dem Folgen)
+  if (!followed) {
+    g.fillStyle = '#fe2c55';
+    g.beginPath();
+    g.arc(ax, r * 0.95, r * 0.28, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#fff';
+    g.fillRect(ax - r * 0.14, r * 0.95 - r * 0.035, r * 0.28, r * 0.07);
+    g.fillRect(ax - r * 0.035, r * 0.95 - r * 0.14, r * 0.07, r * 0.28);
+  }
+  // Name + Zeile darunter
+  const tx = ax + r * 1.45;
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.fillStyle = '#ffffff';
+  const name = (f.name || '').trim() || 'Folge für mehr!';
+  let fs = ch * 0.2;
+  g.font = `900 ${Math.round(fs)}px ${font}`;
+  const maxNameW = cw * 0.4;
+  while (g.measureText(name).width > maxNameW && fs > ch * 0.12) {
+    fs -= 1;
+    g.font = `900 ${Math.round(fs)}px ${font}`;
+  }
+  g.fillText(name, tx, -ch * 0.12);
+  g.fillStyle = 'rgba(255,255,255,0.65)';
+  const sub = f.name ? 'Folge für mehr Videos' : 'Neue Videos jede Woche';
+  let sf = ch * 0.13;
+  g.font = `700 ${Math.round(sf)}px system-ui, sans-serif`;
+  while (g.measureText(sub).width > maxNameW && sf > ch * 0.08) {
+    sf -= 1;
+    g.font = `700 ${Math.round(sf)}px system-ui, sans-serif`;
+  }
+  g.fillText(sub, tx, ch * 0.16);
+  // Button
+  const bw = cw * 0.3;
+  const bh = ch * 0.42;
+  const bx = cw / 2 - bw - ch * 0.18;
+  const press = a > TAP_AT - 0.08 && a < TAP_AT + 0.12 ? 0.9 : 1;
+  const popK = followed ? clamp((a - TAP_AT) / 0.25) : 0;
+  const bScale = press * (followed ? 1 + Math.sin(popK * Math.PI) * 0.12 : 1);
+  g.save();
+  g.translate(bx + bw / 2, 0);
+  g.scale(bScale, bScale);
+  g.fillStyle = followed ? '#3a3a46' : '#fe2c55';
+  roundRect(g, -bw / 2, -bh / 2, bw, bh, bh * 0.22);
+  g.fill();
+  g.fillStyle = '#ffffff';
+  g.textAlign = 'center';
+  let bf = bh * 0.42;
+  const label = followed ? (f.button === 'Abonnieren' ? 'Abonniert ✓' : 'Gefolgt ✓') : f.button || 'Folgen';
+  g.font = `900 ${Math.round(bf)}px ${font}`;
+  while (g.measureText(label).width > bw * 0.86 && bf > bh * 0.25) {
+    bf -= 1;
+    g.font = `900 ${Math.round(bf)}px ${font}`;
+  }
+  g.fillText(label, 0, bh * 0.02);
+  g.restore();
+  // Herzchen-Burst beim Folgen
+  if (followed && a - TAP_AT < 0.9) {
+    const k = (a - TAP_AT) / 0.9;
+    for (let i = 0; i < 8; i++) {
+      const ang = -Math.PI / 2 + (i - 3.5) * 0.35;
+      const d = ch * (0.3 + k * 0.9);
+      g.globalAlpha = 1 - k;
+      g.fillStyle = i % 2 ? '#fe2c55' : '#ffffff';
+      g.font = `${Math.round(ch * 0.18)}px ${EMOJI_FONT}`;
+      g.textAlign = 'center';
+      g.fillText(i % 2 ? '❤️' : '✨', bx + bw / 2 + Math.cos(ang) * d, Math.sin(ang) * d);
+    }
+    g.globalAlpha = 1;
+  }
+  // Finger, der tippt
+  const fin = clamp((a - 0.7) / 0.5);
+  const away = clamp((a - TAP_AT - 0.35) / 0.4);
+  if (fin > 0 && away < 1) {
+    const fx = bx + bw * 0.6 + (1 - fin) * cw * 0.25 + away * cw * 0.2;
+    const fy = bh * 0.55 + (1 - fin) * ch * 0.9 + away * ch * 0.8;
+    const tap = a > TAP_AT - 0.1 && a < TAP_AT + 0.1 ? 0.85 : 1;
+    g.save();
+    g.globalAlpha = 1 - away;
+    g.translate(fx, fy);
+    g.scale(tap, tap);
+    g.font = `${Math.round(ch * 0.55)}px ${EMOJI_FONT}`;
+    g.textAlign = 'center';
+    g.textBaseline = 'top';
+    g.fillText('👆', 0, 0);
+    if (Math.abs(a - TAP_AT) < 0.25) {
+      g.strokeStyle = `rgba(255,255,255,${1 - Math.abs(a - TAP_AT) / 0.25})`;
+      g.lineWidth = W * 0.005;
+      g.beginPath();
+      g.arc(-ch * 0.05, 0, ch * (0.1 + (a - TAP_AT + 0.25) * 0.4), 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.restore();
+  }
+  g.restore();
 }
