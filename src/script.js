@@ -34,7 +34,7 @@ export async function generateScript(topic, settings, log) {
   }
   try {
     log('Skript wird mit Pollinations.ai geschrieben (kostenlos) …');
-    return validate(await viaPollinations(t), t);
+    return validate(await viaPollinations(t, settings.pollinationsKey), t);
   } catch (e) {
     log(`Pollinations nicht erreichbar (${e.message}). Nutze eingebaute Vorlage.`, 'warn');
   }
@@ -69,12 +69,14 @@ async function viaGemini(topic, key) {
   return parseJson(text);
 }
 
-async function viaPollinations(topic) {
+async function viaPollinations(topic, key) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (key) headers.Authorization = `Bearer ${key}`;
   const res = await fetchWithTimeout(
-    'https://text.pollinations.ai/openai',
+    key ? 'https://gen.pollinations.ai/v1/chat/completions' : 'https://text.pollinations.ai/openai',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         model: 'openai',
         messages: [

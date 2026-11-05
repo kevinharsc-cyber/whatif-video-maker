@@ -19,7 +19,7 @@ Eine Web-App, die automatisch deutschsprachige **„Was wäre, wenn …?“-Vide
 | Baustein | Dienst | Kosten |
 |---|---|---|
 | Skript | [Pollinations.ai](https://pollinations.ai), ohne Anmeldung; optional **Google Gemini** | kostenlos |
-| Bilder | Pollinations.ai (Modell „Flux“) | kostenlos |
+| Bilder | Pollinations.ai (Modell „Flux“, Schlüssel nötig) – ohne Schlüssel automatisch **passende echte Fotos von Wikimedia Commons** | kostenlos |
 | Stimme | **Piper**, eine Open-Source-Stimme, die direkt auf deinem iPhone läuft; optional Gemini-Stimmen | kostenlos |
 | Untertitel und Video | entstehen im Browser auf deinem iPhone | kostenlos |
 | Webseite | GitHub Pages | kostenlos |
@@ -90,6 +90,11 @@ Danach wird die App bei jeder Änderung auf `main` automatisch neu veröffentlic
   2. **„Create API key“** antippen und den Schlüssel (beginnt mit `AIza…`) kopieren.
   3. In der App unter ⚙️ einfügen und **Speichern** antippen.
 
+- **Pollinations-Schlüssel (für KI-Bilder, kostenlos):**
+  1. [enter.pollinations.ai](https://enter.pollinations.ai) öffnen und anmelden (z. B. **mit GitHub**).
+  2. Einen Schlüssel erstellen und kopieren.
+  3. In der App unter ⚙️ bei „Pollinations-Schlüssel“ einfügen → **Speichern**.
+
 ---
 
 ## 🛟 Probleme und Lösungen
@@ -97,7 +102,9 @@ Danach wird die App bei jeder Änderung auf `main` automatisch neu veröffentlic
 | Problem | Lösung |
 |---|---|
 | „Hinweis: Es wurde die eingebaute Vorlage genutzt“ | Der kostenlose Skript-Dienst war gerade überlastet. Versuche es noch einmal oder trage einen Gemini-Schlüssel ein. |
-| Ein Bild ist nur ein bunter „Planet“ | Der Bilddienst war kurz überlastet, deshalb wurde ein Ersatzbild genutzt. Erstelle das Video einfach noch einmal. |
+| Fotos statt KI-Bilder | Ohne Pollinations-Schlüssel nutzt die App passende Fotos von Wikimedia Commons. Die Bildnachweise stehen in „📋 Beschreibung kopieren“ – bitte mit in die Videobeschreibung übernehmen (Lizenzpflicht). |
+| Bilder sind nur bunte „Planeten“ / „HTTP 402“ | Der Bilddienst Pollinations gibt ohne Schlüssel kaum noch Bilder heraus. Hol dir einen kostenlosen Schlüssel (siehe unten) und trag ihn unter ⚙️ ein. |
+| Aufnahme hängt bei „0 / 47 s“ oder „⏸️ iOS hat den Ton pausiert“ | Tippe auf **„▶️ Aufnahme fortsetzen“**. Hilft das nicht: Musik, Podcasts oder Videos in anderen Apps stoppen (die belegen den Ton) und erneut tippen. |
 | Die Stimme lädt sehr lange | Beim ersten Mal werden etwa 60 MB geladen. Am besten im WLAN. Danach bleibt die Stimme gespeichert. Die Stimme „Eva“ ist kleiner. |
 | Kein Ton beim Stimmtest | Den Stummschalter am iPhone ausschalten und die Lautstärke erhöhen. |
 | Das Video ist abgebrochen | Den Bildschirm nicht sperren und nicht in eine andere App wechseln. |
