@@ -7,6 +7,7 @@ import { runDeviceCheck } from './devicecheck.js';
 import { loadSceneImages } from './images.js';
 import { createAnimVisual, normalizeAnim, guessAnim, guessShot, shotSpec } from './anim/scene.js';
 import { createAnim3DVisual, webglAvailable, plan3D, dispose3D } from './three/lowpoly.js';
+import { createVereinVisuals, prepareVerein } from './verein/verein.js';
 import { exportSegmented, segmentedSupported, startJob, loadJob, clearJob, CancelledError } from './exporter.js';
 import { synthesize, VOICES, speechWeight, releaseVoices } from './tts.js';
 import { buildSubtitles, toSrt } from './subtitles.js';
@@ -213,7 +214,15 @@ function updateInfo() {
 
 // Szenen-Bilder (Animationen) für ein Skript aufbauen – immer gleich für dasselbe
 // Skript, damit eine abgebrochene Erstellung exakt fortgesetzt werden kann.
+function vereinNames() {
+  return String(settings.vereinNames || '')
+    .split(/[,;\n]/)
+    .map((x) => x.trim().replace(/^@/, ''))
+    .filter(Boolean);
+}
+
 function buildAnimVisuals(sc, visualMode) {
+  if (visualMode === 'verein') return createVereinVisuals(sc.scenes, { fans: settings.vereinFans, names: vereinNames() });
   const n = sc.scenes.length;
   let gotUp = false;
   let prevShot = null;
@@ -400,6 +409,7 @@ async function onCreateVideo() {
     setTask('images', 'active');
     let images;
     if (settings.visualMode !== 'images') {
+      if (settings.visualMode === 'verein') await prepareVerein();
       images = buildAnimVisuals(script, settings.visualMode);
       script.credits = [];
       setStatus('Animationen sind bereit', 0.4);
@@ -600,6 +610,10 @@ async function onSelfTest() {
       topic: 'Was wäre, wenn du der letzte Mensch wärst?',
       scenes: [{ text: 'Du wachst auf und alles ist still.' }, { text: 'Du gehst hinaus auf die leere Straße.' }],
     };
+    if (settings.visualMode === 'verein') {
+      test.title = 'TAG 1 – Test';
+      test.scenes = [{ text: 'Hier drüben ist unsere Fantribüne. Wir haben null Fans!' }, { text: 'A: ein neues Tornetz. B: eine richtige Toilette.' }];
+    }
     setTask('voice', 'active');
     setStatus('Test: Stimme für 2 Szenen …', 0.1);
     const { buffer: voice, sceneTimes: st0 } = await synthesize(ctx, test.scenes, settings, () => {}, () => {});
@@ -618,7 +632,8 @@ async function onSelfTest() {
       return { start: at / sr, end: (at + to - from) / sr };
     });
     const subtitles = buildSubtitles(test.scenes, sceneTimes);
-    const visualMode = settings.visualMode === 'images' ? '3d' : settings.visualMode;
+    const visualMode = settings.visualMode === 'images' ? 'animation' : settings.visualMode;
+    if (visualMode === 'verein') await prepareVerein();
     settings.music = false; // für die Ton-Messung
     for (let run = 1; run <= 2; run++) {
       setTask('render', 'active');
@@ -677,6 +692,7 @@ async function resumeVideo(job) {
     /* egal */
   }
   try {
+    if (job.visualMode === 'verein') await prepareVerein();
     const images = buildAnimVisuals(script, job.visualMode);
     log(`Setze fort bei Szene ${job.segDone + 1} von ${job.segs?.length || '?'} (fertige Szenen bleiben erhalten).`);
     const res = await produceVideo({
@@ -802,6 +818,8 @@ function openSettings() {
   $('sSpeedVal').textContent = `${Number(settings.speed).toFixed(2)}×`;
   $('sStyle').value = settings.imageStyle;
   $('sVisual').value = settings.visualMode;
+  $('sFans').value = String(settings.vereinFans || 0);
+  $('sNames').value = settings.vereinNames || '';
   $('sQuality').value = settings.quality;
   $('sMusic').checked = settings.music;
   $('sMood').value = settings.musicMood;
@@ -825,6 +843,8 @@ function readSettingsForm() {
     speed: Number($('sSpeed').value),
     imageStyle: $('sStyle').value,
     visualMode: $('sVisual').value,
+    vereinFans: Math.max(0, parseInt(String($('sFans').value).replace(/\D/g, ''), 10) || 0),
+    vereinNames: $('sNames').value.trim(),
     quality: $('sQuality').value,
     music: $('sMusic').checked,
     musicMood: $('sMood').value,

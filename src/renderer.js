@@ -6,6 +6,7 @@
 
 import { buildOverlays, drawOverlays, scheduleSfx, addFollowOverlay } from './anim/overlays.js';
 import { cachedGradient, cachedLayer } from './util.js';
+import { drawVereinTitle } from './verein/verein.js';
 
 // Konstante 24 Bilder/s: 20 % weniger Arbeit als 30 fps, Kino-/TikTok-üblich
 export const FPS = 24;
@@ -50,15 +51,22 @@ export class VideoRenderer {
       if (scenes[i]?.pauseBefore) return Math.min(st.start - 0.12, sceneTimes[i - 1].end + 0.35);
       return Math.max(0, st.start - 0.12);
     });
+    // Vereins-Modus (SV Kieselbach): eigene Einblendungen, Geräusche, Lippen
+    this.verein = images.some((v) => v?.verein);
     // Motion Graphics (Pop-ups, Labels) + Soundeffekte
     const withEffects = scenes.map((sc, i) => ({ ...sc, _effect: images[i]?.spec?.effect, _action: images[i]?.spec?.actors?.[0]?.action }));
-    const { overlays, sfx } = buildOverlays(withEffects, this.sceneStarts, sceneTimes, subtitles, this.duration);
-    addFollowOverlay(overlays, sfx, follow, this.duration);
+    const built = this.verein ? { overlays: [], sfx: [] } : buildOverlays(withEffects, this.sceneStarts, sceneTimes, subtitles, this.duration);
+    const { overlays, sfx } = built;
+    if (this.verein) {
+      images.forEach((v, i) => (v?.sfx || []).forEach((e) => sfx.push({ ...e, at: this.sceneStarts[i] + e.at })));
+      this.mouth = mouthEnvelope(audio);
+    }
+    if (!this.verein) addFollowOverlay(overlays, sfx, follow, this.duration); // Verein hat eigenen FOLGEN-Knopf
     this.overlays = overlays;
     this.sfx = sfx;
     this.punches = overlays.filter((o) => o.type === 'popup' || o.type === 'insert').map((o) => o.start);
     // Wenn ein Handy eingeblendet wird, schaut die Figur in dieser Szene aufs Handy
-    for (const o of overlays) {
+    for (const o of this.verein ? [] : overlays) {
       const phoneish = (o.type === 'insert' && o.insert === 'phone') || (o.type === 'strike' && (o.icon === 'wifi' || o.icon === '📱'));
       if (!phoneish) continue;
       const spec = images[o.scene]?.spec;
@@ -66,6 +74,13 @@ export class VideoRenderer {
       if (a0 && !['get_up', 'run', 'flee', 'walk', 'sleep', 'swim', 'float'].includes(a0.action)) a0.action = 'phone';
       else if (spec && !a0) spec.actors.push({ action: 'phone' });
     }
+  }
+
+  // Mundöffnung (0…1) aus der Lautstärke der Stimme
+  mouthAt(t) {
+    const m = this.mouth;
+    if (!m) return 0;
+    return m[Math.max(0, Math.min(m.length - 1, Math.floor(t * 30)))] || 0;
   }
 
   // Kamera: dezente Bewegung je Szene + kurzer Zoom-"Punch" bei jedem Pop-up
@@ -118,7 +133,7 @@ export class VideoRenderer {
       // Abwechslungsreiche Übergänge
       const k = easeInOut(Math.max(0, since / T));
       const wanted = this.scenes[i]?.transition;
-      const type = ['whip', 'zoom', 'slide', 'flash', 'cut', 'fade'].includes(wanted) ? wanted : TRANSITIONS[(i - 1) % TRANSITIONS.length];
+      const type = ['whip', 'zoom', 'slide', 'flash', 'cut', 'fade'].includes(wanted) ? wanted : this.verein ? 'cut' : TRANSITIONS[(i - 1) % TRANSITIONS.length];
       if (type === 'whip') {
         this.drawSceneCam(i - 1, t, { dx: -k });
         this.drawSceneCam(i, t, { dx: 1 - k });
@@ -168,8 +183,16 @@ export class VideoRenderer {
     });
     if (!animMode || this.images[i]?.needsShade) g.drawImage(shade.img, 0, 0, W, H); // bei 2D-Animationen schon im Hintergrund enthalten
 
+    if (this.verein) {
+      const img = this.images[i];
+      const st = this.sceneStarts[i];
+      const en = i + 1 < this.sceneStarts.length ? this.sceneStarts[i + 1] : this.duration;
+      img?.drawOverlay?.(g, W, H, Math.max(0, t - st), Math.max(0.5, en - st));
+    }
     drawOverlays(g, W, H, t, this.overlays, this.font);
-    this.drawTitle(t);
+    if (this.verein) {
+      if (this.images[i]?.kind !== 'slogan') drawVereinTitle(g, W, H, t, this.title);
+    } else this.drawTitle(t);
     this.drawSubtitle(t);
     this.drawProgress(t);
   }
@@ -190,7 +213,7 @@ export class VideoRenderer {
       // Strichmännchen-Animation: zeichnet sich selbst passend zur Szenenzeit
       g.save();
       g.globalAlpha = alpha;
-      img.draw(g, W, H, Math.max(0, t - start), Math.max(0.5, end - start));
+      img.draw(g, W, H, Math.max(0, t - start), Math.max(0.5, end - start), { tAbs: t, mouth: this.mouthAt(t) });
       g.restore();
       return;
     }
@@ -249,12 +272,15 @@ export class VideoRenderer {
     const maxW = W * 0.88;
     const upper = (w) => w.toLocaleUpperCase('de-DE');
     const words = chunk.words.map((w) => upper(w.word));
-    g.font = `900 ${size}px ${this.font}`;
+    const font = this.verein ? '"Lilita One", "Arial Black", sans-serif' : this.font;
+    const weight = this.verein ? '' : '900 ';
+    size = this.verein ? Math.round(W * 0.096) : size;
+    g.font = `${weight}${size}px ${font}`;
     const spaceW = () => g.measureText(' ').width;
     let total = g.measureText(words.join(' ')).width;
     while (total > maxW && size > W * 0.06) {
       size -= 2;
-      g.font = `900 ${size}px ${this.font}`;
+      g.font = `${weight}${size}px ${font}`;
       total = g.measureText(words.join(' ')).width;
     }
     // Zeilen bilden (meist 1 Zeile)
@@ -271,7 +297,7 @@ export class VideoRenderer {
     lines.push(cur);
 
     g.save();
-    g.translate(W / 2, this.images[chunk.scene]?.spec?.place === 'black' ? H * 0.5 : H * 0.7);
+    g.translate(W / 2, this.images[chunk.scene]?.spec?.place === 'black' ? H * 0.5 : this.images[chunk.scene]?.kind === 'slogan' ? H * 0.88 : H * 0.69);
     g.scale(pop, pop);
     g.textBaseline = 'middle';
     g.textAlign = 'left';
@@ -286,9 +312,18 @@ export class VideoRenderer {
         const active = t >= w.start && t < w.end + 0.05;
         const word = upper(w.word);
         g.lineWidth = size * 0.24;
-        g.strokeStyle = '#000';
+        g.strokeStyle = this.verein ? '#262626' : '#000';
+        if (this.verein) {
+          // Sticker-Look: Schlagschatten, gesprochenes Wort rot, kommende grau
+          g.save();
+          g.translate(0, size * 0.09);
+          g.strokeText(word, x, y);
+          g.fillStyle = '#262626';
+          g.fillText(word, x, y);
+          g.restore();
+        }
         g.strokeText(word, x, y);
-        g.fillStyle = active ? '#A6FF3B' : '#FFFFFF';
+        g.fillStyle = active ? (this.verein ? '#ef4136' : '#A6FF3B') : this.verein && t < w.start ? '#dcdcdc' : '#FFFFFF';
         g.fillText(word, x, y);
         x += g.measureText(word).width + spaceW();
       }
@@ -329,7 +364,7 @@ export class VideoRenderer {
     voice.connect(master);
     voice.start(lead);
     if (music) {
-      startAmbientMusic(off, master, this.duration, [], this.mood);
+      (this.verein ? startHappyMusic : startAmbientMusic)(off, master, this.duration, [], this.mood);
       scheduleSfx(off, master, this.sfx, lead);
     }
     return withTimeout(off.startRendering(), 90000, 'Ton-Mischung');
@@ -367,7 +402,7 @@ export class VideoRenderer {
     voice.connect(master);
 
     let stopMusic = () => {};
-    if (music) stopMusic = startAmbientMusic(ctx, master, this.duration, [], this.mood);
+    if (music) stopMusic = (this.verein ? startHappyMusic : startAmbientMusic)(ctx, master, this.duration, [], this.mood);
 
     this.drawFrame(0);
     // Ohne Bildraten-Grenze: jedes gezeichnete Bild wird übernommen (die Grenze
@@ -626,4 +661,114 @@ function roundRect(g, x, y, w, h, r) {
   g.arcTo(x, y + h, x, y, r);
   g.arcTo(x, y, x + w, y, r);
   g.closePath();
+}
+
+// Lautstärke der Stimme pro Videobild (30/s) → Lippenbewegung
+function mouthEnvelope(audio) {
+  if (!audio?.getChannelData) return null;
+  const d = audio.getChannelData(0);
+  const hop = Math.floor(audio.sampleRate / 30);
+  const n = Math.ceil(d.length / hop);
+  const out = new Float32Array(n);
+  let max = 1e-6;
+  for (let i = 0; i < n; i++) {
+    let sum = 0;
+    const a = i * hop;
+    const b = Math.min(d.length, a + hop);
+    for (let k = a; k < b; k += 4) sum += d[k] * d[k];
+    out[i] = Math.sqrt(sum / Math.max(1, (b - a) / 4));
+    if (out[i] > max) max = out[i];
+  }
+  for (let i = 0; i < n; i++) out[i] = Math.min(1, (out[i] / max) * 2.2);
+  return out;
+}
+
+// Fröhliche Vereinsmusik: Zupf-Arpeggio (C–G–Am–F), Bass, leichtes Schlagzeug
+function startHappyMusic(ctx, out, duration) {
+  const now = ctx.currentTime + 0.15;
+  const bus = ctx.createGain();
+  const vol = 0.07;
+  bus.gain.setValueAtTime(0, now);
+  bus.gain.linearRampToValueAtTime(vol, now + 0.6);
+  bus.gain.setValueAtTime(vol, now + Math.max(1, duration - 1.2));
+  bus.gain.linearRampToValueAtTime(0, now + duration);
+  bus.connect(out);
+  const nodes = [];
+  const beat = 60 / 112;
+  const chords = [[60, 64, 67], [55, 59, 62], [57, 60, 64], [53, 57, 60]];
+  const bass = [36, 43, 45, 41];
+  const f = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  let noise = null;
+  const getNoise = () => {
+    if (noise) return noise;
+    noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.2), ctx.sampleRate);
+    const d = noise.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return noise;
+  };
+  const note = (freq, at, len, type, gain) => {
+    const o = ctx.createOscillator();
+    const gn = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, at);
+    gn.gain.setValueAtTime(0.0001, at);
+    gn.gain.exponentialRampToValueAtTime(gain, at + 0.008);
+    gn.gain.exponentialRampToValueAtTime(0.0001, at + len);
+    o.connect(gn).connect(bus);
+    o.start(at);
+    o.stop(at + len + 0.05);
+    nodes.push(o);
+  };
+  const bars = Math.ceil(duration / (4 * beat));
+  for (let b = 0; b < bars; b++) {
+    const ch = chords[b % 4];
+    const t0 = now + b * 4 * beat;
+    for (let k = 0; k < 8; k++) {
+      const at = t0 + (k * beat) / 2;
+      if (at > now + duration - 0.3) break;
+      const m = ch[[0, 1, 2, 1, 0, 2, 1, 2][k]] + (k === 2 || k === 5 ? 12 : 0);
+      note(f(m), at, 0.32, 'triangle', k % 2 ? 0.35 : 0.5);
+      if (k % 2 === 0) note(f(bass[b % 4] + (k === 4 ? 7 : 0)), at, beat * 0.9, 'sine', 0.8);
+      // Hi-Hat + Kick/Snare
+      const src = ctx.createBufferSource();
+      src.buffer = getNoise();
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = k === 2 || k === 6 ? 1800 : 7000;
+      const hg = ctx.createGain();
+      const hv = k === 2 || k === 6 ? 0.35 : 0.12;
+      hg.gain.setValueAtTime(hv, at);
+      hg.gain.exponentialRampToValueAtTime(0.0001, at + (k === 2 || k === 6 ? 0.14 : 0.04));
+      src.connect(hp).connect(hg).connect(bus);
+      src.start(at);
+      src.stop(at + 0.2);
+      nodes.push(src);
+      if (k === 0 || k === 4) {
+        const o = ctx.createOscillator();
+        const gn = ctx.createGain();
+        o.frequency.setValueAtTime(130, at);
+        o.frequency.exponentialRampToValueAtTime(45, at + 0.12);
+        gn.gain.setValueAtTime(0.9, at);
+        gn.gain.exponentialRampToValueAtTime(0.0001, at + 0.18);
+        o.connect(gn).connect(bus);
+        o.start(at);
+        o.stop(at + 0.2);
+        nodes.push(o);
+      }
+    }
+  }
+  return () => {
+    for (const n of nodes) {
+      try {
+        n.stop();
+      } catch {
+        /* schon fertig */
+      }
+    }
+    try {
+      bus.disconnect();
+    } catch {
+      /* egal */
+    }
+  };
 }
