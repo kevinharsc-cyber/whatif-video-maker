@@ -301,6 +301,132 @@ export class VideoRenderer {
 
   // ----------------------------------------------------------- Aufnahme --
 
+  // ------------------------------------------------- Sauberer MP4-Export --
+  // Erzeugt eine "normale" MP4-Datei: exakt 30 Bilder/s (H.264) + AAC-Ton.
+  // Bild für Bild statt Echtzeit-Aufnahme → kein Ruckeln/Versatz nach dem
+  // Hochladen auf TikTok, und meist schneller als Echtzeit.
+  static async canExportMp4() {
+    return typeof VideoEncoder !== 'undefined' && typeof AudioEncoder !== 'undefined' && typeof VideoFrame !== 'undefined' && typeof OfflineAudioContext !== 'undefined';
+  }
+
+  async exportMp4({ music = true, onProgress, allowNonAac = false } = {}) {
+    const { Muxer, ArrayBufferTarget } = await import('mp4-muxer');
+    const W = this.W;
+    const H = this.H;
+    const lead = 0.15;
+    const total = this.duration + lead + 0.35;
+    const sr = 48000;
+
+    // 1) Ton offline mischen (Stimme + Musik + Effekte, mit Limiter)
+    const off = new OfflineAudioContext(2, Math.ceil(total * sr), sr);
+    const master = off.createGain();
+    const limiter = off.createDynamicsCompressor();
+    limiter.threshold.value = -9;
+    limiter.knee.value = 4;
+    limiter.ratio.value = 12;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.2;
+    const outGain = off.createGain();
+    outGain.gain.value = 0.9;
+    master.connect(limiter);
+    limiter.connect(outGain);
+    outGain.connect(off.destination);
+    const voice = off.createBufferSource();
+    voice.buffer = normalizeBuffer(off, this.audio, 0.8);
+    voice.connect(master);
+    voice.start(lead);
+    if (music) {
+      startAmbientMusic(off, master, this.duration, [], this.mood);
+      scheduleSfx(off, master, this.sfx, lead);
+    }
+    onProgress?.(0);
+    const mixed = await off.startRendering();
+
+    // 2) Codecs wählen (H.264 + AAC bevorzugt)
+    const vBase = { width: W, height: H, bitrate: W >= 1080 ? 8_000_000 : 5_000_000, framerate: FPS, latencyMode: 'quality' };
+    let vcfg = null;
+    for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028', 'avc1.640033']) {
+      const cfg = { ...vBase, codec, avc: { format: 'avc' } };
+      try {
+        if ((await VideoEncoder.isConfigSupported(cfg)).supported) {
+          vcfg = cfg;
+          break;
+        }
+      } catch {
+        /* weiter */
+      }
+    }
+    if (!vcfg && allowNonAac) {
+      const cfg = { ...vBase, codec: 'vp09.00.40.08' };
+      if ((await VideoEncoder.isConfigSupported(cfg)).supported) vcfg = cfg;
+    }
+    if (!vcfg) throw new Error('H.264-Encoder nicht verfügbar');
+    let acfg = { codec: 'mp4a.40.2', sampleRate: sr, numberOfChannels: 2, bitrate: 192_000 };
+    let aSupported = false;
+    try {
+      aSupported = (await AudioEncoder.isConfigSupported(acfg)).supported;
+    } catch {
+      aSupported = false;
+    }
+    if (!aSupported) {
+      if (!allowNonAac) throw new Error('AAC-Encoder nicht verfügbar');
+      acfg = { codec: 'opus', sampleRate: sr, numberOfChannels: 2, bitrate: 192_000 };
+    }
+
+    const target = new ArrayBufferTarget();
+    const muxer = new Muxer({
+      target,
+      video: { codec: vcfg.codec.startsWith('avc') ? 'avc' : 'vp9', width: W, height: H, frameRate: FPS },
+      audio: { codec: acfg.codec === 'opus' ? 'opus' : 'aac', numberOfChannels: 2, sampleRate: sr },
+      fastStart: 'in-memory',
+      firstTimestampBehavior: 'offset',
+    });
+    let failure = null;
+    const venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: (e) => (failure = e) });
+    venc.configure(vcfg);
+    const aenc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: (e) => (failure = e) });
+    aenc.configure(acfg);
+
+    // 3) Ton kodieren
+    const L = mixed.getChannelData(0);
+    const R = mixed.getChannelData(1);
+    const step = 4800;
+    for (let i = 0; i < mixed.length; i += step) {
+      const n = Math.min(step, mixed.length - i);
+      const data = new Float32Array(n * 2);
+      data.set(L.subarray(i, i + n), 0);
+      data.set(R.subarray(i, i + n), n);
+      const ad = new AudioData({ format: 'f32-planar', sampleRate: sr, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round((i / sr) * 1e6), data });
+      aenc.encode(ad);
+      ad.close();
+    }
+    await aenc.flush();
+
+    // 4) Bild für Bild zeichnen und kodieren
+    const frames = Math.ceil(total * FPS);
+    const yieldUI = () => new Promise((r) => setTimeout(r, 0));
+    for (let n = 0; n < frames; n++) {
+      if (failure) throw failure;
+      const t = n / FPS - lead;
+      this.drawFrame(Math.max(0, Math.min(t, this.duration)));
+      const frame = new VideoFrame(this.canvas, { timestamp: Math.round((n * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
+      venc.encode(frame, { keyFrame: n % (FPS * 2) === 0 });
+      frame.close();
+      while (venc.encodeQueueSize > 6) await new Promise((r) => setTimeout(r, 4));
+      if (n % 6 === 0) {
+        onProgress?.(n / frames);
+        await yieldUI();
+      }
+    }
+    await venc.flush();
+    if (failure) throw failure;
+    muxer.finalize();
+    venc.close();
+    aenc.close();
+    onProgress?.(1);
+    return new Blob([target.buffer], { type: 'video/mp4' });
+  }
+
   async record(ctx, { music = true, monitor = true, onProgress, mimeType, ensureAudio = tryResume } = {}) {
     const mt = mimeType ?? pickMimeType();
     if (mt === null || typeof this.canvas.captureStream !== 'function') {

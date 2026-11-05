@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@diffusionstudio/piper-wasm": "1.0.0",
+    "mp4-muxer": "5.2.2",
     "onnxruntime-web": "1.18.0"
   },
   "devDependencies": {
