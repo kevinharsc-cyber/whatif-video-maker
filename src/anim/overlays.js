@@ -19,6 +19,49 @@ const INSERT_MAP = [
 ];
 
 const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+// Emojis werden EINMAL in fester Größe vorgezeichnet und danach nur noch als
+// Bild skaliert. (Safari legt sonst für jede Emoji-Größe eine eigene Kopie im
+// Speicher an – bei animierten Größen läuft der Speicher dann über.)
+const emojiCache = new Map();
+function emojiSprite(emoji) {
+  let c = emojiCache.get(emoji);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = c.height = 160;
+  const g = c.getContext('2d');
+  g.font = `128px ${EMOJI_FONT}`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(emoji, 80, 86);
+  emojiCache.set(emoji, c);
+  return c;
+}
+// Emoji mit Mittelpunkt (x, y) in der Größe size zeichnen
+function drawEmoji(g, emoji, x, y, size) {
+  const s = size * 1.25;
+  g.drawImage(emojiSprite(emoji), x - s / 2, y - s / 2, s, s);
+}
+
+function heart(g, x, y, s, color) {
+  g.fillStyle = color;
+  g.beginPath();
+  g.moveTo(x, y + s * 0.35);
+  g.bezierCurveTo(x - s * 0.6, y - s * 0.1, x - s * 0.35, y - s * 0.55, x, y - s * 0.2);
+  g.bezierCurveTo(x + s * 0.35, y - s * 0.55, x + s * 0.6, y - s * 0.1, x, y + s * 0.35);
+  g.fill();
+}
+
+function sparkle(g, x, y, s, color) {
+  g.fillStyle = color;
+  g.beginPath();
+  g.moveTo(x, y - s * 0.5);
+  g.quadraticCurveTo(x + s * 0.08, y - s * 0.08, x + s * 0.5, y);
+  g.quadraticCurveTo(x + s * 0.08, y + s * 0.08, x, y + s * 0.5);
+  g.quadraticCurveTo(x - s * 0.08, y + s * 0.08, x - s * 0.5, y);
+  g.quadraticCurveTo(x - s * 0.08, y - s * 0.08, x, y - s * 0.5);
+  g.fill();
+}
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 
 // Wörterbuch: Wortanfang → [Emoji, Beschriftung]
@@ -328,8 +371,7 @@ function drawStrike(g, W, H, o, age, left, font, t) {
   } else {
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    g.font = `${Math.round(r * 1.05)}px ${EMOJI_FONT}`;
-    g.fillText(o.icon, 0, r * 0.06);
+    drawEmoji(g, o.icon, 0, r * 0.06, r * 1.05);
   }
   if (age > 0.45) redX(g, 0, 0, r * 0.62, clamp((age - 0.45) / 0.3), W * 0.022);
   if (o.label) {
@@ -375,8 +417,7 @@ function drawPopup(g, W, H, o, age, left, font, t) {
   // Emoji
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.font = `${Math.round(size * 0.5)}px ${EMOJI_FONT}`;
-  g.fillText(o.emoji, 0, -size * 0.07);
+  drawEmoji(g, o.emoji, 0, -size * 0.07, size * 0.5);
   // Beschriftung
   if (o.label) {
     let fs = size * 0.13;
@@ -717,10 +758,10 @@ export function drawFollow(g, W, H, o, t, font) {
       const ang = -Math.PI / 2 + (i - 3.5) * 0.35;
       const d = ch * (0.3 + k * 0.9);
       g.globalAlpha = 1 - k;
-      g.fillStyle = i % 2 ? '#fe2c55' : '#ffffff';
-      g.font = `${Math.round(ch * 0.18)}px ${EMOJI_FONT}`;
-      g.textAlign = 'center';
-      g.fillText(i % 2 ? '❤️' : '✨', bx + bw / 2 + Math.cos(ang) * d, Math.sin(ang) * d);
+      const hx = bx + bw / 2 + Math.cos(ang) * d;
+      const hy = Math.sin(ang) * d;
+      if (i % 2) heart(g, hx, hy, ch * 0.18, '#fe2c55');
+      else sparkle(g, hx, hy, ch * 0.16, '#fff3c4');
     }
     g.globalAlpha = 1;
   }
@@ -735,10 +776,7 @@ export function drawFollow(g, W, H, o, t, font) {
     g.globalAlpha = 1 - away;
     g.translate(fx, fy);
     g.scale(tap, tap);
-    g.font = `${Math.round(ch * 0.55)}px ${EMOJI_FONT}`;
-    g.textAlign = 'center';
-    g.textBaseline = 'top';
-    g.fillText('👆', 0, 0);
+    drawEmoji(g, '👆', 0, ch * 0.28, ch * 0.55);
     if (Math.abs(a - TAP_AT) < 0.25) {
       g.strokeStyle = `rgba(255,255,255,${1 - Math.abs(a - TAP_AT) / 0.25})`;
       g.lineWidth = W * 0.005;
