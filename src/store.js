@@ -13,21 +13,30 @@ function open() {
   if (useMem) return Promise.resolve(null);
   if (!dbp) {
     dbp = new Promise((resolve) => {
+      // Safari-Fehler: indexedDB.open antwortet manchmal nie → nach 3 s RAM nutzen
+      const t = setTimeout(() => {
+        useMem = true;
+        resolve(null);
+      }, 3000);
+      const done = (v) => {
+        clearTimeout(t);
+        resolve(v);
+      };
       try {
         const req = indexedDB.open(DB, 1);
         req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-        req.onsuccess = () => resolve(req.result);
+        req.onsuccess = () => done(useMem ? null : req.result);
         req.onerror = () => {
           useMem = true;
-          resolve(null);
+          done(null);
         };
         req.onblocked = () => {
           useMem = true;
-          resolve(null);
+          done(null);
         };
       } catch {
         useMem = true;
-        resolve(null);
+        done(null);
       }
     });
   }
@@ -36,6 +45,11 @@ function open() {
 
 function tx(db, mode, fn) {
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Gerätespeicher antwortet nicht')), 8000);
+    const res0 = resolve;
+    const rej0 = reject;
+    resolve = (v) => (clearTimeout(timer), res0(v));
+    reject = (e) => (clearTimeout(timer), rej0(e));
     const t = db.transaction(STORE, mode);
     const st = t.objectStore(STORE);
     let out;
@@ -49,7 +63,7 @@ function tx(db, mode, fn) {
 
 export async function put(key, value) {
   const db = await open();
-  if (!db) return void mem.set(key, value);
+  if (!db || useMem) return void mem.set(key, value);
   try {
     await tx(db, 'readwrite', (st) => st.put(value, key));
   } catch (e) {
@@ -63,7 +77,7 @@ export async function put(key, value) {
 export async function get(key) {
   if (mem.has(key)) return mem.get(key);
   const db = await open();
-  if (!db) return undefined;
+  if (!db || useMem) return undefined;
   try {
     return await tx(db, 'readonly', (st) => st.get(key));
   } catch {

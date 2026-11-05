@@ -52,7 +52,7 @@ async function probeEncode(cfg, W, H) {
     const f = new VideoFrame(c, { timestamp: 0, duration: Math.round(1e6 / FPS) });
     enc.encode(f, { keyFrame: true });
     f.close();
-    await withTimeout(enc.flush(), 6000, 'Probe');
+    await withTimeout(enc.flush(), 5000, 'Testbild');
     c.width = c.height = 1;
     if (err) throw err;
     return got ? null : 'kein Bild ausgegeben';
@@ -70,60 +70,86 @@ async function probeEncode(cfg, W, H) {
 const HEVC = ['hvc1.1.6.L120.90', 'hvc1.1.6.L93.B0', 'hev1.1.6.L120.90', 'hvc1.2.4.L120.90'];
 
 let pickCache = null;
+const ENC_KEY = 'whatif-encoder-v2';
 /**
  * Sucht eine Video-Einstellung, die dieses Gerät kodieren kann:
- * zuerst H.264 (fragen), dann H.264 (echte Probe), dann HEVC/H.265 (wie iPhone-Kamera).
+ * H.264 (fragen) → H.264 (echtes Testbild) → HEVC/H.265 (wie iPhone-Kamera).
+ * Höchstens ~25 s; antwortet Safari nicht, wird nicht weiter gefragt.
+ * Ergebnis wird gemerkt (beim nächsten Mal sofort da).
  * Ergebnis: { cfg } oder { cfg: null, why }.
  */
-export async function findVideoConfig(W, H) {
-  if (pickCache?.key === `${W}x${H}`) return pickCache.res;
-  const res = await findVideoConfigUncached(W, H);
-  pickCache = { key: `${W}x${H}`, res };
+export async function findVideoConfig(W, H, onStep = () => {}) {
+  const key = `${W}x${H}|${navigator.userAgent}`;
+  if (pickCache?.key === key) return pickCache.res;
+  try {
+    const saved = JSON.parse(localStorage.getItem(ENC_KEY) || 'null');
+    if (saved?.key === key && saved.res?.cfg) return (pickCache = { key, res: saved.res }).res;
+  } catch {
+    /* egal */
+  }
+  const res = await findVideoConfigUncached(W, H, onStep);
+  pickCache = { key, res };
+  try {
+    if (res.cfg) localStorage.setItem(ENC_KEY, JSON.stringify({ key, res }));
+  } catch {
+    /* egal */
+  }
   return res;
 }
 
-async function findVideoConfigUncached(W, H) {
+async function findVideoConfigUncached(W, H, onStep) {
   if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
     return { cfg: null, why: `VideoEncoder fehlt in diesem Browser (${(navigator.userAgent.match(/OS [\d_]+|Version\/[\d.]+/g) || []).join(', ')})` };
   }
   const bitrate = 3_500_000;
+  const t0 = performance.now();
+  const budgetLeft = () => 25000 - (performance.now() - t0);
+  let askHangs = false;
   const ask = async (c) => {
+    if (askHangs) return 'antwortet nicht';
     try {
-      return (await withTimeout(VideoEncoder.isConfigSupported(c), 4000, 'Video-Encoder')).supported ? null : 'nein';
+      return (await withTimeout(VideoEncoder.isConfigSupported(c), 2500, 'isConfigSupported')).supported ? null : 'nein';
     } catch (e) {
+      if (/antwortet nicht/.test(e?.message)) askHangs = true; // Safari hängt → nicht weiter fragen
       return (e?.message || 'Fehler').slice(0, 60);
     }
   };
-  // 1) H.264 fragen
+  // 1) H.264 fragen (die wichtigsten Varianten)
+  onStep('Prüfe Video-Encoder (H.264) …');
   let firstAnswer = null;
-  for (const cand of h264Candidates(W, H, FPS, bitrate)) {
-    for (const c of [{ ...cand, latencyMode: 'quality' }, cand]) {
-      const r = await ask(c);
-      if (!r) return { cfg: { ...c, bitrate, framerate: FPS } };
-      firstAnswer ??= r;
-    }
+  const cands = h264Candidates(W, H, FPS, bitrate);
+  for (const c of [cands[0], cands[1], cands[2], cands[15], cands[16], cands[21], cands[22], cands[23]]) {
+    if (!c || budgetLeft() < 15000) break;
+    const r = await ask(c);
+    if (!r) return { cfg: { ...c, bitrate, framerate: FPS } };
+    firstAnswer ??= r;
+    if (askHangs) break;
   }
-  // 2) H.264 echt ausprobieren
+  // 2) H.264 echt ausprobieren (ein Testbild)
+  onStep('Prüfe Video-Encoder (Testbild H.264) …');
   let probeErr = null;
-  for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028', 'avc1.42001f']) {
-    for (const c of [{ codec, width: W, height: H, bitrate, framerate: FPS, avc: { format: 'avc' } }, { codec, width: W, height: H }]) {
-      const e = await probeEncode(c, W, H);
-      if (!e) return { cfg: { ...c, bitrate, framerate: FPS } };
-      probeErr ??= e;
-    }
+  for (const c of [
+    { codec: 'avc1.640028', width: W, height: H, bitrate, framerate: FPS, avc: { format: 'avc' } },
+    { codec: 'avc1.42e028', width: W, height: H, bitrate, framerate: FPS },
+  ]) {
+    if (budgetLeft() < 6000) break;
+    const e = await probeEncode(c, W, H);
+    if (!e) return { cfg: c };
+    probeErr ??= e;
   }
   // 3) HEVC (H.265) – iPhones kodieren das in Hardware, TikTok nimmt es an
+  onStep('Prüfe Video-Encoder (HEVC) …');
   let hevcErr = null;
-  for (const codec of HEVC) {
-    for (const c of [{ codec, width: W, height: H, bitrate, framerate: FPS, hevc: { format: 'hevc' } }, { codec, width: W, height: H, bitrate, framerate: FPS }]) {
-      const r = await ask(c);
-      if (!r) return { cfg: c };
-      const e = await probeEncode(c, W, H);
-      if (!e) return { cfg: c };
-      hevcErr ??= e || r;
-    }
+  for (const codec of HEVC.slice(0, 2)) {
+    if (budgetLeft() < 5000) break;
+    const c = { codec, width: W, height: H, bitrate, framerate: FPS, hevc: { format: 'hevc' } };
+    const r = await ask(c);
+    if (!r) return { cfg: c };
+    const e = await probeEncode(c, W, H);
+    if (!e) return { cfg: c };
+    hevcErr ??= e || r;
   }
-  return { cfg: null, why: `H.264 abgelehnt (${firstAnswer}; Probe: ${probeErr}), HEVC abgelehnt (${hevcErr})` };
+  return { cfg: null, why: `H.264: Anfrage ${firstAnswer}, Testbild ${probeErr}; HEVC: ${hevcErr || 'nicht geprüft'} (${Math.round((performance.now() - t0) / 1000)} s)` };
 }
 
 export async function pickVideoConfig(W, H) {
@@ -145,8 +171,8 @@ function aacRecorderType() {
 }
 
 /** Prüft, ob der speichersichere Export auf diesem Gerät möglich ist. */
-export async function segmentedSupported(W, H) {
-  const { cfg: v, why } = await findVideoConfig(W, H);
+export async function segmentedSupported(W, H, onStep) {
+  const { cfg: v, why } = await findVideoConfig(W, H, onStep);
   if (!v) return { ok: false, why };
   if (await aacEncoderOk()) return { ok: true, video: v, audio: 'encoder' };
   if (aacRecorderType()) return { ok: true, video: v, audio: 'recorder' };
