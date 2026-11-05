@@ -10,7 +10,13 @@ export function buildSubtitles(scenes, sceneTimes) {
   const chunks = [];
   scenes.forEach((scene, si) => {
     const { start, end } = sceneTimes[si];
-    const words = scene.text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+    // Wörter ohne Buchstaben/Zahlen (z. B. "*", "-", "•") nicht als Untertitel zeigen
+    const words = scene.text
+      .replace(/[*•▪►]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter((w) => /[\p{L}\p{N}]/u.test(w));
     if (!words.length) return;
     const weights = words.map(wordWeight);
     const sum = weights.reduce((a, b) => a + b, 0);

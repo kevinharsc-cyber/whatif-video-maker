@@ -10,7 +10,14 @@ const EMOJI_START = /^[\p{Extended_Pictographic}\u{FE0F}\u{200D}\s￼]+/u;
 const HEADER_WORDS = /^(teil\s*\d+|einstieg|intro|hook|ende|outro|schluss|finale|akt\s*\d+|kapitel\s*\d+|szene\s*\d+)\b/i;
 
 function stripEmoji(line) {
-  return line.replace(EMOJI_START, '').replace(/[\u{FFFC}]/gu, '').trim();
+  return line
+    .replace(EMOJI_START, '')
+    .replace(/[\u{FFFC}]/gu, '')
+    .trim()
+    // Aufzählungszeichen am Zeilenanfang entfernen: "* ", "- ", "• ", "1. ", "1) "
+    .replace(/^(?:[*•·▪►\-–—]+|\d{1,2}[.)])\s+/u, '')
+    .replace(/^\*\*(.*)\*\*$/, '$1')
+    .trim();
 }
 
 /**
