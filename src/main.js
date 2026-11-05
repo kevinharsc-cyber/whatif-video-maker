@@ -1,6 +1,7 @@
 import './style.css';
 import { loadSettings, saveSettings } from './settings.js';
 import { generateScript, normalizeTopic } from './script.js';
+import { buildOwnScript } from './ownscript.js';
 import { loadSceneImages } from './images.js';
 import { createAnimVisual, normalizeAnim, guessAnim } from './anim/scene.js';
 import { synthesize, VOICES, speechWeight } from './tts.js';
@@ -140,6 +141,30 @@ async function onCreateScript() {
   }
 }
 
+async function onOwnScript() {
+  if (busy) return;
+  const raw = $('ownText').value;
+  if (!raw.trim()) return log('Bitte zuerst deinen Text einfügen.', 'warn');
+  busy = true;
+  const btn = $('btnOwn');
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Szenen werden geplant …';
+  try {
+    script = await buildOwnScript(raw, settings, log);
+    $('topic').value = script.topic;
+    renderScript();
+    show(['stepTopic', 'stepScript']);
+    $('stepScript').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) {
+    log(`Fehler: ${e.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = old;
+    busy = false;
+  }
+}
+
 function renderScript() {
   $('title').value = script.title;
   const box = $('scenes');
@@ -148,7 +173,7 @@ function renderScript() {
     const div = document.createElement('div');
     div.className = 'scene';
     div.innerHTML = `
-      <div class="scene-head"><b>Szene ${i + 1}</b><button class="x" title="Szene löschen">✕</button></div>
+      <div class="scene-head"><b>Szene ${i + 1}${sc.black ? '<span class="scene-flag">⬛ Schwarzbild</span>' : ''}${sc.pauseBefore ? `<span class="scene-flag">⏸ ${sc.pauseBefore} s Pause davor</span>` : ''}</b><button class="x" title="Szene löschen">✕</button></div>
       <textarea rows="3" class="s-text"></textarea>
       <details><summary>Bildbeschreibung (Englisch)</summary><textarea rows="2" class="s-img"></textarea></details>`;
     div.querySelector('.s-text').value = sc.text;
@@ -206,6 +231,7 @@ async function onCreateVideo() {
       const n = script.scenes.length;
       let gotUp = false;
       images = script.scenes.map((sc, i) => {
+        if (sc.black) return createAnimVisual({ place: 'black', time: 'night', props: [], actors: [], crowd: { count: 0, action: 'idle' }, effect: 'none' });
         const spec = normalizeAnim(sc.anim) || guessAnim(sc.text, script.topic, i, n);
         // Nur einmal aufstehen: weitere "get_up"/"sleep" werden zu "walk"
         const a0 = spec.actors[0];
@@ -265,6 +291,7 @@ async function onCreateVideo() {
       title: script.title,
       audio: buffer,
       follow: await loadFollowConfig(),
+      mood: settings.musicMood,
     });
     const preview = $('livePreview');
     const pg = preview.getContext('2d');
@@ -385,6 +412,7 @@ function openSettings() {
   $('sVisual').value = settings.visualMode;
   $('sQuality').value = settings.quality;
   $('sMusic').checked = settings.music;
+  $('sMood').value = settings.musicMood;
   $('sKey').value = settings.geminiKey;
   $('sPolKey').value = settings.pollinationsKey;
   $('sFollow').checked = settings.followEnabled;
@@ -406,6 +434,7 @@ function readSettingsForm() {
     visualMode: $('sVisual').value,
     quality: $('sQuality').value,
     music: $('sMusic').checked,
+    musicMood: $('sMood').value,
     geminiKey: $('sKey').value.trim(),
     pollinationsKey: $('sPolKey').value.trim(),
     followEnabled: $('sFollow').checked,
@@ -500,7 +529,8 @@ async function loadFollowConfig() {
 // ------------------------------------------------------------------ Start --
 
 $('btnScript').onclick = onCreateScript;
-$('btnRegen').onclick = onCreateScript;
+$('btnRegen').onclick = () => (script?.own ? onOwnScript() : onCreateScript());
+$('btnOwn').onclick = onOwnScript;
 $('btnVideo').onclick = onCreateVideo;
 $('btnAddScene').onclick = () => {
   script.scenes.push({ text: '', image_prompt: 'dramatic cinematic scene' });

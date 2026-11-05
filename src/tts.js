@@ -207,18 +207,22 @@ async function piperTTS(ctx, scenes, settings, voiceId, onProgress, log) {
     const data = (out.output || Object.values(out)[0]).data;
     parts.push(trimSilence(new Float32Array(data), sr));
   }
-  return assemble(ctx, parts, sr);
+  return assemble(ctx, parts, sr, scenes);
 }
 
-function assemble(ctx, parts, sr) {
+function assemble(ctx, parts, sr, scenes = []) {
   const gap = Math.floor(SCENE_GAP * sr);
   const lead = Math.floor(0.15 * sr);
-  const total = lead + parts.reduce((a, p) => a + p.length + gap, 0) + Math.floor(0.6 * sr);
+  // zusätzliche Pause vor einer Szene (z. B. 2 s vor dem letzten Satz)
+  const extra = parts.map((_, i) => Math.floor((scenes[i]?.pauseBefore || 0) * sr));
+  const total = lead + parts.reduce((a, p, i) => a + p.length + gap + extra[i], 0) + Math.floor(0.8 * sr);
   const buffer = ctx.createBuffer(1, total, sr);
   const ch = buffer.getChannelData(0);
   const sceneTimes = [];
   let pos = lead;
-  for (const p of parts) {
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    pos += extra[i];
     ch.set(p, pos);
     sceneTimes.push({ start: pos / sr, end: (pos + p.length) / sr });
     pos += p.length + gap;
@@ -237,11 +241,8 @@ export function cleanForSpeech(text) {
 
 // ---------------------------------------------------------------- Gemini ---
 
-async function geminiTTS(ctx, scenes, settings, voiceName, onProgress) {
-  onProgress({ phase: 'speak', index: 0, count: 1 });
-  // Eine einzige Anfrage für das ganze Skript (schont das Gratis-Kontingent).
-  const full = scenes.map((s) => cleanForSpeech(s.text)).join('\n\n');
-  const pace = settings.speed > 1.05 ? 'zügig und ' : settings.speed < 0.95 ? 'ruhig und ' : '';
+async function geminiSpeak(text, settings, voiceName) {
+  const pace = settings.speed > 1.05 ? 'zügig und ' : settings.speed < 0.97 ? 'langsam, ruhig und ' : '';
   const res = await fetchWithTimeout(
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent',
     {
@@ -252,7 +253,7 @@ async function geminiTTS(ctx, scenes, settings, voiceName, onProgress) {
           {
             parts: [
               {
-                text: `Lies den folgenden deutschen Text ${pace}spannend wie ein Erzähler eines viralen Wissensvideos vor:\n\n${full}`,
+                text: `Lies den folgenden deutschen Text ${pace}spannend und atmosphärisch wie der Erzähler einer düsteren Mystery-Doku vor. Mache bei Auslassungspunkten kurze Pausen:\n\n${text}`,
               },
             ],
           },
@@ -275,21 +276,46 @@ async function geminiTTS(ctx, scenes, settings, voiceName, onProgress) {
   const view = new DataView(bytes.buffer);
   const samples = new Float32Array(Math.floor(bytes.length / 2));
   for (let i = 0; i < samples.length; i++) samples[i] = view.getInt16(i * 2, true) / 32768;
-  const speech = trimSilence(samples, sr);
+  return { speech: trimSilence(samples, sr), sr };
+}
 
-  // Szenenzeiten anhand der Textlänge schätzen (Gemini liefert eine Gesamtspur).
-  const weights = scenes.map((s) => speechWeight(s.text));
-  const sum = weights.reduce((a, b) => a + b, 0);
+async function geminiTTS(ctx, scenes, settings, voiceName, onProgress) {
+  // Möglichst wenige Anfragen (schont das Gratis-Kontingent): eine pro Abschnitt
+  // zwischen gewünschten Pausen (z. B. 2 Sekunden vor dem letzten Satz).
+  const groups = [];
+  scenes.forEach((sc, i) => {
+    if (i === 0 || (sc.pauseBefore || 0) > 0) groups.push({ from: i, scenes: [] });
+    groups[groups.length - 1].scenes.push(sc);
+  });
+  const results = [];
+  for (let k = 0; k < groups.length; k++) {
+    onProgress({ phase: 'speak', index: k, count: groups.length });
+    const text = groups[k].scenes.map((s) => cleanForSpeech(s.text)).join('\n\n');
+    results.push(await geminiSpeak(text, settings, voiceName));
+  }
+  const sr = results[0].sr;
   const lead = 0.15;
-  const dur = speech.length / sr;
-  const buffer = ctx.createBuffer(1, Math.floor((lead + dur + 0.6) * sr), sr);
-  buffer.getChannelData(0).set(speech, Math.floor(lead * sr));
+  const pauses = groups.map((gr) => (gr.from > 0 ? (scenes[gr.from].pauseBefore || 0) + SCENE_GAP : 0));
+  const totalSec = lead + results.reduce((a, r) => a + r.speech.length / sr, 0) + pauses.reduce((a, b) => a + b, 0) + 0.8;
+  const buffer = ctx.createBuffer(1, Math.ceil(totalSec * sr), sr);
+  const ch = buffer.getChannelData(0);
+  const sceneTimes = [];
   let t = lead;
-  const sceneTimes = weights.map((w) => {
-    const d = (w / sum) * dur;
-    const r = { start: t, end: t + d };
-    t += d;
-    return r;
+  groups.forEach((gr, k) => {
+    t += pauses[k];
+    const { speech } = results[k];
+    ch.set(speech, Math.floor(t * sr));
+    // Szenenzeiten innerhalb des Abschnitts anhand der Textlänge schätzen
+    const weights = gr.scenes.map((s) => speechWeight(s.text));
+    const sum = weights.reduce((a, b) => a + b, 0);
+    const dur = speech.length / sr;
+    let tt = t;
+    weights.forEach((w) => {
+      const d = (w / sum) * dur;
+      sceneTimes.push({ start: tt, end: tt + d });
+      tt += d;
+    });
+    t += dur;
   });
   return { buffer, sceneTimes };
 }

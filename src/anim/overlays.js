@@ -141,6 +141,20 @@ export function buildOverlays(scenes, sceneStarts, sceneTimes, subtitles, durati
     const eff = sc.anim?.effect || sc._effect;
     if (['explosion', 'flash', 'quake'].includes(eff)) sfx.push({ type: 'boom', at: start + (end - start) * 0.3 });
 
+    // Gedanke/Ruf der Figur als Sprechblase
+    if (sc.thought && end - start > 1.4) {
+      const q = findWord(String(sc.thought).split(/\s+/)[0]);
+      const at = Math.max(start + 0.2, q ? q.start - 0.1 : start + 0.3);
+      const until = Math.min(end - 0.05, at + 2.2);
+      overlays.push({ type: 'thought', text: String(sc.thought).trim(), start: at, end: until, shout: /[!?]{1,}$/.test(String(sc.thought).trim()) && sc.thought === String(sc.thought).toUpperCase() });
+      sfx.push({ type: 'pop', at });
+      lastEnd = Math.max(lastEnd, until - MIN_GAP + 1);
+    }
+    // Vogelzwitschern
+    if (/(vögel|vogel|zwitscher)/i.test(sc.text) || sc.sound === 'birds') {
+      for (let tt = start + 0.2; tt < end - 0.2; tt += 0.45 + ((tt * 7.3) % 0.5)) sfx.push({ type: 'chirp', at: tt });
+    }
+    if (sc.black) return; // schwarzer Bildschirm: keine Einblendungen
     if (total >= totalMax || end - start < 1.8) return;
     const given = Array.isArray(sc.popups) ? sc.popups.filter(Boolean) : null;
 
@@ -235,8 +249,56 @@ export function drawOverlays(g, W, H, t, overlays, font) {
     if (o.type === 'label') drawLabel(g, W, H, o, age, left, font);
     if (o.type === 'insert') drawInsert(g, W, H, o, t);
     if (o.type === 'strike') drawStrike(g, W, H, o, age, left, font, t);
+    if (o.type === 'thought') drawThought(g, W, H, o, age, left, font);
     if (o.type === 'follow') drawFollow(g, W, H, o, t, font);
   }
+}
+
+// Sprechblase über der Figur (Gedanke oder Ruf)
+function drawThought(g, W, H, o, age, left, font) {
+  const inK = clamp(age / 0.3);
+  const outK = clamp(left / 0.25);
+  let fs = Math.round(W * (o.shout ? 0.07 : 0.05));
+  g.save();
+  g.font = `900 ${fs}px ${font}`;
+  while (g.measureText(o.text).width > W * 0.62 && fs > W * 0.03) {
+    fs -= 2;
+    g.font = `900 ${fs}px ${font}`;
+  }
+  const tw = g.measureText(o.text).width;
+  const bw = tw + fs * 1.6;
+  const bh = fs * 2.1;
+  const cx = W * 0.56;
+  const cy = H * 0.3;
+  const sc = 0.5 + 0.5 * backOut(inK);
+  g.globalAlpha = Math.min(clamp(inK * 3), outK);
+  g.translate(cx + (o.shout ? Math.sin(age * 50) * W * 0.004 * (age < 0.5 ? 1 : 0) : 0), cy);
+  g.scale(sc, sc);
+  g.fillStyle = 'rgba(0,0,0,0.25)';
+  roundRect(g, -bw / 2 + W * 0.008, -bh / 2 + W * 0.012, bw, bh, bh / 2);
+  g.fill();
+  g.fillStyle = '#ffffff';
+  roundRect(g, -bw / 2, -bh / 2, bw, bh, bh / 2);
+  g.fill();
+  // Schwänzchen zur Figur
+  g.beginPath();
+  if (o.shout) {
+    g.moveTo(-bw * 0.15, bh / 2 - 2);
+    g.lineTo(-bw * 0.28, bh * 1.15);
+    g.lineTo(-bw * 0.02, bh / 2 - 2);
+    g.fill();
+  } else {
+    for (const [dx, dy, r] of [[-0.2, 0.75, 0.13], [-0.27, 1.05, 0.08]]) {
+      g.beginPath();
+      g.arc(bw * dx, bh * dy, bh * r, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  g.fillStyle = '#1a1033';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(o.text, 0, fs * 0.05);
+  g.restore();
 }
 
 // Symbol mit rotem X direkt über der Figur (z. B. "kein Strom", "kein Netz")
@@ -271,7 +333,7 @@ function drawStrike(g, W, H, o, age, left, font, t) {
   if (o.label) {
     const fs = Math.round(W * 0.04);
     g.font = `900 ${fs}px ${font}`;
-    const txt = `KEIN ${o.label}`.replace('KEIN MENSCHEN', 'KEINE MENSCHEN').replace('KEIN STIMMEN', 'KEINE STIMMEN').replace('KEIN MUSIK', 'KEINE MUSIK').replace('KEIN HEIZUNG', 'KEINE HEIZUNG');
+    const txt = /^(KEIN|KEINE|NIEMAND|NICHTS|OHNE)\b/.test(o.label) ? o.label : `KEIN ${o.label}`.replace('KEIN MENSCHEN', 'KEINE MENSCHEN').replace('KEIN STIMMEN', 'KEINE STIMMEN').replace('KEIN MUSIK', 'KEINE MUSIK').replace('KEIN HEIZUNG', 'KEINE HEIZUNG');
     const tw = g.measureText(txt).width + fs * 1.4;
     g.fillStyle = '#ff3b4d';
     roundRect(g, -tw / 2, r * 0.95, tw, fs * 1.7, fs * 0.85);
@@ -411,6 +473,24 @@ export function scheduleSfx(ctx, out, list, t0) {
       src.start(at);
       src.stop(at + 0.55);
       nodes.push(src);
+    } else if (s.type === 'chirp') {
+      // Vogelzwitschern: 2–4 schnelle, hohe Pfiffe
+      const n = 2 + Math.floor(Math.random() * 3);
+      for (let k = 0; k < n; k++) {
+        const o = ctx.createOscillator();
+        const gn = ctx.createGain();
+        const st = at + k * 0.09;
+        const f = 2600 + Math.random() * 1600;
+        o.frequency.setValueAtTime(f, st);
+        o.frequency.exponentialRampToValueAtTime(f * (Math.random() > 0.5 ? 1.5 : 0.7), st + 0.06);
+        gn.gain.setValueAtTime(0.0001, st);
+        gn.gain.exponentialRampToValueAtTime(0.03, st + 0.01);
+        gn.gain.exponentialRampToValueAtTime(0.0001, st + 0.07);
+        o.connect(gn).connect(out);
+        o.start(st);
+        o.stop(st + 0.08);
+        nodes.push(o);
+      }
     } else if (s.type === 'ding') {
       for (const [f, v] of [[1320, 0.05], [1980, 0.03]]) {
         const o = ctx.createOscillator();

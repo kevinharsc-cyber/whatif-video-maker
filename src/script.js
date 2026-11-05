@@ -9,14 +9,19 @@ import { ANIM_PROMPT_HELP } from './anim/scene.js';
 const SYSTEM = `Du bist Autor und Cutter für virale deutschsprachige TikTok- und YouTube-Shorts im Format "Was wäre, wenn …?" – im Stil hochwertiger YouTube-Dokumentationen mit cinematic Storytelling.
 Schreibe ein fesselndes, detailliertes und plausibles Skript für ein ca. 60 Sekunden langes Hochformat-Video.
 
-Storytelling-Regeln:
-- Sprache: Deutsch, Du-Ansprache, kurze Sätze, gut vorlesbar, bildhaft und konkret.
-- Insgesamt 150 bis 170 Wörter gesprochener Text, aufgeteilt in 10 bis 12 kurze Szenen (je 1–2 Sätze).
-- Szene 1: starker Hook in den ersten 3 Sekunden.
-- Danach eine klare Geschichte mit Zeitverlauf (z. B. Minuten → Stunden → Tage → Jahre), steigender Spannung,
-  konkreten Details (Orte, Geräusche, Gegenstände, Zahlen) und einer überraschenden Wendung.
-- Letzte Szene: Fazit + Frage an die Zuschauer (Kommentar/Folgen).
+Storytelling-Regeln (sehr wichtig – erzähle eine Geschichte, die man MITERLEBT, keine Faktenliste):
+- Sprache: Deutsch, Du-Perspektive, Präsens, kurze Sätze, viele Pausen (…), bildhaft und emotional.
+- 170 bis 200 Wörter, aufgeteilt in 12 bis 15 kurze Szenen (je 1–2 Sätze).
+- Aufbau in 5 Teilen:
+  1. EINSTIEG (Spannung sofort): "Was wäre, wenn …" + 3–4 ganz kurze Schlag-Sätze ("Keine Nachrichten. Keine Anrufe. …").
+  2. DU REALISIERST ES LANGSAM: konkrete Alltagsmomente mit Sinneseindrücken (Handy, Fenster, Straße, Geräusche, Stille).
+  3. DIE WENDUNG / DIE WELT GEHÖRT DIR (oder die Lage eskaliert): mehrere konkrete, coole Aktionen.
+  4. PSYCHOLOGISCHER TWIST: Zeitsprünge ("Nach ein paar Tagen …", "Nach einer Woche …", "Nach einem Monat …"), es kippt emotional.
+  5. GÄNSEHAUT-ENDE: ruhige, tiefe Sätze + ein letzter überraschender Gedanke als Frage. Diese letzte Szene bekommt "black": true und "pauseBefore": 2.
+- Die vorletzte Szene endet mit einer Frage an die Zuschauer oder die letzte Szene ist die Frage.
 - Keine Emojis, Hashtags oder Regieanweisungen im gesprochenen Text.
+- "transition": "cut" bei Ortswechseln/neuen Teilen, "fade" vor emotionalen Momenten, sonst weglassen.
+- "thought": in 2–3 Szenen ein kurzer Gedanke oder Ruf der Figur (2–5 Wörter, z. B. "HALLO?!", "Wo sind alle?"), sonst null.
 
 Pro Szene zusätzlich:
 - "image_prompt": detaillierte ENGLISCHE Bildbeschreibung (Motiv, Umgebung, Licht, Stimmung), ohne Text im Bild.
@@ -29,7 +34,7 @@ Pro Szene zusätzlich:
 ${ANIM_PROMPT_HELP}
 
 Antworte NUR mit gültigem JSON in genau diesem Format:
-{"title":"kurzer Videotitel","scenes":[{"text":"gesprochener deutscher Text","image_prompt":"english image description","popups":[{"emoji":"🍔","label":"Burgerladen","word":"Burgerladen"}],"label":null,"anim":{"place":"...","time":"day","props":[],"actors":[{"action":"..."}],"crowd":{"count":0,"action":"idle"},"effect":"none"}}],"hashtags":["#wasware", "..."]}`;
+{"title":"kurzer Videotitel","scenes":[{"text":"gesprochener deutscher Text","image_prompt":"english image description","popups":[{"emoji":"🍔","label":"Burgerladen","word":"Burgerladen"}],"label":null,"thought":null,"transition":null,"anim":{"place":"...","time":"day","props":[],"actors":[{"action":"..."}],"crowd":{"count":0,"action":"idle"},"effect":"none"}}],"hashtags":["#wasware", "..."]}`;
 
 export async function generateScript(topic, settings, log) {
   const t = normalizeTopic(topic);
@@ -126,6 +131,10 @@ function validate(obj, topic) {
       anim: s.anim && typeof s.anim === 'object' ? s.anim : null,
       popups: Array.isArray(s.popups) ? s.popups.slice(0, 3) : null,
       label: typeof s.label === 'string' && s.label.trim() ? s.label.trim() : null,
+      thought: typeof s.thought === 'string' && s.thought.trim() ? s.thought.trim().slice(0, 40) : null,
+      transition: ['cut', 'fade', 'whip', 'zoom', 'slide', 'flash'].includes(s.transition) ? s.transition : null,
+      black: s.black === true,
+      pauseBefore: Number(s.pauseBefore) > 0 ? Math.min(4, Number(s.pauseBefore)) : 0,
     }))
     .filter((s) => s.text.length > 0);
   if (scenes.length < 3) throw new Error('Skript zu kurz');

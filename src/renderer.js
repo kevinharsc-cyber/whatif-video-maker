@@ -25,7 +25,8 @@ export function pickMimeType() {
 }
 
 export class VideoRenderer {
-  constructor({ width, height, images, scenes, sceneTimes, subtitles, title, audio, follow = null }) {
+  constructor({ width, height, images, scenes, sceneTimes, subtitles, title, audio, follow = null, mood = 'dark' }) {
+    this.mood = mood;
     this.W = width;
     this.H = height;
     this.images = images;
@@ -41,7 +42,12 @@ export class VideoRenderer {
     this.g = this.canvas.getContext('2d', { alpha: false });
     this.font = '"Arial Black", "Helvetica Neue", Helvetica, system-ui, sans-serif';
     // Ab wann jede Szene im Bild ist (leicht vor dem Sprechbeginn).
-    this.sceneStarts = sceneTimes.map((st, i) => (i === 0 ? 0 : Math.max(0, st.start - 0.12)));
+    this.sceneStarts = sceneTimes.map((st, i) => {
+      if (i === 0) return 0;
+      // Mit Pause davor: Schnitt kurz nach dem vorherigen Satz (Pause läuft schon im neuen Bild)
+      if (scenes[i]?.pauseBefore) return Math.min(st.start - 0.12, sceneTimes[i - 1].end + 0.35);
+      return Math.max(0, st.start - 0.12);
+    });
     // Motion Graphics (Pop-ups, Labels) + Soundeffekte
     const withEffects = scenes.map((sc, i) => ({ ...sc, _effect: images[i]?.spec?.effect }));
     const { overlays, sfx } = buildOverlays(withEffects, this.sceneStarts, sceneTimes, subtitles, this.duration);
@@ -103,13 +109,14 @@ export class VideoRenderer {
     g.fillRect(0, 0, W, H);
 
     const i = this.sceneIndexAt(t);
-    const T = 0.42;
+    const T = this.scenes[i]?.transition === 'fade' ? 0.9 : 0.42;
     const sceneStart = this.sceneStarts[i];
     const since = t - sceneStart;
     if (i > 0 && since < T) {
       // Abwechslungsreiche Übergänge
       const k = easeInOut(Math.max(0, since / T));
-      const type = TRANSITIONS[(i - 1) % TRANSITIONS.length];
+      const wanted = this.scenes[i]?.transition;
+      const type = ['whip', 'zoom', 'slide', 'flash', 'cut', 'fade'].includes(wanted) ? wanted : TRANSITIONS[(i - 1) % TRANSITIONS.length];
       if (type === 'whip') {
         this.drawSceneCam(i - 1, t, { dx: -k });
         this.drawSceneCam(i, t, { dx: 1 - k });
@@ -119,6 +126,15 @@ export class VideoRenderer {
         if (k < 0.5) this.drawSceneCam(i - 1, t, { zoom: 1 + k * 1.2 });
         else this.drawSceneCam(i, t, { zoom: 1.3 - (k - 0.5) * 0.6 });
         g.fillStyle = `rgba(255,255,255,${0.55 * Math.sin(k * Math.PI)})`;
+        g.fillRect(0, 0, W, H);
+      } else if (type === 'cut') {
+        // harter Schnitt mit kurzem Zoom-Einstieg
+        this.drawSceneCam(i, t, { zoom: 1.08 - 0.08 * k });
+      } else if (type === 'fade') {
+        // langsam durch Schwarz
+        if (k < 0.5) this.drawSceneCam(i - 1, t);
+        else this.drawSceneCam(i, t);
+        g.fillStyle = `rgba(0,0,0,${Math.sin(k * Math.PI)})`;
         g.fillRect(0, 0, W, H);
       } else if (type === 'slide') {
         this.drawSceneCam(i - 1, t, { dy: -k * 0.25, alpha: 1 });
@@ -249,7 +265,7 @@ export class VideoRenderer {
     lines.push(cur);
 
     g.save();
-    g.translate(W / 2, H * 0.7);
+    g.translate(W / 2, this.images[chunk.scene]?.spec?.place === 'black' ? H * 0.5 : H * 0.7);
     g.scale(pop, pop);
     g.textBaseline = 'middle';
     g.textAlign = 'left';
@@ -305,7 +321,7 @@ export class VideoRenderer {
     voice.connect(master);
 
     let stopMusic = () => {};
-    if (music) stopMusic = startAmbientMusic(ctx, master, this.duration, []);
+    if (music) stopMusic = startAmbientMusic(ctx, master, this.duration, [], this.mood);
 
     this.drawFrame(0);
     const videoStream = this.canvas.captureStream(FPS);
@@ -378,16 +394,18 @@ export async function tryResume(ctx, ms = 1500) {
 
 // Leiser, selbst erzeugter Hintergrund-Sound (keine Urheberrechtsprobleme):
 // ein sphärischer Klangteppich plus "Whoosh" bei jedem Szenenwechsel.
-function startAmbientMusic(ctx, out, duration, sceneStarts) {
+function startAmbientMusic(ctx, out, duration, sceneStarts, mood = 'dark') {
   const now = ctx.currentTime + 0.15;
+  const dark = mood === 'dark';
   const bus = ctx.createGain();
   bus.gain.setValueAtTime(0, now);
-  bus.gain.linearRampToValueAtTime(0.05, now + 2);
-  bus.gain.setValueAtTime(0.05, now + duration - 1.5);
+  const vol = dark ? 0.075 : 0.05;
+  bus.gain.linearRampToValueAtTime(vol, now + 2);
+  bus.gain.setValueAtTime(vol, now + duration - 1.5);
   bus.gain.linearRampToValueAtTime(0, now + duration);
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
-  lp.frequency.value = 900;
+  lp.frequency.value = dark ? 520 : 900;
   lp.Q.value = 0.7;
   lp.connect(bus);
   bus.connect(out);
@@ -407,7 +425,7 @@ function startAmbientMusic(ctx, out, duration, sceneStarts) {
       o.type = 'sawtooth';
       o.detune.value = detune;
       for (let k = 0; k * step < duration + step; k++) {
-        o.frequency.setTargetAtTime(chords[k % chords.length][v], now + k * step, 0.8);
+        o.frequency.setTargetAtTime(chords[k % chords.length][v] * (dark ? 0.5 : 1), now + k * step, 0.8);
       }
       const og = ctx.createGain();
       og.gain.value = 0.22;
@@ -430,7 +448,7 @@ function startAmbientMusic(ctx, out, duration, sceneStarts) {
   nodes.push(lfo);
 
   // Dezenter Bass-Puls (Spannung wie in Doku-Trailern)
-  for (let b = 2; b < duration - 1; b += 1.25) {
+  for (let b = 2; b < duration - 1; b += dark ? 1.7 : 1.25) {
     const o = ctx.createOscillator();
     const gn = ctx.createGain();
     o.frequency.setValueAtTime(70, now + b);
