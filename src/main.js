@@ -238,7 +238,7 @@ function buildAnimVisuals(sc, visualMode) {
     } else if (a0 && a0.action === 'sleep' && gotUp) a0.action = 'think';
     // Low-Poly-3D (Grafikchip) – Rückfall auf 2D, falls WebGL fehlt
     if (use3d) return createAnim3DVisual(spec, shot);
-    return createAnimVisual(spec);
+    return createAnimVisual(spec, { poly: visualMode === 'poly2d' });
   });
   // 3D: merken, welche Szene welche Umgebung braucht (für das Aufräumen)
   if (use3d) plan3D(images);

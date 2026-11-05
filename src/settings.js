@@ -10,7 +10,7 @@ export const DEFAULTS = {
   speed: 1.0,
   quality: '1080',
   imageStyle: 'cinematic',
-  visualMode: '3d',
+  visualMode: 'poly2d',
   followEnabled: true,
   followName: '',
   followImage: '',
@@ -29,6 +29,10 @@ export function loadSettings() {
     if (!s.lowpolyV1) {
       s.visualMode = '3d'; // neuer Standard: Low-Poly-3D
       s.lowpolyV1 = true;
+    }
+    if (!s.poly2dV1) {
+      s.visualMode = 'poly2d'; // neuer Standard: Low-Poly-Look in 2D (kein 3D-Grafikspeicher)
+      s.poly2dV1 = true;
     }
     if (!s.segV1) {
       // neuer speichersicherer Export (Szene für Szene) als Standard
