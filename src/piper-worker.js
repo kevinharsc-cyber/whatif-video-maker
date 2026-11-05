@@ -4,12 +4,25 @@
 import * as ort from 'onnxruntime-web';
 
 self.onmessage = async (e) => {
-  const { model, config, idsList, speed, wasmBase } = e.data;
+  const { config, idsList, speed, wasmBase, modelUrl, cacheName } = e.data;
+  let model = e.data.model;
   try {
     ort.env.wasm.wasmPaths = wasmBase;
     ort.env.wasm.numThreads = 1;
     ort.env.logLevel = 'error';
-    const session = await ort.InferenceSession.create(model, { executionProviders: ['wasm'] });
+    if (!model && modelUrl) {
+      // Modell direkt aus dem Browser-Speicher laden (keine Kopie in der App nötig)
+      const hit = await (await caches.open(cacheName)).match(modelUrl);
+      if (!hit) throw new Error('Stimmen-Modell nicht im Speicher');
+      model = await hit.arrayBuffer();
+    }
+    // Sparsamer Speicher: kein großer Vorratsbereich (Arena), keine Speichermuster
+    const session = await ort.InferenceSession.create(model, {
+      executionProviders: ['wasm'],
+      enableCpuMemArena: false,
+      enableMemPattern: false,
+    });
+    model = null;
     const scales = new Float32Array([config.inference.noise_scale, config.inference.length_scale / speed, config.inference.noise_w]);
     const multi = Object.keys(config.speaker_id_map || {}).length > 0;
     for (let i = 0; i < idsList.length; i++) {

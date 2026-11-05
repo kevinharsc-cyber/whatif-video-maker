@@ -149,7 +149,7 @@ async function loadPiperVoice(voiceId, onProgress) {
   }
   if (!model) throw new Error(`Stimme konnte nicht geladen werden: ${lastErr?.message}`);
   const ort = await getOrt();
-  const session = await ort.InferenceSession.create(model, { executionProviders: ['wasm'] });
+  const session = await ort.InferenceSession.create(model, { executionProviders: ['wasm'], enableCpuMemArena: false, enableMemPattern: false });
   const voice = { config, session, ort };
   sessions.set(voiceId, voice);
   return voice;
@@ -193,8 +193,9 @@ async function fetchPiperFiles(voiceId, onProgress) {
     try {
       const cfgBuf = await cachedFetch(`${base}/${path}.json`);
       const config = JSON.parse(new TextDecoder().decode(cfgBuf));
-      const model = await cachedFetch(`${base}/${path}`, (loaded, total) => onProgress({ phase: 'download', loaded, total }));
-      return { config, model };
+      const modelUrl = `${base}/${path}`;
+      const model = await cachedFetch(modelUrl, (loaded, total) => onProgress({ phase: 'download', loaded, total }));
+      return { config, model, modelUrl };
     } catch (e) {
       lastErr = e;
     }
@@ -203,7 +204,7 @@ async function fetchPiperFiles(voiceId, onProgress) {
 }
 
 // Sprachausgabe im Hintergrund-Prozess; danach wird er beendet (Speicher frei)
-function inferInWorker(model, config, idsList, speed, onPart) {
+function inferInWorker(model, config, idsList, speed, onPart, modelUrl = null) {
   return new Promise((resolve, reject) => {
     let worker;
     try {
@@ -230,7 +231,10 @@ function inferInWorker(model, config, idsList, speed, onPart) {
       worker.terminate();
       reject(new Error(e.message || 'Hintergrund-Prozess fehlgeschlagen'));
     };
-    worker.postMessage({ model, config, idsList, speed, wasmBase: new URL('ort/', document.baseURI).href }, [model]);
+    worker.postMessage(
+      { model, modelUrl, cacheName: CACHE_NAME, config, idsList, speed, wasmBase: new URL('ort/', document.baseURI).href },
+      model ? [model] : [],
+    );
   });
 }
 
@@ -276,20 +280,35 @@ async function piperTTS(ctx, scenes, settings, voiceId, onProgress, log) {
   const texts = scenes.map((s) => cleanForSpeech(s.text) || '…');
   // Speichersparender Weg: Lautschrift in einem Durchgang, Stimme im Hintergrund-Prozess
   try {
-    const { config, model } = await fetchPiperFiles(voiceId, onProgress);
+    let { config, model, modelUrl } = await fetchPiperFiles(voiceId, onProgress);
+    // Liegt das Modell im Browser-Speicher, lädt der Hintergrund-Prozess es selbst –
+    // dann muss die App keine eigene 63-MB-Kopie im Arbeitsspeicher halten.
+    let cached = false;
+    try {
+      cached = !!(await (await caches.open(CACHE_NAME)).match(modelUrl));
+    } catch {
+      cached = false;
+    }
+    if (cached) model = null;
     onProgress({ phase: 'speak', index: 0, count: scenes.length });
     const idsList = await phonemizeAll(texts, config.espeak.voice);
-    // In Paketen zu 6 Sätzen: nach jedem Paket wird der Hintergrund-Prozess
-    // beendet, damit sein Speicher nicht immer weiter wächst.
-    const BATCH = 6;
+    // Kleine Pakete (4 Sätze); danach wird der Hintergrund-Prozess beendet,
+    // damit sein Speicher nicht immer weiter wächst.
+    const BATCH = 4;
     const raw = [];
     for (let b = 0; b < idsList.length; b += BATCH) {
-      const part = await inferInWorker(model.slice(0), config, idsList.slice(b, b + BATCH), speed, (i) =>
-        onProgress({ phase: 'speak', index: Math.min(b + i + 1, scenes.length - 1), count: scenes.length }),
+      const part = await inferInWorker(
+        cached ? null : model.slice(0),
+        config,
+        idsList.slice(b, b + BATCH),
+        speed,
+        (i) => onProgress({ phase: 'speak', index: Math.min(b + i + 1, scenes.length - 1), count: scenes.length }),
+        cached ? modelUrl : null,
       );
       raw.push(...part);
-      await sleep(150); // dem Browser Zeit zum Aufräumen geben
+      await sleep(400); // dem Browser Zeit zum Aufräumen geben
     }
+    model = null;
     const sr = config.audio.sample_rate;
     return assemble(ctx, raw.map((d) => trimSilence(d, sr)), sr, scenes);
   } catch (e) {
