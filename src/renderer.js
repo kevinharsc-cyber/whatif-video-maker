@@ -51,7 +51,8 @@ export class VideoRenderer {
     this.punches = overlays.filter((o) => o.type === 'popup' || o.type === 'insert').map((o) => o.start);
     // Wenn ein Handy eingeblendet wird, schaut die Figur in dieser Szene aufs Handy
     for (const o of overlays) {
-      if (o.type !== 'insert' || o.insert !== 'phone') continue;
+      const phoneish = (o.type === 'insert' && o.insert === 'phone') || (o.type === 'strike' && (o.icon === 'wifi' || o.icon === '📱'));
+      if (!phoneish) continue;
       const spec = images[o.scene]?.spec;
       const a0 = spec?.actors?.[0];
       if (a0 && !['get_up', 'run', 'flee', 'walk', 'sleep', 'swim', 'float'].includes(a0.action)) a0.action = 'phone';

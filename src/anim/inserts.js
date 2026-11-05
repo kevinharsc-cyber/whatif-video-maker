@@ -31,7 +31,7 @@ function bg(g, w, h, c1, c2) {
   g.fillRect(0, 0, w, h);
 }
 
-function redX(g, cx, cy, s, k, lw) {
+export function redX(g, cx, cy, s, k, lw) {
   g.save();
   g.strokeStyle = '#ff3b4d';
   g.lineCap = 'round';
@@ -53,7 +53,7 @@ function redX(g, cx, cy, s, k, lw) {
   g.restore();
 }
 
-function wifi(g, cx, cy, s, lit, color = '#ffffff', dim = 'rgba(255,255,255,0.25)') {
+export function wifi(g, cx, cy, s, lit, color = '#ffffff', dim = 'rgba(255,255,255,0.25)') {
   g.lineCap = 'round';
   g.lineWidth = s * 0.16;
   for (let k = 0; k < 3; k++) {
@@ -610,17 +610,17 @@ const INSERTS = {
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillStyle = 'rgba(255,255,255,0.75)';
-    g.font = `900 ${Math.round(h * 0.09)}px ${FONT}`;
-    g.fillText(String(label || 'MENSCHEN AUF DER ERDE').toUpperCase(), w / 2, h * 0.25);
+    g.font = `900 ${Math.round(h * 0.075)}px ${FONT}`;
+    g.fillText(String(label || 'MENSCHEN AUF DER ERDE').toUpperCase(), w / 2, h * 0.28);
     const pulse = k >= 1 ? 1 + Math.sin(a * 10) * 0.05 : 1;
     g.save();
     g.translate(w / 2, h * 0.58);
     g.scale(pulse, pulse);
     g.fillStyle = k >= 1 ? '#ff3b4d' : '#ffffff';
     const txt = n.toLocaleString('de-DE');
-    let fs = h * 0.3;
+    let fs = h * 0.22;
     g.font = `900 ${Math.round(fs)}px ${FONT}`;
-    while (g.measureText(txt).width > w * 0.9) {
+    while (g.measureText(txt).width > w * 0.8) {
       fs -= 2;
       g.font = `900 ${Math.round(fs)}px ${FONT}`;
     }
@@ -637,8 +637,8 @@ export function drawInsert(g, W, H, o, t) {
   const left = o.end - t;
   const inK = clamp(age / 0.5);
   const outK = clamp(left / 0.3);
-  const w = W * 0.74;
-  const h = W * 0.52;
+  const w = W * 0.64;
+  const h = W * 0.45;
   const cx = W / 2;
   // oberhalb des Kopfes der Hauptfigur; in den ersten Sekunden unter dem Titel
   const cy = H * (o.start < 3.6 ? 0.33 : 0.215) + (1 - backOut(inK)) * H * 0.5 + (1 - outK) * H * 0.4;

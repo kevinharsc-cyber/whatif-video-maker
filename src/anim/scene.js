@@ -5,11 +5,12 @@ import { actionPose, drawFigure, seg, emotionFor } from './figure.js';
 import { seededRandom } from '../util.js';
 import { PLACES, drawSkyProps, drawGroundProps, drawEffect, effectSkyDarkness, cameraShake } from './world.js';
 
-export const PLACE_LIST = Object.keys(PLACES);
-export const ACTIONS = ['phone', 'idle', 'walk', 'run', 'sit', 'sleep', 'get_up', 'scared', 'flee', 'look_up', 'wave', 'shiver', 'fall', 'cheer', 'think', 'sad', 'work', 'point', 'swim', 'jump', 'float'];
+// Das Labor wirkte unverständlich und wird nicht mehr verwendet
+export const PLACE_LIST = Object.keys(PLACES).filter((pl) => pl !== 'lab');
+export const ACTIONS = ['phone', 'idle', 'walk', 'run', 'sit', 'sleep', 'get_up', 'scared', 'flee', 'look_up', 'wave', 'shiver', 'fall', 'cheer', 'think', 'sad', 'point', 'swim', 'jump', 'float'];
 export const PROPS = ['animals', 'shop', 'sun', 'moon', 'earth', 'clouds', 'birds', 'plane', 'rocket', 'meteor', 'cars', 'bees', 'dinosaur', 'trees', 'house', 'money'];
 export const PROP_STATES = ['normal', 'explode', 'vanish', 'grow', 'dim', 'stop', 'fall', 'big', 'red_giant', 'dead', 'storm'];
-export const EFFECTS = ['none', 'explosion', 'flash', 'darkness', 'fire', 'flood', 'quake', 'rain', 'storm', 'snow', 'freeze', 'heat', 'alarm'];
+export const EFFECTS = ['none', 'explosion', 'flash', 'darkness', 'fire', 'flood', 'quake', 'rain', 'storm', 'snow', 'freeze', 'heat'];
 export const TIMES = ['day', 'sunset', 'night'];
 const POS = { offleft: -0.15, left: 0.22, center: 0.5, right: 0.78, offright: 1.15 };
 
@@ -39,7 +40,7 @@ export function normalizeAnim(a) {
     actors: (Array.isArray(a.actors) ? a.actors : [])
       .map((x) => (typeof x === 'string' ? { action: x } : x))
       .filter(Boolean)
-      .map((x) => ({ action: pick(x.action, ACTIONS, 'idle'), from: pick(x.from, Object.keys(POS), null), to: pick(x.to, Object.keys(POS), null) }))
+      .map((x) => ({ action: pick(x.action === 'work' ? 'think' : x.action, ACTIONS, 'idle'), from: pick(x.from, Object.keys(POS), null), to: pick(x.to, Object.keys(POS), null) }))
       .slice(0, 2),
     crowd: { count: Math.max(0, Math.min(4, Number(a.crowd?.count) || 0)), action: pick(a.crowd?.action, ACTIONS, 'idle') },
     effect: pick(a.effect, EFFECTS, 'none'),
@@ -64,7 +65,7 @@ export function guessAnim(text, topic = '', index = 0, count = 1) {
     action = 'get_up';
   } else if (has(t, /(weltall|\ball\b|astronaut|raumstation|schwerelos|rakete)/)) spec.place = 'space';
   else if (has(all, /(erde|planet)/) && has(t, /(dreh|rotation|umlaufbahn|stehen bleibt|stillstand|kern|von oben|achse)/)) spec.place = 'earth';
-  else if (has(t, /(labor|wissenschaftler|forscher|nasa|experte)/)) spec.place = 'lab';
+  else if (has(t, /(labor|wissenschaftler|forscher|nasa|experte)/)) spec.place = 'city';
   else if (has(t, /(fernseh|internet|handy|smartphone|zuhause|sofa|wohnung|strom)/)) spec.place = 'living_room';
   else if (has(all, /(letzte mensch|leer|verlassen|niemand|keine menschen|ausgestorben|ruinen)/)) spec.place = 'empty_city';
   else if (has(t, /(verkehr|auto|straße|strasse|stau)/)) spec.place = 'street';
@@ -118,7 +119,6 @@ export function guessAnim(text, topic = '', index = 0, count = 1) {
   else if (has(t, /(schnee|kalt|kälte)/)) spec.effect = 'snow';
   else if (has(t, /(hitze|heiß|glühend|grad)/)) spec.effect = 'heat';
   else if (has(t, /(dunkel|finster|stromausfall)/) && spec.time !== 'night') spec.effect = 'darkness';
-  else if (has(t, /(alarm|warnung|schlagen alarm)/)) spec.effect = 'alarm';
 
   // Aktion der Hauptfigur
   if (!action) {
@@ -133,7 +133,6 @@ export function guessAnim(text, topic = '', index = 0, count = 1) {
     else if (has(t, /(himmel|schau|blick|siehst|nach oben)/)) action = 'look_up';
     else if (has(t, /(spring|hüpf|schwerkraft)/)) action = 'jump';
     else if (has(t, /(fall|stürz|umkipp|ohnmacht)/)) action = 'fall';
-    else if (spec.place === 'lab') action = 'work';
     else if (has(t, /(geh|spazier|unterwegs|läufst|draußen|straße)/)) action = 'walk';
     else if (spec.effect !== 'none') action = spec.effect === 'explosion' ? 'flee' : 'scared';
     else action = ['walk', 'look_up', 'think', 'idle'][index % 4];
@@ -143,7 +142,7 @@ export function guessAnim(text, topic = '', index = 0, count = 1) {
 
   // Andere Menschen
   if (has(t, /(menschen|alle|leute|menschheit|milliarden|bevölkerung|wir\b)/) && spec.place !== 'empty_city' && !has(all, /letzte mensch/)) {
-    spec.crowd = { count: 3, action: ['flee', 'scared', 'shiver', 'cheer', 'work'].includes(action) ? action : 'idle' };
+    spec.crowd = { count: 3, action: ['flee', 'scared', 'shiver', 'cheer'].includes(action) ? action : 'idle' };
   }
   return spec;
 }

@@ -1,7 +1,7 @@
 // Motion Graphics: Pop-up-Karten, Kapitel-Labels und Soundeffekt-Zeitpunkte.
 // Pop-ups sliden passend zum gesprochenen Wort von unten ins Bild.
 
-import { drawInsert, INSERT_LIST } from './inserts.js';
+import { drawInsert, INSERT_LIST, wifi, redX } from './inserts.js';
 
 // Schlüsselwörter → animierte B-Roll-Einblendung
 const INSERT_MAP = [
@@ -71,86 +71,140 @@ export function guessLabel(text, index) {
 /**
  * Baut die zeitgesteuerten Einblendungen + Soundeffekte.
  */
+// Dinge, die "wegfallen" → Symbol mit rotem X (statt großer Karte)
+const STRIKE_MAP = [
+  [/^(strom|stromausfall|elektrizität)/, '⚡', 'STROM'],
+  [/^(netz|empfang|wlan|wifi|handynetz)/, 'wifi', 'NETZ'],
+  [/^(internet|online)/, '🌐', 'INTERNET'],
+  [/^(licht|lichter|beleuchtung)/, '💡', 'LICHT'],
+  [/^(heizung|wärme)/, '🔥', 'HEIZUNG'],
+  [/^(verkehr|autos?)$/, '🚗', 'VERKEHR'],
+  [/^(stimmen|geräusche|lärm)/, '🗣️', 'STIMMEN'],
+  [/^(wasser|leitungswasser)/, '🚰', 'WASSER'],
+  [/^(musik)/, '🎵', 'MUSIK'],
+  [/^(handy|smartphone)/, '📱', 'HANDY'],
+  [/^(menschen|leute)/, '👥', 'MENSCHEN'],
+  [/^(essen|nahrung|lebensmittel)/, '🍞', 'ESSEN'],
+];
+const NEG_BEFORE = /^(kein|keine|keinen|keiner|keinem|ohne|null)$/;
+const NEG_AFTER = /\b(fällt|fallen|fiel)\b.*\baus\b|\bausgefallen\b|\bweg\b|\bverschwunden\b|\btot\b/;
+const norm = (w) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+
+function findStrike(words, text) {
+  for (let k = 0; k < words.length; k++) {
+    const key = norm(words[k].word);
+    const hit = STRIKE_MAP.find(([re]) => re.test(key));
+    if (!hit) continue;
+    const before = k > 0 ? norm(words[k - 1].word) : '';
+    const before2 = k > 1 ? norm(words[k - 2].word) : '';
+    const sentence = text.toLowerCase();
+    if (NEG_BEFORE.test(before) || NEG_BEFORE.test(before2) || NEG_AFTER.test(sentence)) {
+      return { icon: hit[1], label: hit[2], word: words[k] };
+    }
+  }
+  return null;
+}
+
+/**
+ * Baut die zeitgesteuerten Einblendungen + Soundeffekte.
+ * Bewusst sparsam: höchstens eine Einblendung pro Szene, Abstand dazwischen,
+ * keine Wiederholungen – damit das Video nicht überladen wirkt.
+ */
 export function buildOverlays(scenes, sceneStarts, sceneTimes, subtitles, duration) {
   const overlays = [];
   const sfx = [];
+  const MIN_GAP = 4;
+  const budget = { insert: 3, strike: 3, popup: 2, label: 3 };
+  const totalMax = Math.max(3, Math.round(duration / 10));
+  let total = 0;
+  let lastEnd = -99;
+  const usedInserts = new Set();
+  const usedIcons = new Set();
+
   scenes.forEach((sc, i) => {
     const start = sceneStarts[i];
     const end = i + 1 < sceneStarts.length ? sceneStarts[i + 1] : duration;
     const words = subtitles.filter((c) => c.scene === i).flatMap((c) => c.words);
-    // Kapitel-/Zeit-Label oben
+    const findWord = (key) => {
+      const k6 = norm(String(key || '')).slice(0, 6);
+      return k6 && words.find((w) => norm(w.word).startsWith(k6));
+    };
+    // Kapitel-/Zeit-Label oben (klein)
     const label = (sc.label ?? guessLabel(sc.text, i)) || null;
-    if (label && i > 0) {
-      overlays.push({ type: 'label', start: start + 0.15, end: Math.min(end - 0.1, start + 2.6), text: String(label).toUpperCase().slice(0, 28) });
+    if (label && i > 0 && budget.label > 0) {
+      budget.label--;
+      overlays.push({ type: 'label', start: start + 0.15, end: Math.min(end - 0.1, start + 2.4), text: String(label).toUpperCase().slice(0, 28) });
       sfx.push({ type: 'ding', at: start + 0.15 });
     }
-    // B-Roll-Einblendung (große animierte Nahaufnahme), max. eine pro Szene
-    const findWord = (key) => {
-      const k6 = String(key || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '').slice(0, 6);
-      return k6 && words.find((w) => w.word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '').startsWith(k6));
-    };
-    let insert = null;
-    const given = (Array.isArray(sc.popups) ? sc.popups : []).find((p) => p && INSERT_LIST.includes(p.insert));
-    if (given) insert = { id: given.insert, word: given.word || given.label, label: given.label };
-    if (!insert) {
-      for (const w of words) {
-        const key = w.word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
-        const hit = INSERT_MAP.find(([re]) => re.test(key));
-        if (hit) {
-          insert = { id: hit[1], word: w.word, label: hit[2] || (hit[1] === 'calendar' ? (sc.label || label || w.word) : w.word) };
-          break;
-        }
-      }
-    }
-    let insertSpan = null;
-    if (insert && end - start > 1.6) {
-      const hit = findWord(insert.word);
-      let at = hit ? hit.start - 0.15 : start + (end - start) * 0.25;
-      at = Math.max(start + 0.25, Math.min(at, end - 1.4));
-      const until = Math.min(end - 0.05, at + 2.8);
-      let lab = String(insert.label || '').toUpperCase().slice(0, 22);
-      if (insert.id === 'calendar') lab = String(sc.label || label || insert.label || '').toUpperCase().slice(0, 22);
-      overlays.push({ type: 'insert', insert: insert.id, start: at, end: until, label: lab, slot: i % 2, scene: i });
-      insertSpan = [at, until];
-      sfx.push({ type: 'whoosh', at: at - 0.05 });
-      if (insert.id === 'phone') sfx.push({ type: 'error', at: at + 1.05 });
-      if (insert.id === 'power') sfx.push({ type: 'zap', at: at + 0.75 });
-      if (insert.id === 'counter') sfx.push({ type: 'ding', at: at + 2.0 });
-      if (insert.id === 'internet') sfx.push({ type: 'error', at: at + 1.4 });
-    }
-    // Pop-ups passend zum Wort
-    const pops = (Array.isArray(sc.popups) ? sc.popups : guessPopups(sc.text))
-      .filter((p) => p && (p.emoji || p.label) && !(insert && (p.insert === insert.id || String(p.word || '').toLowerCase() === String(insert.word || '').toLowerCase())))
-      .slice(0, insert ? 1 : 2);
-    pops.forEach((p, k) => {
-      const key = String(p.word || p.label || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '').slice(0, 6);
-      const hit = key && words.find((w) => w.word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '').startsWith(key));
-      let at = hit ? hit.start - 0.12 : start + ((k + 1) / (pops.length + 1)) * (end - start) * 0.8;
-      at = Math.max(start + 0.2, Math.min(at, end - 0.9));
-      // nicht gleichzeitig mit der großen Einblendung
-      if (insertSpan && at > insertSpan[0] - 0.6 && at < insertSpan[1]) at = insertSpan[1] + 0.05;
-      if (at > end - 0.8) return;
-      overlays.push({
-        type: 'popup',
-        start: at,
-        end: Math.min(end - 0.05, at + 2.2),
-        emoji: String(p.emoji || '✨').slice(0, 4),
-        label: String(p.label || '').toUpperCase().slice(0, 18),
-        slot: (i + k) % 2,
-      });
-      sfx.push({ type: 'pop', at });
-    });
     // Szenenwechsel + große Ereignisse
     if (i > 0) sfx.push({ type: 'whoosh', at: start - 0.2 });
     const eff = sc.anim?.effect || sc._effect;
     if (['explosion', 'flash', 'quake'].includes(eff)) sfx.push({ type: 'boom', at: start + (end - start) * 0.3 });
+
+    if (total >= totalMax || end - start < 1.8) return;
+    const given = Array.isArray(sc.popups) ? sc.popups.filter(Boolean) : null;
+
+    // Kandidaten (Reihenfolge = Priorität)
+    const cands = [];
+    // 1) "kein Strom", "kein Netz" … → Symbol mit X
+    const givenStrike = given?.find((p) => p.strike || p.insert === 'power' || p.insert === 'internet');
+    const strike = givenStrike
+      ? { icon: /netz|wlan|empfang/i.test(`${givenStrike.label} ${givenStrike.word}`) ? 'wifi' : givenStrike.insert === 'power' ? '⚡' : givenStrike.insert === 'internet' ? '🌐' : givenStrike.emoji || '❌', label: String(givenStrike.label || '').toUpperCase(), word: findWord(givenStrike.word || givenStrike.label) }
+      : findStrike(words, sc.text);
+    if (strike && budget.strike > 0 && !usedIcons.has(strike.icon)) cands.push({ kind: 'strike', ...strike });
+    // 2) große B-Roll-Nahaufnahme
+    let ins = given?.find((p) => INSERT_LIST.includes(p.insert) && !['power', 'internet'].includes(p.insert));
+    let insert = ins ? { id: ins.insert, word: ins.word || ins.label, label: ins.label } : null;
+    if (!insert && !given) {
+      for (const w of words) {
+        const hit = INSERT_MAP.find(([re]) => re.test(norm(w.word)));
+        if (hit && !['power', 'internet'].includes(hit[1])) {
+          insert = { id: hit[1], word: w.word, label: hit[2] || (hit[1] === 'calendar' ? sc.label || label || w.word : w.word) };
+          break;
+        }
+      }
+    }
+    if (insert && budget.insert > 0 && !usedInserts.has(insert.id) && end - start > 2.6) {
+      // Handy-Nahaufnahme zeigt das durchgestrichene WLAN schon selbst → hat Vorrang
+      if (insert.id === 'phone') cands.unshift({ kind: 'insert', ...insert });
+      else cands.push({ kind: 'insert', ...insert });
+    }
+    // 3) kleine Emoji-Karte
+    const pop = (given || guessPopups(sc.text)).find((p) => p && p.emoji && !p.insert && !p.strike);
+    if (pop && budget.popup > 0 && !usedIcons.has(pop.emoji)) cands.push({ kind: 'popup', ...pop });
+
+    for (const c of cands) {
+      const hit = c.kind === 'strike' ? c.word : findWord(c.word || c.label);
+      let at = hit ? hit.start - 0.12 : start + (end - start) * 0.3;
+      const len = c.kind === 'insert' ? 2.6 : c.kind === 'strike' ? 2.0 : 1.9;
+      at = Math.max(start + 0.2, Math.max(at, lastEnd + MIN_GAP));
+      if (at > end - Math.min(len, 1.4)) continue; // passt nicht mehr in diese Szene
+      const until = Math.min(end - 0.05, at + len);
+      if (c.kind === 'strike') {
+        overlays.push({ type: 'strike', icon: c.icon, label: c.label, start: at, end: until, scene: i });
+        sfx.push({ type: 'pop', at }, { type: 'error', at: at + 0.5 });
+        budget.strike--;
+        usedIcons.add(c.icon);
+      } else if (c.kind === 'insert') {
+        let lab = String(c.label || '').toUpperCase().slice(0, 22);
+        if (c.id === 'calendar') lab = String(sc.label || label || c.label || '').toUpperCase().slice(0, 22);
+        overlays.push({ type: 'insert', insert: c.id, start: at, end: until, label: lab, slot: i % 2, scene: i });
+        sfx.push({ type: 'whoosh', at: at - 0.05 });
+        if (c.id === 'phone') sfx.push({ type: 'error', at: at + 1.05 });
+        if (c.id === 'counter') sfx.push({ type: 'ding', at: at + 2.0 });
+        budget.insert--;
+        usedInserts.add(c.id);
+      } else {
+        overlays.push({ type: 'popup', start: at, end: until, emoji: String(c.emoji).slice(0, 4), label: String(c.label || '').toUpperCase().slice(0, 18), slot: i % 2 });
+        sfx.push({ type: 'pop', at });
+        budget.popup--;
+        usedIcons.add(c.emoji);
+      }
+      lastEnd = until;
+      total++;
+      break; // höchstens eine Einblendung pro Szene
+    }
   });
-  // Pop-ups, die sich überlappen, kürzen
-  const pops = overlays.filter((o) => o.type === 'popup').sort((a, b) => a.start - b.start);
-  for (let k = 0; k < pops.length - 1; k++) {
-    if (pops[k + 1].start < pops[k].end && pops[k + 1].slot === pops[k].slot) pops[k + 1].slot = 1 - pops[k].slot;
-    if (pops[k + 1].start < pops[k].end - 0.2 && pops[k + 2] && pops[k + 2].start < pops[k].end) pops[k].end = pops[k + 1].start + 0.4;
-  }
   return { overlays, sfx };
 }
 
@@ -180,8 +234,54 @@ export function drawOverlays(g, W, H, t, overlays, font) {
     if (o.type === 'popup') drawPopup(g, W, H, o, age, left, font, t);
     if (o.type === 'label') drawLabel(g, W, H, o, age, left, font);
     if (o.type === 'insert') drawInsert(g, W, H, o, t);
+    if (o.type === 'strike') drawStrike(g, W, H, o, age, left, font, t);
     if (o.type === 'follow') drawFollow(g, W, H, o, t, font);
   }
+}
+
+// Symbol mit rotem X direkt über der Figur (z. B. "kein Strom", "kein Netz")
+function drawStrike(g, W, H, o, age, left, font, t) {
+  const inK = clamp(age / 0.35);
+  const outK = clamp(left / 0.3);
+  const r = W * 0.13;
+  const cx = W * 0.68;
+  const cy = H * 0.3 - (1 - backOut(inK)) * H * 0.05;
+  const shake = age > 0.5 && age < 0.8 ? Math.sin(t * 60) * W * 0.006 : 0;
+  g.save();
+  g.globalAlpha = Math.min(clamp(inK * 3), outK);
+  g.translate(cx + shake, cy);
+  const sc = 0.6 + 0.4 * backOut(inK);
+  g.scale(sc, sc);
+  g.fillStyle = 'rgba(18,10,28,0.78)';
+  g.beginPath();
+  g.arc(0, 0, r, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.85)';
+  g.lineWidth = W * 0.008;
+  g.stroke();
+  if (o.icon === 'wifi') {
+    wifi(g, 0, r * 0.35, r * 0.75, [true, true, true], '#ffffff', 'rgba(255,255,255,0.3)');
+  } else {
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = `${Math.round(r * 1.05)}px ${EMOJI_FONT}`;
+    g.fillText(o.icon, 0, r * 0.06);
+  }
+  if (age > 0.45) redX(g, 0, 0, r * 0.62, clamp((age - 0.45) / 0.3), W * 0.022);
+  if (o.label) {
+    const fs = Math.round(W * 0.04);
+    g.font = `900 ${fs}px ${font}`;
+    const txt = `KEIN ${o.label}`.replace('KEIN MENSCHEN', 'KEINE MENSCHEN').replace('KEIN STIMMEN', 'KEINE STIMMEN').replace('KEIN MUSIK', 'KEINE MUSIK').replace('KEIN HEIZUNG', 'KEINE HEIZUNG');
+    const tw = g.measureText(txt).width + fs * 1.4;
+    g.fillStyle = '#ff3b4d';
+    roundRect(g, -tw / 2, r * 0.95, tw, fs * 1.7, fs * 0.85);
+    g.fill();
+    g.fillStyle = '#ffffff';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(txt, 0, r * 0.95 + fs * 0.87);
+  }
+  g.restore();
 }
 
 function drawPopup(g, W, H, o, age, left, font, t) {
