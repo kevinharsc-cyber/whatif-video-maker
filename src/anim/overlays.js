@@ -1,6 +1,23 @@
 // Motion Graphics: Pop-up-Karten, Kapitel-Labels und Soundeffekt-Zeitpunkte.
 // Pop-ups sliden passend zum gesprochenen Wort von unten ins Bild.
 
+import { drawInsert, INSERT_LIST } from './inserts.js';
+
+// Schlüsselwörter → animierte B-Roll-Einblendung
+const INSERT_MAP = [
+  [/^(handy|smartphone|nachricht|netz$|empfang|wlan|schreibst|anrufen|anruf|telefon)/, 'phone', 'KEIN NETZ'],
+  [/^(strom|stromausfall|heizung|kraftwerk)/, 'power', 'STROMAUSFALL'],
+  [/^(internet|online|offline)/, 'internet', 'OFFLINE'],
+  [/^(uhr$|uhrzeit|wecker|minuten|stunden)/, 'clock', 'ZEIT VERGEHT'],
+  [/^(tage?n?$|wochen?$|monate?n?$)/, 'calendar', null],
+  [/^(tiere|rehe?$|wölfe|wolf|hirsch|wildtiere)/, 'animals', 'WILDTIERE'],
+  [/^(burger|pommes|restaurant|imbiss|fastfood)/, 'burger', 'BURGERLADEN'],
+  [/^(sterne|milchstraße|sternenhimmel|nachthimmel)/, 'stars', 'MILCHSTRASSE'],
+  [/^(gemüse|pflanzen|anbauen|garten|karotten)/, 'plant', 'SELBST ANBAUEN'],
+  [/^(wasser|trinkwasser|filtern|regenwasser)/, 'water', 'WASSER'],
+  [/^(menschheit|milliarden|bevölkerung|letzte)/, 'counter', 'MENSCHEN AUF DER ERDE'],
+];
+
 const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 
@@ -67,13 +84,52 @@ export function buildOverlays(scenes, sceneStarts, sceneTimes, subtitles, durati
       overlays.push({ type: 'label', start: start + 0.15, end: Math.min(end - 0.1, start + 2.6), text: String(label).toUpperCase().slice(0, 28) });
       sfx.push({ type: 'ding', at: start + 0.15 });
     }
+    // B-Roll-Einblendung (große animierte Nahaufnahme), max. eine pro Szene
+    const findWord = (key) => {
+      const k6 = String(key || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '').slice(0, 6);
+      return k6 && words.find((w) => w.word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '').startsWith(k6));
+    };
+    let insert = null;
+    const given = (Array.isArray(sc.popups) ? sc.popups : []).find((p) => p && INSERT_LIST.includes(p.insert));
+    if (given) insert = { id: given.insert, word: given.word || given.label, label: given.label };
+    if (!insert) {
+      for (const w of words) {
+        const key = w.word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+        const hit = INSERT_MAP.find(([re]) => re.test(key));
+        if (hit) {
+          insert = { id: hit[1], word: w.word, label: hit[2] || (hit[1] === 'calendar' ? (sc.label || label || w.word) : w.word) };
+          break;
+        }
+      }
+    }
+    let insertSpan = null;
+    if (insert && end - start > 1.6) {
+      const hit = findWord(insert.word);
+      let at = hit ? hit.start - 0.15 : start + (end - start) * 0.25;
+      at = Math.max(start + 0.25, Math.min(at, end - 1.4));
+      const until = Math.min(end - 0.05, at + 2.8);
+      let lab = String(insert.label || '').toUpperCase().slice(0, 22);
+      if (insert.id === 'calendar') lab = String(sc.label || label || insert.label || '').toUpperCase().slice(0, 22);
+      overlays.push({ type: 'insert', insert: insert.id, start: at, end: until, label: lab, slot: i % 2, scene: i });
+      insertSpan = [at, until];
+      sfx.push({ type: 'whoosh', at: at - 0.05 });
+      if (insert.id === 'phone') sfx.push({ type: 'error', at: at + 1.05 });
+      if (insert.id === 'power') sfx.push({ type: 'zap', at: at + 0.75 });
+      if (insert.id === 'counter') sfx.push({ type: 'ding', at: at + 2.0 });
+      if (insert.id === 'internet') sfx.push({ type: 'error', at: at + 1.4 });
+    }
     // Pop-ups passend zum Wort
-    const pops = (Array.isArray(sc.popups) ? sc.popups : guessPopups(sc.text)).filter((p) => p && (p.emoji || p.label)).slice(0, 3);
+    const pops = (Array.isArray(sc.popups) ? sc.popups : guessPopups(sc.text))
+      .filter((p) => p && (p.emoji || p.label) && !(insert && (p.insert === insert.id || String(p.word || '').toLowerCase() === String(insert.word || '').toLowerCase())))
+      .slice(0, insert ? 1 : 2);
     pops.forEach((p, k) => {
       const key = String(p.word || p.label || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '').slice(0, 6);
       const hit = key && words.find((w) => w.word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '').startsWith(key));
       let at = hit ? hit.start - 0.12 : start + ((k + 1) / (pops.length + 1)) * (end - start) * 0.8;
       at = Math.max(start + 0.2, Math.min(at, end - 0.9));
+      // nicht gleichzeitig mit der großen Einblendung
+      if (insertSpan && at > insertSpan[0] - 0.6 && at < insertSpan[1]) at = insertSpan[1] + 0.05;
+      if (at > end - 0.8) return;
       overlays.push({
         type: 'popup',
         start: at,
@@ -123,6 +179,7 @@ export function drawOverlays(g, W, H, t, overlays, font) {
     const left = o.end - t;
     if (o.type === 'popup') drawPopup(g, W, H, o, age, left, font, t);
     if (o.type === 'label') drawLabel(g, W, H, o, age, left, font);
+    if (o.type === 'insert') drawInsert(g, W, H, o, t);
   }
 }
 
@@ -224,6 +281,35 @@ export function scheduleSfx(ctx, out, list, t0) {
       o.start(at);
       o.stop(at + 0.2);
       nodes.push(o);
+    } else if (s.type === 'error') {
+      [[660, 0], [440, 0.14]].forEach(([f, d]) => {
+        const o = ctx.createOscillator();
+        const gn = ctx.createGain();
+        o.type = 'square';
+        o.frequency.value = f;
+        gn.gain.setValueAtTime(0.0001, at + d);
+        gn.gain.exponentialRampToValueAtTime(0.06, at + d + 0.01);
+        gn.gain.exponentialRampToValueAtTime(0.0001, at + d + 0.13);
+        o.connect(gn).connect(out);
+        o.start(at + d);
+        o.stop(at + d + 0.15);
+        nodes.push(o);
+      });
+    } else if (s.type === 'zap') {
+      const src = ctx.createBufferSource();
+      src.buffer = getNoise();
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 1800;
+      const gn = ctx.createGain();
+      for (let k = 0; k < 6; k++) {
+        gn.gain.setValueAtTime(k % 2 ? 0.02 : 0.25, at + k * 0.04);
+      }
+      gn.gain.exponentialRampToValueAtTime(0.0001, at + 0.5);
+      src.connect(hp).connect(gn).connect(out);
+      src.start(at);
+      src.stop(at + 0.55);
+      nodes.push(src);
     } else if (s.type === 'ding') {
       for (const [f, v] of [[1320, 0.05], [1980, 0.03]]) {
         const o = ctx.createOscillator();

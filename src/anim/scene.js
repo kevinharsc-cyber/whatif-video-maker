@@ -6,8 +6,8 @@ import { seededRandom } from '../util.js';
 import { PLACES, drawSkyProps, drawGroundProps, drawEffect, effectSkyDarkness, cameraShake } from './world.js';
 
 export const PLACE_LIST = Object.keys(PLACES);
-export const ACTIONS = ['idle', 'walk', 'run', 'sit', 'sleep', 'get_up', 'scared', 'flee', 'look_up', 'wave', 'shiver', 'fall', 'cheer', 'think', 'sad', 'work', 'point', 'swim', 'jump', 'float'];
-export const PROPS = ['shop', 'sun', 'moon', 'earth', 'clouds', 'birds', 'plane', 'rocket', 'meteor', 'cars', 'bees', 'dinosaur', 'trees', 'house', 'money'];
+export const ACTIONS = ['phone', 'idle', 'walk', 'run', 'sit', 'sleep', 'get_up', 'scared', 'flee', 'look_up', 'wave', 'shiver', 'fall', 'cheer', 'think', 'sad', 'work', 'point', 'swim', 'jump', 'float'];
+export const PROPS = ['animals', 'shop', 'sun', 'moon', 'earth', 'clouds', 'birds', 'plane', 'rocket', 'meteor', 'cars', 'bees', 'dinosaur', 'trees', 'house', 'money'];
 export const PROP_STATES = ['normal', 'explode', 'vanish', 'grow', 'dim', 'stop', 'fall', 'big', 'red_giant', 'dead', 'storm'];
 export const EFFECTS = ['none', 'explosion', 'flash', 'darkness', 'fire', 'flood', 'quake', 'rain', 'storm', 'snow', 'freeze', 'heat', 'alarm'];
 export const TIMES = ['day', 'sunset', 'night'];
@@ -93,6 +93,7 @@ export function guessAnim(text, topic = '', index = 0, count = 1) {
   if (has(all, /biene/)) spec.props.push({ type: 'bees', state: has(t, /(verschwind|sterben|aussterb|weg|keine)/) ? 'vanish' : 'normal' });
   if (has(t, /(auto|verkehr|stau)/)) spec.props.push({ type: 'cars', state: has(t, /(still|stehen|stopp|chaos)/) ? 'stop' : 'normal' });
   if (has(all, /dinosaur/)) spec.props.push({ type: 'dinosaur', state: 'normal' });
+  if (has(t, /(tiere|rehe|wölfe|wolf|hirsch|wildschwein)/)) spec.props.push({ type: 'animals', state: 'normal' });
   const shop = t.match(/(burger|pizza|döner|supermarkt|bäckerei|kiosk|café|laden|geschäft|tankstelle|apotheke)/);
   if (shop && !['bedroom', 'living_room', 'lab', 'space', 'earth'].includes(spec.place)) {
     if (!['street', 'city', 'empty_city'].includes(spec.place)) spec.place = 'street';
@@ -278,6 +279,13 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
       g.fillRect(x - S * 0.13, seat, S * 0.26, S * 0.04);
       g.fillRect(x - S * 0.02, seat, S * 0.04, c.groundY - seat);
     }
+    // weicher Schatten am Boden (Tiefe)
+    if (!lying && a.action !== 'float' && a.action !== 'swim') {
+      g.fillStyle = 'rgba(10,5,15,0.28)';
+      g.beginPath();
+      g.ellipse(x, groundY + a.size * 0.01, a.size * 0.2, a.size * 0.035, 0, 0, Math.PI * 2);
+      g.fill();
+    }
     drawFigure(g, {
       x,
       groundY,
@@ -291,15 +299,70 @@ export function drawAnimScene(g, W, H, spec, t, dur) {
       bubble: st.bubble,
       t: t + idx,
       jitter: st.jitter || 0,
+      holdPhone: !!st.holdPhone,
       bubbleColor: '#fff3e0',
       look: a.main ? LOOK_MAIN : a.crowd != null ? LOOK_CROWD : LOOK_OTHER,
       emotion: emotionFor(a.action, p, ev, lying),
     });
   });
 
+  drawForeground(g, W, H, c, spec, t, p);
   drawEffect(g, W, H, c, effect, origin);
   g.restore();
   cinematicGrade(g, W, H, t, spec);
+}
+
+// Vordergrund-Ebene: dunkle, unscharfe Silhouetten an den Rändern (Tiefe + Parallaxe)
+function drawForeground(g, W, H, c, spec, t, p) {
+  if (spec.place === 'space' || spec.place === 'earth') return;
+  const shift = (p - 0.5) * W * 0.06;
+  g.save();
+  g.fillStyle = 'rgba(12,6,16,0.92)';
+  const indoor = ['bedroom', 'living_room', 'lab'].includes(spec.place);
+  if (indoor) {
+    // drinnen: nur leichte Abdunklung der unteren Ecken
+    const v = g.createLinearGradient(0, H * 0.85, 0, H);
+    v.addColorStop(0, 'rgba(12,6,16,0)');
+    v.addColorStop(1, 'rgba(12,6,16,0.5)');
+    g.fillStyle = v;
+    g.fillRect(0, H * 0.85, W, H * 0.15);
+  } else {
+    // Gras/Büsche in den unteren Ecken, wiegen sich im Wind
+    for (const side of [0, 1]) {
+      const bx = side ? W + shift * 1.3 : -shift * 1.3;
+      for (let k = 0; k < 9; k++) {
+        const x = bx + (side ? -1 : 1) * (k * W * 0.022);
+        const hgt = H * (0.06 + ((k * 37) % 10) * 0.007);
+        const sway = Math.sin(t * 1.5 + k) * W * 0.012;
+        g.beginPath();
+        g.moveTo(x - W * 0.012, H);
+        g.quadraticCurveTo(x + sway * 0.5, H - hgt * 0.6, x + sway, H - hgt);
+        g.quadraticCurveTo(x + sway * 0.4 + W * 0.006, H - hgt * 0.5, x + W * 0.014, H);
+        g.fill();
+      }
+      g.beginPath();
+      g.ellipse(bx, H, W * 0.14, H * 0.05, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  g.restore();
+}
+
+// Filmkorn (einmal erzeugt, dann wiederverwendet)
+let grainCanvas = null;
+function grain() {
+  if (grainCanvas) return grainCanvas;
+  grainCanvas = document.createElement('canvas');
+  grainCanvas.width = grainCanvas.height = 192;
+  const gg = grainCanvas.getContext('2d');
+  const img = gg.createImageData(192, 192);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = Math.random() * 255;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
+  }
+  gg.putImageData(img, 0, 0);
+  return grainCanvas;
 }
 
 // Figuren-Looks: Hauptfigur mit orangem Hoodie, andere in dunklen Warmtönen
@@ -335,6 +398,19 @@ function cinematicGrade(g, W, H, t, spec) {
     g.beginPath();
     g.arc(x, y, r, 0, Math.PI * 2);
     g.fill();
+  }
+  // Filmkorn
+  try {
+    const pat = g.createPattern(grain(), 'repeat');
+    g.save();
+    g.globalAlpha = 0.07;
+    g.globalCompositeOperation = 'overlay';
+    g.translate(Math.floor(Math.random() * 192), Math.floor(Math.random() * 192));
+    g.fillStyle = pat;
+    g.fillRect(-192, -192, W + 384, H + 384);
+    g.restore();
+  } catch {
+    /* ohne Korn */
   }
   // Vignette
   const v = g.createRadialGradient(W / 2, H * 0.48, H * 0.25, W / 2, H * 0.5, H * 0.75);

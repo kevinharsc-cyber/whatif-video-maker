@@ -47,7 +47,15 @@ export class VideoRenderer {
     const { overlays, sfx } = buildOverlays(withEffects, this.sceneStarts, sceneTimes, subtitles, this.duration);
     this.overlays = overlays;
     this.sfx = sfx;
-    this.punches = overlays.filter((o) => o.type === 'popup').map((o) => o.start);
+    this.punches = overlays.filter((o) => o.type === 'popup' || o.type === 'insert').map((o) => o.start);
+    // Wenn ein Handy eingeblendet wird, schaut die Figur in dieser Szene aufs Handy
+    for (const o of overlays) {
+      if (o.type !== 'insert' || o.insert !== 'phone') continue;
+      const spec = images[o.scene]?.spec;
+      const a0 = spec?.actors?.[0];
+      if (a0 && !['get_up', 'run', 'flee', 'walk', 'sleep', 'swim', 'float'].includes(a0.action)) a0.action = 'phone';
+      else if (spec && !a0) spec.actors.push({ action: 'phone' });
+    }
   }
 
   // Kamera: dezente Bewegung je Szene + kurzer Zoom-"Punch" bei jedem Pop-up
