@@ -282,18 +282,45 @@ async function produceVideo({ sc, images, width, height, sceneTimes, subtitles, 
   try {
     if (job) {
       try {
-        blob = await exportSegmented(renderer, ctx, job, {
-          cancel: cancelFlag,
-          log,
-          onProgress: (p, text) => onStatus(text || `Video wird erstellt: ${Math.round(p * 100)} % (Szene ${Math.min(job.segDone + 1, job.segs?.length || 1)} von ${job.segs?.length || '?'})`, p),
-          onHeartbeat: (hb) => {
-            markPhase('export', null, hb);
-            stats = hb;
-          },
+        // Wächter: 30 s ohne Fortschritt → abbrechen und alten Weg nehmen
+        let last = performance.now();
+        let watch = null;
+        let segStop = false; // stoppt nur diesen Export (nicht den Abbrechen-Knopf)
+        const stalled = new Promise((_, rej) => {
+          watch = setInterval(() => {
+            if (performance.now() - last > 30000) {
+              segStop = true;
+              rej(new Error('keine Rückmeldung seit 30 s'));
+            }
+          }, 1000);
         });
+        try {
+          blob = await Promise.race([
+            exportSegmented(renderer, ctx, job, {
+              cancel: {
+                get requested() {
+                  return cancelFlag.requested || segStop;
+                },
+              },
+              log,
+              onProgress: (p, text) => {
+                last = performance.now();
+                onStatus(text || `Video wird erstellt: ${Math.round(p * 100)} % (Szene ${Math.min(job.segDone + 1, job.segs?.length || 1)} von ${job.segs?.length || '?'})`, p);
+              },
+              onHeartbeat: (hb) => {
+                last = performance.now();
+                markPhase('export', null, hb);
+                stats = hb;
+              },
+            }),
+            stalled,
+          ]);
+        } finally {
+          clearInterval(watch);
+        }
         method = `Szene für Szene (${FPS} fps konstant)`;
       } catch (e) {
-        if (e instanceof CancelledError) throw e;
+        if (e instanceof CancelledError || cancelFlag.requested) throw e;
         if (!buffer) throw e; // Fortsetzen ohne Ton-Rohdaten: kein Rückfall möglich
         log(`Speichersicherer Export nicht möglich (${e.message}) – nutze Echtzeit-Aufnahme.`, 'warn');
         markPhase('record', e.message);
@@ -420,7 +447,7 @@ async function onCreateVideo() {
     let job = null;
     if (settings.exportMode !== 'realtime' && settings.visualMode !== 'images') {
       setStatus('Prüfe Video-Encoder des Geräts …', 0.66);
-      const sup = await segmentedSupported(width, height);
+      const sup = await segmentedSupported(width, height, (t) => setStatus(t, 0.66));
       if (sup.ok) {
         job = await startJob({ W: width, H: height, music: settings.music, script, sceneTimes, subtitles, duration: buffer.duration, visualMode: settings.visualMode, at: Date.now() });
       } else {
@@ -586,7 +613,8 @@ async function onSelfTest() {
     for (let run = 1; run <= 2; run++) {
       setTask('render', 'active');
       const images = buildAnimVisuals(test, visualMode);
-      const sup = settings.exportMode !== 'realtime' ? await segmentedSupported(720, 1280) : { ok: false, why: 'Echtzeit eingestellt' };
+      const sup = settings.exportMode !== 'realtime' ? await segmentedSupported(720, 1280, (t) => setStatus(`Test ${run}/2: ${t}`, 0.3)) : { ok: false, why: 'Echtzeit eingestellt' };
+      setStatus(`Test ${run}/2: Video wird erstellt …`, 0.35);
       if (!sup.ok) say(`Durchlauf ${run}: Szene-für-Szene nicht möglich (${sup.why}) → Echtzeit-Aufnahme`, 'warn');
       const job = sup.ok ? await startJob({ W: 720, H: 1280, music: false, script: test, sceneTimes, subtitles, duration: 10, visualMode, at: Date.now() }) : null;
       const t0 = performance.now();
