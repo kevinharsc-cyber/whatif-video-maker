@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0b12" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Was wäre wenn" />
+    <link rel="apple-touch-icon" href="./icon-180.png" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <title>Was-wäre-wenn Video Maker</title>
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="logo">?!</span>
+        <div>
+          <h1>Was wäre, wenn …?</h1>
+          <p class="sub">KI-Shorts für TikTok &amp; YouTube</p>
+        </div>
+      </div>
+      <button id="btnSettings" class="icon-btn" aria-label="Einstellungen">⚙️</button>
+    </header>
+
+    <main>
+      <!-- Schritt 1: Thema -->
+      <section id="stepTopic" class="card">
+        <h2><span class="num">1</span> Thema eingeben</h2>
+        <textarea id="topic" rows="3" placeholder="Was wäre, wenn die Erde plötzlich stehen bleibt?"></textarea>
+        <div id="ideas" class="chips"></div>
+        <button id="btnScript" class="primary">✨ Skript erstellen</button>
+      </section>
+
+      <!-- Schritt 2: Skript prüfen -->
+      <section id="stepScript" class="card hidden">
+        <h2><span class="num">2</span> Skript prüfen &amp; anpassen</h2>
+        <label class="lbl">Titel (wird am Anfang eingeblendet)</label>
+        <input id="title" type="text" />
+        <div id="scriptInfo" class="info"></div>
+        <div id="scenes"></div>
+        <div class="row">
+          <button id="btnAddScene" class="ghost">＋ Szene</button>
+          <button id="btnRegen" class="ghost">↻ Neu schreiben</button>
+        </div>
+        <button id="btnVideo" class="primary">🎬 Video erstellen</button>
+      </section>
+
+      <!-- Schritt 3: Fortschritt -->
+      <section id="stepProgress" class="card hidden">
+        <h2><span class="num">3</span> Video wird erstellt …</h2>
+        <ol id="tasks" class="tasks">
+          <li data-task="images">KI-Bilder erzeugen</li>
+          <li data-task="voice">Deutsche Stimme erzeugen</li>
+          <li data-task="subs">Untertitel synchronisieren</li>
+          <li data-task="render">Video aufnehmen (Echtzeit)</li>
+        </ol>
+        <div class="bar"><div id="bar"></div></div>
+        <p id="status" class="status"></p>
+        <div class="preview-wrap"><canvas id="livePreview" width="270" height="480"></canvas></div>
+        <p class="hint">📱 Bitte die App geöffnet und den Bildschirm an lassen, bis das Video fertig ist.</p>
+      </section>
+
+      <!-- Schritt 4: Ergebnis -->
+      <section id="stepResult" class="card hidden">
+        <h2><span class="num">4</span> Fertig! 🎉</h2>
+        <video id="result" controls playsinline></video>
+        <p id="resultInfo" class="info"></p>
+        <button id="btnShare" class="primary">📲 Auf iPhone speichern / teilen</button>
+        <a id="btnDownload" class="button ghost" download>⬇️ Datei herunterladen</a>
+        <div class="row">
+          <button id="btnCopy" class="ghost">📋 Beschreibung kopieren</button>
+          <button id="btnSrt" class="ghost">💬 Untertitel (.srt)</button>
+        </div>
+        <button id="btnNew" class="ghost wide">🔁 Neues Video</button>
+      </section>
+
+      <div id="log" class="log"></div>
+    </main>
+
+    <!-- Einstellungen -->
+    <dialog id="settings">
+      <form method="dialog" class="settings">
+        <h2>Einstellungen</h2>
+
+        <label class="lbl" for="sVoice">Stimme</label>
+        <select id="sVoice"></select>
+        <button type="button" id="btnTestVoice" class="ghost wide">🔊 Stimme testen</button>
+
+        <label class="lbl" for="sSpeed">Sprechtempo: <b id="sSpeedVal"></b></label>
+        <input id="sSpeed" type="range" min="0.8" max="1.3" step="0.05" />
+
+        <label class="lbl" for="sStyle">Bildstil</label>
+        <select id="sStyle">
+          <option value="cinematic">Kinofilm (empfohlen)</option>
+          <option value="realistic">Realistisches Foto</option>
+          <option value="scifi">Science-Fiction</option>
+          <option value="anime">Anime</option>
+          <option value="comic">Comic</option>
+        </select>
+
+        <label class="lbl" for="sQuality">Videoqualität</label>
+        <select id="sQuality">
+          <option value="1080">1080 × 1920 (Full HD, empfohlen)</option>
+          <option value="720">720 × 1280 (schneller, kleiner)</option>
+        </select>
+
+        <label class="check"><input id="sMusic" type="checkbox" /> Hintergrund-Sound &amp; Übergangseffekte</label>
+
+        <label class="lbl" for="sKey">Google-Gemini-API-Schlüssel <small>(optional, kostenlos)</small></label>
+        <input id="sKey" type="password" autocomplete="off" placeholder="AIza…" />
+        <p class="small">
+          Ohne Schlüssel nutzt die App kostenlose Dienste ohne Anmeldung. Mit Schlüssel werden die Skripte besser
+          und zuverlässiger, und die Gemini-Stimmen werden freigeschaltet. Schlüssel gibt es gratis unter
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
+          Er wird nur auf diesem Gerät gespeichert.
+        </p>
+
+        <button class="primary" value="ok">Speichern</button>
+      </form>
+    </dialog>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
