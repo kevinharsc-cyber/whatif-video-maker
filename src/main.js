@@ -2,6 +2,7 @@ import './style.css';
 import { loadSettings, saveSettings } from './settings.js';
 import { generateScript, normalizeTopic } from './script.js';
 import { loadSceneImages } from './images.js';
+import { createAnimVisual, normalizeAnim, guessAnim } from './anim/scene.js';
 import { synthesize, VOICES, speechWeight } from './tts.js';
 import { buildSubtitles, toSrt } from './subtitles.js';
 import { VideoRenderer, pickMimeType, tryResume } from './renderer.js';
@@ -199,14 +200,25 @@ async function onCreateVideo() {
 
     // 1) Bilder
     setTask('images', 'active');
-    const images = await loadSceneImages(
-      script.scenes,
-      settings,
-      (i, n) => setStatus(`Bild ${Math.min(i + 1, n)} von ${n} wird gesucht/gemalt …`, (i / n) * 0.4),
-      log,
-      { topic: script.topic, template: !!script.template },
-    );
-    script.credits = images.credits || [];
+    let images;
+    if (settings.visualMode !== 'images') {
+      // Strichmännchen-Animationen: werden direkt im iPhone gezeichnet
+      const n = script.scenes.length;
+      images = script.scenes.map((sc, i) =>
+        createAnimVisual(normalizeAnim(sc.anim) || guessAnim(sc.text, script.topic, i, n)),
+      );
+      script.credits = [];
+      setStatus('Animationen sind bereit', 0.4);
+    } else {
+      images = await loadSceneImages(
+        script.scenes,
+        settings,
+        (i, n) => setStatus(`Bild ${Math.min(i + 1, n)} von ${n} wird gesucht/gemalt …`, (i / n) * 0.4),
+        log,
+        { topic: script.topic, template: !!script.template },
+      );
+      script.credits = images.credits || [];
+    }
     setTask('images', 'done');
 
     // 2) Stimme
@@ -361,6 +373,7 @@ function openSettings() {
   $('sSpeed').value = settings.speed;
   $('sSpeedVal').textContent = `${Number(settings.speed).toFixed(2)}×`;
   $('sStyle').value = settings.imageStyle;
+  $('sVisual').value = settings.visualMode;
   $('sQuality').value = settings.quality;
   $('sMusic').checked = settings.music;
   $('sKey').value = settings.geminiKey;
@@ -376,6 +389,7 @@ function readSettingsForm() {
     voice: $('sVoice').value,
     speed: Number($('sSpeed').value),
     imageStyle: $('sStyle').value,
+    visualMode: $('sVisual').value,
     quality: $('sQuality').value,
     music: $('sMusic').checked,
     geminiKey: $('sKey').value.trim(),

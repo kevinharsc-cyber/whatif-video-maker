@@ -57,11 +57,13 @@ export class VideoRenderer {
     }
 
     // Abdunkeln unten (bessere Lesbarkeit der Untertitel) und oben
-    const grad = g.createLinearGradient(0, H * 0.45, 0, H);
+    const animMode = this.images[i]?.isAnim;
+    const gTop = animMode ? H * 0.66 : H * 0.45;
+    const grad = g.createLinearGradient(0, gTop, 0, H);
     grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.72)');
+    grad.addColorStop(1, animMode ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.72)');
     g.fillStyle = grad;
-    g.fillRect(0, H * 0.45, W, H * 0.55);
+    g.fillRect(0, gTop, W, H - gTop);
     const top = g.createLinearGradient(0, 0, 0, H * 0.2);
     top.addColorStop(0, 'rgba(0,0,0,0.5)');
     top.addColorStop(1, 'rgba(0,0,0,0)');
@@ -85,6 +87,14 @@ export class VideoRenderer {
     if (!img || alpha <= 0) return;
     const start = this.sceneStarts[i];
     const end = i + 1 < this.sceneStarts.length ? this.sceneStarts[i + 1] : this.duration;
+    if (img.isAnim) {
+      // Strichmännchen-Animation: zeichnet sich selbst passend zur Szenenzeit
+      g.save();
+      g.globalAlpha = alpha;
+      img.draw(g, W, H, Math.max(0, t - start), Math.max(0.5, end - start));
+      g.restore();
+      return;
+    }
     const p = Math.min(1, Math.max(0, (t - start) / Math.max(0.1, end - start)));
     const ease = p * p * (3 - 2 * p) * 0.6 + p * 0.4;
     const iw = img.width;

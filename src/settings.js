@@ -10,6 +10,7 @@ export const DEFAULTS = {
   speed: 1.0,
   quality: '1080',
   imageStyle: 'cinematic',
+  visualMode: 'animation',
   music: true,
 };
 

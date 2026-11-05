@@ -4,6 +4,7 @@
 //              3) Eingebaute Vorlage (funktioniert immer, auch offline)
 
 import { fetchWithTimeout } from './util.js';
+import { ANIM_PROMPT_HELP } from './anim/scene.js';
 
 const SYSTEM = `Du bist Autor für virale deutschsprachige TikTok- und YouTube-Shorts im Format "Was wäre, wenn …?".
 Schreibe ein spannendes, wissenschaftlich plausibles Skript für ein ca. 60 Sekunden langes Hochformat-Video.
@@ -18,9 +19,11 @@ Regeln:
 - Keine Emojis, keine Hashtags, keine Regieanweisungen im gesprochenen Text.
 - Schreibe Zahlen so, wie man sie spricht, wenn es sonst missverständlich wäre.
 - "image_prompt" ist eine detaillierte ENGLISCHE Bildbeschreibung für einen KI-Bildgenerator (Motiv, Umgebung, Licht, Stimmung), ohne Text im Bild.
+- Die Hauptfigur ist "du" (der Zuschauer). Zeige in "anim" genau das, was der Satz beschreibt, und sorge für Abwechslung zwischen den Szenen (verschiedene Orte, Aktionen, Effekte).
+${ANIM_PROMPT_HELP}
 
 Antworte NUR mit gültigem JSON in genau diesem Format:
-{"title":"kurzer Videotitel","scenes":[{"text":"gesprochener deutscher Text","image_prompt":"english image description"}],"hashtags":["#wasware", "..."]}`;
+{"title":"kurzer Videotitel","scenes":[{"text":"gesprochener deutscher Text","image_prompt":"english image description","anim":{"place":"...","time":"day","props":[],"actors":[{"action":"..."}],"crowd":{"count":0,"action":"idle"},"effect":"none"}}],"hashtags":["#wasware", "..."]}`;
 
 export async function generateScript(topic, settings, log) {
   const t = normalizeTopic(topic);
@@ -114,6 +117,7 @@ function validate(obj, topic) {
     .map((s) => ({
       text: String(s.text || s.narration || '').trim(),
       image_prompt: String(s.image_prompt || s.imagePrompt || s.image || '').trim(),
+      anim: s.anim && typeof s.anim === 'object' ? s.anim : null,
     }))
     .filter((s) => s.text.length > 0);
   if (scenes.length < 3) throw new Error('Skript zu kurz');
