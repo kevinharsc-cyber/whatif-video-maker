@@ -233,7 +233,9 @@ async function onCreateVideo() {
     } catch {
       /* egal */
     }
-    const width = settings.quality === '720' ? 720 : 1080;
+    // Animationen werden in 720p gezeichnet (spart mehr als die Hälfte der
+    // Zeichenarbeit auf dem iPhone); Fotos/KI-Bilder je nach Einstellung.
+    const width = settings.visualMode !== 'images' || settings.quality === '720' ? 720 : 1080;
     const height = Math.round((width * 16) / 9);
 
     // 1) Bilder
