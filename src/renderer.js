@@ -340,7 +340,7 @@ export class VideoRenderer {
       scheduleSfx(off, master, this.sfx, lead);
     }
     onProgress?.(0);
-    const mixed = await off.startRendering();
+    const mixed = await withTimeout(off.startRendering(), 60000, 'Ton-Mischung');
 
     // 2) Codecs wählen (H.264 + AAC bevorzugt)
     const vBase = { width: W, height: H, bitrate: W >= 1080 ? 8_000_000 : 5_000_000, framerate: FPS, latencyMode: 'quality' };
@@ -348,7 +348,7 @@ export class VideoRenderer {
     for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028', 'avc1.640033']) {
       const cfg = { ...vBase, codec, avc: { format: 'avc' } };
       try {
-        if ((await VideoEncoder.isConfigSupported(cfg)).supported) {
+        if ((await withTimeout(VideoEncoder.isConfigSupported(cfg), 4000, 'Video-Encoder')).supported) {
           vcfg = cfg;
           break;
         }
@@ -358,13 +358,13 @@ export class VideoRenderer {
     }
     if (!vcfg && allowNonAac) {
       const cfg = { ...vBase, codec: 'vp09.00.40.08' };
-      if ((await VideoEncoder.isConfigSupported(cfg)).supported) vcfg = cfg;
+      if ((await withTimeout(VideoEncoder.isConfigSupported(cfg), 4000, 'Video-Encoder')).supported) vcfg = cfg;
     }
     if (!vcfg) throw new Error('H.264-Encoder nicht verfügbar');
     let acfg = { codec: 'mp4a.40.2', sampleRate: sr, numberOfChannels: 2, bitrate: 192_000 };
     let aSupported = false;
     try {
-      aSupported = (await AudioEncoder.isConfigSupported(acfg)).supported;
+      aSupported = (await withTimeout(AudioEncoder.isConfigSupported(acfg), 4000, 'Audio-Encoder')).supported;
     } catch {
       aSupported = false;
     }
@@ -400,7 +400,7 @@ export class VideoRenderer {
       aenc.encode(ad);
       ad.close();
     }
-    await aenc.flush();
+    await withTimeout(aenc.flush(), 30000, 'Audio-Encoder');
 
     // 4) Bild für Bild zeichnen und kodieren
     const frames = Math.ceil(total * FPS);
@@ -412,13 +412,17 @@ export class VideoRenderer {
       const frame = new VideoFrame(this.canvas, { timestamp: Math.round((n * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
       venc.encode(frame, { keyFrame: n % (FPS * 2) === 0 });
       frame.close();
-      while (venc.encodeQueueSize > 6) await new Promise((r) => setTimeout(r, 4));
+      const waitStart = performance.now();
+      while (venc.encodeQueueSize > 6) {
+        if (performance.now() - waitStart > 15000) throw new Error('Video-Encoder hängt');
+        await new Promise((r) => setTimeout(r, 4));
+      }
       if (n % 6 === 0) {
         onProgress?.(n / frames);
         await yieldUI();
       }
     }
-    await venc.flush();
+    await withTimeout(venc.flush(), 30000, 'Video-Encoder');
     if (failure) throw failure;
     muxer.finalize();
     venc.close();
@@ -518,6 +522,11 @@ export class VideoRenderer {
     const type = (rec.mimeType || mt || 'video/mp4').split(';')[0];
     return new Blob(chunks, { type });
   }
+}
+
+// Wartet höchstens ms Millisekunden auf ein Promise (sonst Fehler)
+function withTimeout(promise, ms, what) {
+  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what} antwortet nicht`)), ms))]);
 }
 
 // Stimme auf einheitliche Lautstärke bringen (Spitze = peak), ohne Übersteuerung
