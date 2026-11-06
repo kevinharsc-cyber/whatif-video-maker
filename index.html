@@ -100,7 +100,7 @@
           <button class="icon-btn" value="close" aria-label="Schließen">✕</button>
         </div>
         <p class="small">👆 Mit dem Finger <b>im Fenster</b> nach oben wischen, um alle Einstellungen zu sehen.</p>
-        <p class="small">App-Version: <b>43 (Eric #17)</b></p>
+        <p class="small">App-Version: <b>44 (Zombie-Apokalypse)</b></p>
         <button type="button" id="btnDeviceCheck" class="ghost wide">🔍 Gerät prüfen (Video-Encoder)</button>
         <pre id="deviceCheck" class="device-check hidden"></pre>
         <button type="button" id="btnSelfTest" class="ghost wide">🧪 Test: 2 kurze Szenen erstellen</button>
@@ -115,12 +115,26 @@
 
         <label class="lbl" for="sVisual">Video-Stil</label>
         <select id="sVisual">
-          <option value="verein">⚽ SV Kieselbach (Vereins-Serie, empfohlen)</option>
+          <option value="zombie">🧟 Zombie-Apokalypse (Serie, empfohlen)</option>
+          <option value="verein">⚽ SV Kieselbach (Vereins-Serie)</option>
           <option value="animation">🎬 2D-Animation („Was wäre wenn“)</option>
           <option value="poly2d">🔷 Low-Poly-2D (Polygon-Look)</option>
           <option value="3d">🧊 Low-Poly-3D (braucht viel Speicher)</option>
           <option value="images">🖼️ KI-Bilder / Fotos</option>
         </select>
+
+        <div class="own">
+          <b>🧟 Zombie-Apokalypse</b>
+          <p class="small">Held, Hütte, Zombies und Verbündete erscheinen automatisch passend zu deinen Sätzen (z. B. „Hütte“, „10 Zombies“, „Kommentare“, „verteidigen“, „Kampf“, „A: … B: …“). Die Zahl der Zombies und das Ziel („mindestens 11“) werden auch aus dem Skript gelesen.</p>
+          <label class="lbl" for="zFollowers">Verbündete aktuell (deine Follower-Zahl)</label>
+          <input id="zFollowers" type="text" inputmode="numeric" placeholder="0" />
+          <label class="lbl" for="zAllies">Verbündete mit Waffe (aus den Kommentaren, mit Komma)</label>
+          <textarea id="zAllies" rows="2" placeholder="z. B. Lena: Baseballschläger, Max: Bratpfanne, Tobi: Armbrust"></textarea>
+          <label class="lbl" for="zCount">Zombies (falls nicht im Skript)</label>
+          <input id="zCount" type="text" inputmode="numeric" placeholder="10" />
+          <label class="lbl" for="zGoal">Ziel: Verbündete (falls nicht im Skript)</label>
+          <input id="zGoal" type="text" inputmode="numeric" placeholder="11" />
+        </div>
 
         <div class="own">
           <b>⚽ SV Kieselbach</b>

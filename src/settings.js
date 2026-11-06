@@ -13,6 +13,10 @@ export const DEFAULTS = {
   visualMode: 'verein',
   vereinFans: 0,
   vereinNames: '',
+  zombieFollowers: 0,
+  zombieAllies: '',
+  zombieCount: 10,
+  zombieGoal: 11,
   followEnabled: true,
   followName: '',
   followImage: '',
@@ -57,6 +61,11 @@ export function loadSettings() {
     if (!s.poly2dV1) {
       s.visualMode = 'poly2d'; // neuer Standard: Low-Poly-Look in 2D (kein 3D-Grafikspeicher)
       s.poly2dV1 = true;
+    }
+    if (!s.zombieV1) {
+      s.visualMode = 'zombie'; // Wunsch: App für die Zombie-Apokalypse-Serie
+      if (['gemini:Puck', 'gemini:Charon'].includes(s.voice)) s.voice = 'gemini:Achird';
+      s.zombieV1 = true;
     }
     if (!s.segV1) {
       // neuer speichersicherer Export (Szene für Szene) als Standard

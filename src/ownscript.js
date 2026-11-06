@@ -35,7 +35,7 @@ export function parseOwnScript(raw) {
     // Tipps/Hinweise am Ende weglassen
     if (/^(mein\s+)?tipp\b|^hinweis\b|^tipp für/i.test(line)) continue;
     // Titel: erste Zeile in Großbuchstaben oder mit 🎬
-    if (!title && !items.length && (/🎬/u.test(original) || (line === line.toUpperCase() && /WAS W/i.test(line)))) {
+    if (!title && !items.length && (/🎬|🧟/u.test(original) || (line === line.toUpperCase() && /WAS W|^TAG\s*\d/i.test(line)))) {
       title = line;
       continue;
     }
