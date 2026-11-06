@@ -16,8 +16,10 @@ export function pickZombieShot(text, i, n) {
   const last = i === n - 1;
   if (last && /folg|morgen|kampf|sehen uns|bis morgen/.test(low)) return 'final';
   if (/\ba\s*[:)].+\bb\s*[:)]/.test(low) || /\ba oder b\b/.test(low)) return 'vote';
+  if (OPTION_RE.test(String(text || ''))) return 'option';
   if (/kommentar|schreib/.test(low)) return 'comment';
   if (/charakter|eigene figur|teil unserer geschichte|neu (in|bei) (unserer|der) gruppe|neu dabei|sind neu|ist neu/.test(low)) return 'characters';
+  if (/erfolgreich|geschafft|gewonnen|abgewehrt|zurückgeschlagen/.test(low) && /verteidig|wehr|zombie|angriff|kampf/.test(low)) return 'fight';
   if (/verteidig|barrikad|vernagel|bretter/.test(low)) return 'defend';
   if (i > 0 && /kämpf|angriff|greifen an|attack|besieg|erledigt|ausgeschaltet|vernichtet|schlacht/.test(low)) return 'fight';
   if (/follower|folgt|folge mir|mitglied|beitreten|überlebensgruppe|neue überlebende/.test(low)) return 'follower';
@@ -31,6 +33,18 @@ export function pickZombieShot(text, i, n) {
   if (i === 0 || /apokalypse|ausgebrochen|begonnen/.test(low)) return 'title';
   if (/zombie/.test(low)) return 'horde';
   return 'talk';
+}
+
+// "Option A: Wir bauen einen Zaun" / "B) …" / "Option 2: …"
+const OPTION_RE = /^\s*(?:option\s*)?([abc123])\s*[:)]\s*(.+)$/i;
+function parseOption(text) {
+  const m = String(text || '').match(OPTION_RE);
+  if (!m) return null;
+  const letter = { 1: 'A', 2: 'B', 3: 'C' }[m[1]] || m[1].toUpperCase();
+  const low = m[2].toLowerCase();
+  const build = /speer|lanze/.test(low) ? 'spears' : /zaun|mauer|palisade/.test(low) ? 'fence' : /turm/.test(low) ? 'tower' : null;
+  const short = build ? { spears: 'SPEERE SCHNITZEN', fence: 'HOLZZAUN BAUEN', tower: 'WACHTURM BAUEN' }[build] : m[2].replace(/^(wir|ein|eine|einen)\s+/i, '').replace(/[.!?]+$/, '').toUpperCase().slice(0, 30);
+  return { letter, short, build };
 }
 
 // "Lena: Baseballschläger, Max – Bratpfanne" → [{name, weapon}]
@@ -83,6 +97,7 @@ export function createZombieVisuals(scenes, opts = {}) {
   const goal = goalText ?? Math.max(1, Math.floor(Number(opts.goal) || 11));
   const allies = Math.max(followers, named.length);
   const examples = named.length ? named : Z.SURV;
+  const options = scenes.map((s) => parseOption(s.text)).filter(Boolean);
   const seen = {};
   const hud = { zombies, allies, goal, day };
   return scenes.map((sc, i) => {
@@ -93,7 +108,7 @@ export function createZombieVisuals(scenes, opts = {}) {
     const ally = mentioned.length === 1 && ['talk', 'characters', 'hut', 'problem'].includes(kind) ? mentioned[0] : null;
     if (ally) kind = 'ally';
     const k = (seen[kind] = (seen[kind] || 0) + 1) - 1;
-    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally };
+    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally, option: kind === 'option' ? parseOption(text) : null, options };
     return {
       isAnim: true,
       verein: true, // gleiche Darstellung wie der Vereins-Modus (Sticker-Untertitel, harte Schnitte)
@@ -143,7 +158,7 @@ function slotsScene(g, t, filled, popT, c, mouth) {
     const a = easeOutBack(clamp((popT - i * 0.33) / 0.3));
     const o = c.named[i] || Z.EXTRA[i % Z.EXTRA.length];
     Z.drawSurv(g, x, y, 290 * Math.max(0.01, a), o, t);
-    if (c.named[i] && a > 0.5) Z.nameTag(g, x, y - 335, c.named[i].name, 0.95);
+    if (c.named[i] && a > 0.5) Z.nameTag(g, x, y - 335 - (i % 2) * 58, c.named[i].name, 0.9);
   });
 }
 
@@ -286,6 +301,18 @@ function drawScene(g, t, dur, c, mo) {
       Z.drawHero(g, 540, 1640, 300, { pose: 'bat', mouth: mo, t });
       break;
     }
+    case 'option': {
+      const b = c.option?.build;
+      cam(g, b === 'tower' ? 620 : 540, 1150, lerp(0.92, 0.98, k), 0, t);
+      Z.forest(g, t, { mood: 0.2, skipMid: 540 });
+      const grow = easeOutBack(clamp((t - 0.3) / 0.5));
+      if (b === 'tower') drawTower(g, 900, 1330, grow);
+      Z.hut(g, 540, 1260, 0.75, { t, barricade: 1 });
+      if (b === 'spears') drawSpears(g, 300, 1290, grow);
+      if (b === 'fence') drawFence(g, grow);
+      Z.drawHero(g, b === 'fence' ? 540 : 470, 1640, 380, { pose: 'up', mouth: mo, t });
+      break;
+    }
     case 'vote': {
       cam(g, 540, 1180, 0.95, 0, t);
       Z.forest(g, t, { mood: 0.4, skipMid: 540 });
@@ -318,6 +345,74 @@ function drawScene(g, t, dur, c, mo) {
     }
   }
   g.restore();
+}
+// Ausbau-Vorschau: Speere an der Hütte, Holzzaun, Wachturm
+function drawSpears(g, x, y, s) {
+  if (s <= 0) return;
+  g.save();
+  g.translate(x, y);
+  g.scale(s, s);
+  for (let i = 0; i < 5; i++) {
+    g.save();
+    g.translate(i * 34 - 70, 0);
+    g.rotate(-0.25 + i * 0.12);
+    P(g, '#b5844f', 5, rr(-7, -330, 14, 330, 6));
+    P(g, '#d9d4c7', 5, Z.poly([[-9, -326], [0, -380], [9, -326]]));
+    g.restore();
+  }
+  g.restore();
+}
+function drawFence(g, s) {
+  if (s <= 0) return;
+  for (let i = 0; i < 15; i++) {
+    const x = 70 + i * 67;
+    const h = 170 * s * (0.9 + (i % 3) * 0.06);
+    P(g, i % 2 ? '#9a6a3c' : '#a8723f', 5, Z.poly([[x - 28, 1440], [x - 28, 1440 - h], [x, 1440 - h - 36 * s], [x + 28, 1440 - h], [x + 28, 1440]]));
+  }
+  line(g, [[40, 1440 - 120 * s], [1040, 1440 - 120 * s]], 10, '#6b4426');
+}
+function drawTower(g, x, y, s) {
+  if (s <= 0) return;
+  g.save();
+  g.translate(x, y);
+  g.scale(s, s);
+  for (const lx of [-90, 90]) P(g, '#8a5a30', 6, rr(lx - 12, -560, 24, 560, 6));
+  line(g, [[-80, -60], [80, -260]], 9, '#6b4426');
+  line(g, [[80, -60], [-80, -260]], 9, '#6b4426');
+  for (let r = 0; r < 8; r++) line(g, [[-40, -40 - r * 60], [40, -40 - r * 60]], 7, '#b5844f');
+  line(g, [[-40, 0], [-40, -500]], 7, '#6b4426');
+  line(g, [[40, 0], [40, -500]], 7, '#6b4426');
+  P(g, '#a8723f', 6, rr(-150, -620, 300, 60, 8));
+  P(g, '#9a6a3c', 6, rr(-150, -720, 24, 110, 4));
+  P(g, '#9a6a3c', 6, rr(126, -720, 24, 110, 4));
+  P(g, '#6b3b2a', 6, Z.poly([[-190, -710], [0, -830], [190, -710]]));
+  g.restore();
+}
+function optionList(g, t, options, end) {
+  const head = popIn(t, 0.1, end);
+  if (head > 0) {
+    card(g, VW / 2, 330, 920, 140, DARK, head, -0.02);
+    label(g, `SCHREIB ${options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}!`, 0, 4, 64, YEL, { sw: 0 });
+    g.restore();
+  }
+  options.slice(0, 3).forEach((o, i) => {
+    const a = popIn(t, 0.5 + i * 0.4, end);
+    if (a <= 0) return;
+    const col = { A: YEL, B: '#3a86ff', C: '#ff7b00' }[o.letter] || YEL;
+    card(g, VW / 2, 520 + i * 160, 900, 130, col, a, 0);
+    P(g, '#fff', 6, ell(-370, 0, 50, 50));
+    label(g, o.letter, -370, 4, 70, DARK, { sw: 0 });
+    g.font = '56px "Lilita One", sans-serif';
+    const s = Math.min(1, 680 / g.measureText(o.short).width);
+    label(g, o.short, 60, 4, 56 * s, o.letter === 'A' ? DARK : '#fff', { sw: 0 });
+    g.restore();
+  });
+  const lk = popIn(t, 1.9, end);
+  if (lk > 0) {
+    card(g, VW / 2, 1010, 820, 100, '#fe2c55', lk, 0.02);
+    label(g, 'MEISTE LIKES GEWINNT!', 0, 2, 50, '#fff', { sw: 0 });
+    g.restore();
+  }
 }
 function glowingEyes(g, t) {
   for (let i = 0; i < 9; i++) {
@@ -375,7 +470,7 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.3, end);
       if (a > 0) {
         card(g, VW / 2, 400, 820, 130, DARK, a, -0.02);
-        label(g, /bunker/.test(c.low) ? 'VERSTECK: BUNKER' : 'VERSTECK: HÜTTE IM WALD', 0, 2, 54, '#ffffff', { sw: 0 });
+        label(g, /ausbau|verstärk|ausbauen|aufrüst/.test(c.low) ? 'HÜTTE AUSBAUEN!' : /bunker/.test(c.low) ? 'VERSTECK: BUNKER' : 'VERSTECK: HÜTTE IM WALD', 0, 2, 54, '#ffffff', { sw: 0 });
         g.restore();
       }
       if (/allein/.test(c.low)) {
@@ -471,7 +566,8 @@ function overlays(g, t, dur, c) {
         } else label(g, 'AB IN DIE KOMMENTARE!', 0, 4, 64, DARK, { sw: 0 });
         g.restore();
       }
-      commentsPanel(g, t, c);
+      if (c.options.length >= 2) optionList(g, t, c.options, end);
+      else commentsPanel(g, t, c);
       break;
     }
     case 'ally': {
@@ -517,7 +613,23 @@ function overlays(g, t, dur, c) {
       if (a > 0) {
         const kill = c.text.match(/(\d+)\s+zombies?\s+(?:erledigt|besiegt|ausgeschaltet|vernichtet|getötet)/i);
         card(g, VW / 2, 420, kill ? 900 : 700, 170, RED, a, -0.03);
-        label(g, kill ? `${kill[1]} ZOMBIES ERLEDIGT!` : 'DER KAMPF!', 0, 4, kill ? 76 : 100, '#fff', { sw: 0 });
+        const win = /erfolgreich|geschafft|gewonnen|abgewehrt|zurückgeschlagen/.test(c.low);
+        label(g, kill ? `${kill[1]} ZOMBIES ERLEDIGT!` : win ? 'GESCHAFFT!' : 'DER KAMPF!', 0, 4, kill ? 76 : 100, '#fff', { sw: 0 });
+        g.restore();
+      }
+      break;
+    }
+    case 'option': {
+      const o = c.option;
+      const a = popIn(t, 0.15, end);
+      if (a > 0 && o) {
+        const col = { A: YEL, B: '#3a86ff', C: '#ff7b00' }[o.letter] || YEL;
+        card(g, VW / 2, 420, 960, 190, col, a, o.letter === 'B' ? 0.02 : -0.02);
+        P(g, '#fff', 7, ell(-380, 0, 70, 70));
+        label(g, o.letter, -380, 6, 100, DARK, { sw: 0 });
+        g.font = '68px "Lilita One", sans-serif';
+        const s = Math.min(1, 700 / g.measureText(o.short).width);
+        label(g, o.short, 70, 4, 68 * s, o.letter === 'A' ? DARK : '#fff', { sw: 0 });
         g.restore();
       }
       break;
@@ -630,7 +742,7 @@ function endCard(g, t, dur, c) {
   label(g, 'DIE ZOMBIE-', 0, 300, 96, '#ffffff', { sw: 14 });
   label(g, 'APOKALYPSE', 0, 405, 110, '#7ddc4a', { sw: 16 });
   const rows = [
-    ['KOMMENTIERE: NAME + WAFFE', YEL],
+    [c.options.length >= 2 ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: NAME + WAFFE', YEL],
     [`VERBÜNDETE: ${c.allies} / ${c.goal}`, '#7ddc4a'],
     [`ZOMBIES: ${c.zombies}`, '#ff6b6b'],
   ];
@@ -732,6 +844,10 @@ function sfxFor(c) {
     case 'fight':
       for (let i = 0; i < 4; i++) add(0.6 + i * 0.5, 'kick');
       add(0.3, 'groan');
+      break;
+    case 'option':
+      add(0.15, 'whoosh');
+      add(0.35, c.option?.build ? 'hammer' : 'ding');
       break;
     case 'vote':
       add(0.2, 'ding');
