@@ -78,7 +78,7 @@ export async function synthesize(ctx, scenes, settings, onProgress, log) {
   // Lange Skripte + Gemini-Schlüssel: Gemini-Stimme nehmen. Die kostenlose Piper-
   // Stimme läuft auf dem iPhone und braucht dort sehr viel Arbeitsspeicher.
   if (settings.geminiKey && scenes.length > 12 && settings.autoGeminiVoice !== false) {
-    const auto = settings.visualMode === 'verein' ? 'Achird' : 'Charon';
+    const auto = ['verein', 'zombie'].includes(settings.visualMode) ? 'Achird' : 'Charon';
     try {
       log(`Langes Skript: nutze die Gemini-Stimme „${auto}“ (braucht auf dem iPhone kaum Speicher) …`);
       return await withInfo(geminiTTS(ctx, scenes, settings, auto, onProgress), `Gemini „${auto}“`);
@@ -421,6 +421,13 @@ export function speakInstruction(settings) {
       'der seinen Zuschauern locker und natürlich von seinem kleinen Fußballverein erzählt – mit einem Lächeln in der Stimme. ' +
       `${fast ? 'Flüssiges, eher zügiges' : 'Flüssiges, natürliches'} Tempo. Nicht übertrieben, nicht aufgeregt, nicht dramatisch, nicht düster. ` +
       'Mache nur kurze Pausen:'
+    );
+  }
+  if (settings.visualMode === 'zombie') {
+    return (
+      'Sprich den folgenden deutschen Text wie ein sympathischer junger Überlebender, der seinen Zuschauern direkt von seiner Lage ' +
+      'in einer Zombie-Apokalypse erzählt: freundlich, lebendig und ein bisschen angespannt, aber nicht düster und nicht übertrieben. ' +
+      `${fast ? 'Flüssiges, eher zügiges' : 'Flüssiges, natürliches'} Tempo. Mache nur kurze Pausen:`
     );
   }
   const pace = fast ? 'zügig und ' : settings.speed < 0.97 ? 'langsam, ruhig und ' : '';

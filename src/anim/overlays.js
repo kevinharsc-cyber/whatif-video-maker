@@ -954,6 +954,33 @@ function vereinSfx(ctx, out, s, at, getNoise, nodes) {
       o.stop(at + i * 0.09 + 0.35);
       nodes.push(o);
     });
+  } else if (s.type === 'groan') {
+    // Zombie-Stöhnen: tiefer, wackelnder Sägezahn durch ein Stimm-Filter
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(95, at);
+    o.frequency.linearRampToValueAtTime(70, at + 0.7);
+    o.frequency.linearRampToValueAtTime(88, at + 1.3);
+    const vib = ctx.createOscillator();
+    const vg = ctx.createGain();
+    vib.frequency.value = 7;
+    vg.gain.value = 6;
+    vib.connect(vg).connect(o.frequency);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 520;
+    bp.Q.value = 1.4;
+    const gn = ctx.createGain();
+    gn.gain.setValueAtTime(0.0001, at);
+    gn.gain.exponentialRampToValueAtTime(0.16, at + 0.25);
+    gn.gain.setValueAtTime(0.16, at + 0.9);
+    gn.gain.exponentialRampToValueAtTime(0.0001, at + 1.4);
+    o.connect(bp).connect(gn).connect(out);
+    o.start(at);
+    vib.start(at);
+    o.stop(at + 1.5);
+    vib.stop(at + 1.5);
+    nodes.push(o, vib);
   } else if (s.type === 'cheer') {
     noise(0.3, 1.6, 1.8, 0.06, 'bandpass', 1200, 0.5);
   }

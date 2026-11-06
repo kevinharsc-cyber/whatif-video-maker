@@ -53,6 +53,8 @@ export class VideoRenderer {
     });
     // Vereins-Modus (SV Kieselbach): eigene Einblendungen, Geräusche, Lippen
     this.verein = images.some((v) => v?.verein);
+    // Serie mit eigener Musik (Zombie-Apokalypse: düster statt fröhlich)
+    this.series = images.find((v) => v?.series)?.series || null;
     // Motion Graphics (Pop-ups, Labels) + Soundeffekte
     const withEffects = scenes.map((sc, i) => ({ ...sc, _effect: images[i]?.spec?.effect, _action: images[i]?.spec?.actors?.[0]?.action }));
     const built = this.verein ? { overlays: [], sfx: [] } : buildOverlays(withEffects, this.sceneStarts, sceneTimes, subtitles, this.duration);
@@ -191,7 +193,8 @@ export class VideoRenderer {
     }
     drawOverlays(g, W, H, t, this.overlays, this.font);
     if (this.verein) {
-      if (this.images[i]?.kind !== 'slogan') drawVereinTitle(g, W, H, t, this.title);
+      if (this.images[i]?.drawTitle) this.images[i].drawTitle(g, W, H, t, this.title);
+      else if (this.images[i]?.kind !== 'slogan') drawVereinTitle(g, W, H, t, this.title);
     } else this.drawTitle(t);
     this.drawSubtitle(t);
     this.drawProgress(t);
@@ -323,7 +326,7 @@ export class VideoRenderer {
           g.restore();
         }
         g.strokeText(word, x, y);
-        g.fillStyle = active ? (this.verein ? '#ef4136' : '#A6FF3B') : this.verein && t < w.start ? '#dcdcdc' : '#FFFFFF';
+        g.fillStyle = active ? (this.series === 'zombie' ? '#ffd60a' : this.verein ? '#ef4136' : '#A6FF3B') : this.verein && t < w.start ? '#dcdcdc' : '#FFFFFF';
         g.fillText(word, x, y);
         x += g.measureText(word).width + spaceW();
       }
@@ -364,7 +367,7 @@ export class VideoRenderer {
     voice.connect(master);
     voice.start(lead);
     if (music) {
-      (this.verein ? startHappyMusic : startAmbientMusic)(off, master, this.duration, [], this.mood);
+      (this.series === 'zombie' ? startZombieMusic : this.verein ? startHappyMusic : startAmbientMusic)(off, master, this.duration, [], this.mood);
       scheduleSfx(off, master, this.sfx, lead);
     }
     return withTimeout(off.startRendering(), 90000, 'Ton-Mischung');
@@ -402,7 +405,7 @@ export class VideoRenderer {
     voice.connect(master);
 
     let stopMusic = () => {};
-    if (music) stopMusic = (this.verein ? startHappyMusic : startAmbientMusic)(ctx, master, this.duration, [], this.mood);
+    if (music) stopMusic = (this.series === 'zombie' ? startZombieMusic : this.verein ? startHappyMusic : startAmbientMusic)(ctx, master, this.duration, [], this.mood);
 
     this.drawFrame(0);
     // Ohne Bildraten-Grenze: jedes gezeichnete Bild wird übernommen (die Grenze
@@ -681,6 +684,11 @@ function mouthEnvelope(audio) {
   }
   for (let i = 0; i < n; i++) out[i] = Math.min(1, (out[i] / max) * 2.2);
   return out;
+}
+
+// Zombie-Serie: düstere Fläche + Herzschlag (aus der Ambient-Musik)
+function startZombieMusic(ctx, out, duration) {
+  return startAmbientMusic(ctx, out, duration, [], 'dark');
 }
 
 // Fröhliche Vereinsmusik: Zupf-Arpeggio (C–G–Am–F), Bass, leichtes Schlagzeug

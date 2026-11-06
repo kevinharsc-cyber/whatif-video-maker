@@ -8,6 +8,7 @@ import { loadSceneImages } from './images.js';
 import { createAnimVisual, normalizeAnim, guessAnim, guessShot, shotSpec } from './anim/scene.js';
 import { createAnim3DVisual, webglAvailable, plan3D, dispose3D } from './three/lowpoly.js';
 import { createVereinVisuals, prepareVerein } from './verein/verein.js';
+import { createZombieVisuals } from './zombie/zombie.js';
 import { exportSegmented, segmentedSupported, startJob, loadJob, clearJob, CancelledError } from './exporter.js';
 import { synthesize, VOICES, speechWeight, releaseVoices } from './tts.js';
 import { buildSubtitles, toSrt } from './subtitles.js';
@@ -222,6 +223,7 @@ function vereinNames() {
 }
 
 function buildAnimVisuals(sc, visualMode) {
+  if (visualMode === 'zombie') return createZombieVisuals(sc.scenes, { followers: settings.zombieFollowers, allies: settings.zombieAllies, zombies: settings.zombieCount, goal: settings.zombieGoal });
   if (visualMode === 'verein') return createVereinVisuals(sc.scenes, { fans: settings.vereinFans, names: vereinNames(), nets: !!settings.vereinNets, kasse: settings.vereinKasse, signed: settings.vereinSigned, staff: settings.vereinStaff });
   const n = sc.scenes.length;
   let gotUp = false;
@@ -409,7 +411,7 @@ async function onCreateVideo() {
     setTask('images', 'active');
     let images;
     if (settings.visualMode !== 'images') {
-      if (settings.visualMode === 'verein') await prepareVerein();
+      if (['verein', 'zombie'].includes(settings.visualMode)) await prepareVerein();
       images = buildAnimVisuals(script, settings.visualMode);
       script.credits = [];
       setStatus('Animationen sind bereit', 0.4);
@@ -615,6 +617,10 @@ async function onSelfTest() {
       test.title = 'TAG 1 – Test';
       test.scenes = [{ text: 'Hier drüben ist unsere Fantribüne. Wir haben null Fans!' }, { text: 'A: ein neues Tornetz. B: eine richtige Toilette.' }];
     }
+    if (settings.visualMode === 'zombie') {
+      test.title = 'TAG 1 – Test';
+      test.scenes = [{ text: '10 Zombies haben meine Spur aufgenommen!' }, { text: 'Schreib deinen Namen und deine Waffe in die Kommentare!' }];
+    }
     setTask('voice', 'active');
     setStatus('Test: Stimme für 2 Szenen …', 0.1);
     const { buffer: voice, sceneTimes: st0 } = await synthesize(ctx, test.scenes, settings, () => {}, () => {});
@@ -634,7 +640,7 @@ async function onSelfTest() {
     });
     const subtitles = buildSubtitles(test.scenes, sceneTimes);
     const visualMode = settings.visualMode === 'images' ? 'animation' : settings.visualMode;
-    if (visualMode === 'verein') await prepareVerein();
+    if (['verein', 'zombie'].includes(visualMode)) await prepareVerein();
     settings.music = false; // für die Ton-Messung
     for (let run = 1; run <= 2; run++) {
       setTask('render', 'active');
@@ -693,7 +699,7 @@ async function resumeVideo(job) {
     /* egal */
   }
   try {
-    if (job.visualMode === 'verein') await prepareVerein();
+    if (['verein', 'zombie'].includes(job.visualMode)) await prepareVerein();
     const images = buildAnimVisuals(script, job.visualMode);
     log(`Setze fort bei Szene ${job.segDone + 1} von ${job.segs?.length || '?'} (fertige Szenen bleiben erhalten).`);
     const res = await produceVideo({
@@ -825,6 +831,10 @@ function openSettings() {
   $('sKasse').value = String(settings.vereinKasse || 0);
   $('sSigned').value = settings.vereinSigned || '';
   $('sStaff').value = settings.vereinStaff || '';
+  $('zFollowers').value = String(settings.zombieFollowers || 0);
+  $('zAllies').value = settings.zombieAllies || '';
+  $('zCount').value = String(settings.zombieCount ?? 10);
+  $('zGoal').value = String(settings.zombieGoal || 11);
   $('sQuality').value = settings.quality;
   $('sMusic').checked = settings.music;
   $('sMood').value = settings.musicMood;
@@ -854,6 +864,10 @@ function readSettingsForm() {
     vereinKasse: Math.max(0, parseInt(String($('sKasse').value).replace(/\D/g, ''), 10) || 0),
     vereinSigned: $('sSigned').value.trim(),
     vereinStaff: $('sStaff').value.trim(),
+    zombieFollowers: Math.max(0, parseInt(String($('zFollowers').value).replace(/\D/g, ''), 10) || 0),
+    zombieAllies: $('zAllies').value.trim(),
+    zombieCount: Math.max(0, parseInt(String($('zCount').value).replace(/\D/g, ''), 10) || 0),
+    zombieGoal: Math.max(1, parseInt(String($('zGoal').value).replace(/\D/g, ''), 10) || 11),
     quality: $('sQuality').value,
     music: $('sMusic').checked,
     musicMood: $('sMood').value,
@@ -881,7 +895,7 @@ async function onTestVoice() {
     info.textContent = '⏳ Teste Stimme …';
     info.style.color = '';
     info.classList.remove('hidden');
-    const sample = settings.visualMode === 'verein' ? 'Hallo zusammen, ich bin Rudi Kiesel vom SV Kieselbach! Heute wird es richtig gut!' : 'Was wäre, wenn die Erde plötzlich stehen bleibt? Die Antwort wird dich überraschen.';
+    const sample = settings.visualMode === 'zombie' ? 'Tag eins der Zombie-Apokalypse. Ich habe mich in einer Hütte im Wald versteckt – und ich brauche eure Hilfe!' : settings.visualMode === 'verein' ? 'Hallo zusammen, ich bin Rudi Kiesel vom SV Kieselbach! Heute wird es richtig gut!' : 'Was wäre, wenn die Erde plötzlich stehen bleibt? Die Antwort wird dich überraschen.';
     const { buffer, used, why } = await synthesize(
       ctx,
       [{ text: sample }],
