@@ -19,10 +19,10 @@ export const VOICES = [
   { id: 'gemini:Achird', label: 'Gemini „Achird“ (männlich, freundlich – empfohlen für SV Kieselbach)' },
   { id: 'gemini:Umbriel', label: 'Gemini „Umbriel“ (männlich, locker & entspannt)' },
   { id: 'gemini:Iapetus', label: 'Gemini „Iapetus“ (männlich, klar & ruhig)' },
-  { id: 'gemini:Puck', label: 'Gemini „Puck“ (männlich, aufgedreht)' },
+  { id: 'gemini:Puck', label: 'Gemini „Puck“ (männlich, aufgedreht – BAM! empfohlen für Zombie)' },
   { id: 'gemini:Sadachbia', label: 'Gemini „Sadachbia“ (männlich, lebhaft)' },
   { id: 'gemini:Charon', label: 'Gemini „Charon“ (männlich, ruhiger Erzähler, braucht Schlüssel)' },
-  { id: 'gemini:Fenrir', label: 'Gemini „Fenrir“ (männlich, aufgeregt, braucht Schlüssel)' },
+  { id: 'gemini:Fenrir', label: 'Gemini „Fenrir“ (männlich, aufgeregt & kräftig – BAM!)' },
   { id: 'gemini:Kore', label: 'Gemini „Kore“ (weiblich, braucht Schlüssel)' },
   { id: 'gemini:Aoede', label: 'Gemini „Aoede“ (weiblich, braucht Schlüssel)' },
 ];
@@ -78,7 +78,7 @@ export async function synthesize(ctx, scenes, settings, onProgress, log) {
   // Lange Skripte + Gemini-Schlüssel: Gemini-Stimme nehmen. Die kostenlose Piper-
   // Stimme läuft auf dem iPhone und braucht dort sehr viel Arbeitsspeicher.
   if (settings.geminiKey && scenes.length > 12 && settings.autoGeminiVoice !== false) {
-    const auto = ['verein', 'zombie'].includes(settings.visualMode) ? 'Achird' : 'Charon';
+    const auto = settings.visualMode === 'zombie' ? 'Puck' : settings.visualMode === 'verein' ? 'Achird' : 'Charon';
     try {
       log(`Langes Skript: nutze die Gemini-Stimme „${auto}“ (braucht auf dem iPhone kaum Speicher) …`);
       return await withInfo(geminiTTS(ctx, scenes, settings, auto, onProgress), `Gemini „${auto}“`);
@@ -425,9 +425,10 @@ export function speakInstruction(settings) {
   }
   if (settings.visualMode === 'zombie') {
     return (
-      'Sprich den folgenden deutschen Text wie ein sympathischer junger Überlebender, der seinen Zuschauern direkt von seiner Lage ' +
-      'in einer Zombie-Apokalypse erzählt: freundlich, lebendig und ein bisschen angespannt, aber nicht düster und nicht übertrieben. ' +
-      `${fast ? 'Flüssiges, eher zügiges' : 'Flüssiges, natürliches'} Tempo. Mache nur kurze Pausen:`
+      'Sprich den folgenden deutschen Text wie ein energiegeladener TikTok-Erzähler mitten in einer Zombie-Apokalypse: ' +
+      'laut, packend und voller Power, mit Druck in der Stimme und echter Spannung – jeder Satz muss sitzen wie ein Schlag. ' +
+      'Betone wichtige Wörter (Zahlen, „Zombies“, „EUCH“, „Kampf“) kräftig, Ausrufe richtig rausgehauen. Nicht müde, nicht monoton, nicht flüsternd. ' +
+      `${fast ? 'Schnelles, treibendes' : 'Zügiges, treibendes'} Tempo, kaum Pausen:`
     );
   }
   const pace = fast ? 'zügig und ' : settings.speed < 0.97 ? 'langsam, ruhig und ' : '';
