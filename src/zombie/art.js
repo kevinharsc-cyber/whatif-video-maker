@@ -130,6 +130,13 @@ function heroArms(g, pose, lw, t) {
     down(-1);
   } else if (pose === 'bat') {
     down(-1);
+  } else if (pose === 'cheer') {
+    // beide Arme jubelnd nach oben
+    const k = Math.sin(t * 10) * 2;
+    limb(g, -16, -52, -26, -76 + k, 8, HOOD, lw);
+    P(g, SK, lw, ell(-27, -79 + k, 4.6, 4.6));
+    limb(g, 16, -52, 26, -76 - k, 8, HOOD, lw);
+    P(g, SK, lw, ell(27, -79 - k, 4.6, 4.6));
   } else if (pose === 'up') {
     // Arm hoch, zeigt nach oben
     down(-1);
@@ -533,26 +540,52 @@ function pine(g, x, y, h, c1, c2, lw = 6) {
 const TREES_FAR = Array.from({ length: 26 }, (_, i) => [-700 + i * 105 + (i % 3) * 20, 250 + (i * 37) % 90]);
 const TREES_MID = Array.from({ length: 16 }, (_, i) => [-650 + i * 175 + ((i * 53) % 60), 430 + (i * 71) % 140]);
 // Wald (Abenddämmerung, mood 0) bis Nacht (mood 1)
-export function forest(g, t, { mood = 0, horizon = 1180, moonAt = [820, 330, 90], path = true, skipMid = null } = {}) {
-  const m = mood;
-  sky(g, m ? '#0f1030' : '#2b2350', m ? '#2a2552' : '#6b3f6e', m ? '#4a3a6a' : '#f08a5d', horizon);
-  stars(g, t, 0.4 + m * 0.6);
-  if (moonAt) moon(g, ...moonAt);
+const PAL = {
+  night: { sky: ['#0f1030', '#2a2552', '#4a3a6a'], hill: '#232647', far: ['#22344a', '#1b2a3d'], mid: ['#24533f', '#1d4434'], ground: '#3e5530', patch: '#46603a', path: '#7a6448', grass: '#2f4a2a' },
+  dusk: { sky: ['#2b2350', '#6b3f6e', '#f08a5d'], hill: '#3b3f63', far: ['#2e4a57', '#253f4a'], mid: ['#2f6b4f', '#25573f'], ground: '#5d7a3a', patch: '#6b8a44', path: '#a07f55', grass: '#3f6a2e' },
+  day: { sky: ['#5fb2ea', '#8fd0f5', '#d8f1ff'], hill: '#86c45a', far: ['#5aa04a', '#4a8a3c'], mid: ['#3f8f45', '#327a3a'], ground: '#7cb84e', patch: '#8cc85a', path: '#c9a06a', grass: '#4f9a3c' },
+};
+const CLOUDS = [[-200, 260, 1], [380, 180, 0.8], [900, 300, 1.1], [1500, 220, 0.9]];
+// day = Tag (Sonne, Wolken), sonst Dämmerung (mood 0) bzw. Nacht (mood > 0)
+export function forest(g, t, { mood = 0, day = false, horizon = 1180, moonAt = [820, 330, 90], path = true, skipMid = null } = {}) {
+  const c = day ? PAL.day : mood ? PAL.night : PAL.dusk;
+  sky(g, c.sky[0], c.sky[1], c.sky[2], horizon);
+  if (day) {
+    const [sx, sy] = moonAt || [820, 330];
+    g.save();
+    g.globalAlpha = 0.25;
+    P(g, '#fff6b0', 0, ell(sx, sy, 170, 170));
+    g.restore();
+    P(g, '#ffd23f', 7, ell(sx, sy, 105, 105));
+    for (const [cx, cy, s] of CLOUDS) {
+      const x = cx + ((t * 12) % 400);
+      P(g, '#ffffff', 6, (q) => {
+        q.ellipse(x, cy, 110 * s, 48 * s, 0, 0, TAU);
+        q.moveTo(x - 30 * s, cy - 20 * s);
+        q.ellipse(x - 30 * s, cy - 20 * s, 62 * s, 50 * s, 0, 0, TAU);
+        q.moveTo(x + 50 * s, cy - 14 * s);
+        q.ellipse(x + 50 * s, cy - 14 * s, 54 * s, 42 * s, 0, 0, TAU);
+      });
+    }
+  } else {
+    stars(g, t, 0.4 + mood * 0.6);
+    if (moonAt) moon(g, ...moonAt);
+  }
   // ferne Hügel
-  P(g, m ? '#232647' : '#3b3f63', 0, (q) => {
+  P(g, c.hill, 0, (q) => {
     q.moveTo(-1500, horizon);
     for (let x = -1500; x <= 2600; x += 120) q.lineTo(x, horizon - 170 - 60 * Math.sin(x * 0.004) - 30 * Math.sin(x * 0.011));
     q.lineTo(2600, horizon);
     q.closePath();
   });
-  for (const [x, h] of TREES_FAR) pine(g, x, horizon + 6, h, m ? '#22344a' : '#2e4a57', m ? '#1b2a3d' : '#253f4a', 5);
-  for (const [x, h] of TREES_MID) if (!skipMid || Math.abs(x - skipMid) > 260) pine(g, x, horizon + 30, h * 1.15, m ? '#24533f' : '#2f6b4f', m ? '#1d4434' : '#25573f', 6);
+  for (const [x, h] of TREES_FAR) pine(g, x, horizon + 6, h, c.far[0], c.far[1], 5);
+  for (const [x, h] of TREES_MID) if (!skipMid || Math.abs(x - skipMid) > 260) pine(g, x, horizon + 30, h * 1.15, c.mid[0], c.mid[1], 6);
   // Boden
-  P(g, m ? '#3e5530' : '#5d7a3a', 6, rr(-1500, horizon + 20, 4100, 1400, 0));
-  P(g, m ? '#46603a' : '#6b8a44', 0, ell(-200, horizon + 260, 420, 60));
-  P(g, m ? '#46603a' : '#6b8a44', 0, ell(1250, horizon + 420, 480, 70));
+  P(g, c.ground, 6, rr(-1500, horizon + 20, 4100, 1400, 0));
+  P(g, c.patch, 0, ell(-200, horizon + 260, 420, 60));
+  P(g, c.patch, 0, ell(1250, horizon + 420, 480, 70));
   if (path) {
-    P(g, m ? '#7a6448' : '#a07f55', 5, (q) => {
+    P(g, c.path, 5, (q) => {
       q.moveTo(470, horizon + 40);
       q.quadraticCurveTo(420, horizon + 300, 300, horizon + 800);
       q.lineTo(820, horizon + 800);
@@ -563,7 +596,7 @@ export function forest(g, t, { mood = 0, horizon = 1180, moonAt = [820, 330, 90]
   for (let i = 0; i < 18; i++) {
     const x = -500 + ((i * 197) % 2100);
     const y = horizon + 80 + ((i * 131) % 600);
-    line(g, [[x - 10, y], [x - 4, y - 22], [x, y], [x + 6, y - 26], [x + 10, y]], 4, m ? '#2f4a2a' : '#3f6a2e');
+    line(g, [[x - 10, y], [x - 4, y - 22], [x, y], [x + 6, y - 26], [x + 10, y]], 4, c.grass);
   }
 }
 export function hut(g, x, y, s, { lit = true, barricade = 0, peek = null, t = 0 } = {}) {

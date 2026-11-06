@@ -25,10 +25,11 @@ export function pickZombieShot(text, i, n) {
   if (/follower|folgt|folge mir|mitglied|beitreten|überlebensgruppe|neue überlebende/.test(low)) return 'follower';
   if (/mindestens|verbündete|ziel|brauchen? \d+/.test(low)) return 'goal';
   if (/brauche (ich )?euch|eure hilfe|helft mir|brauche (ich )?dich|brauchen euch/.test(low)) return 'need';
+  if (/überlebt|die sonne|es ist tag|guten morgen|nacht ist vorbei|endlich tag/.test(low) && !/zombies? (kommen|sind|greifen)/.test(low)) return 'morning';
   if (/problem|gefahr|angst|oh nein|hilfe!|nicht mehr viel zeit|keine zeit|die zeit läuft|reicht (noch )?nicht/.test(low) && !/zombie/.test(low)) return 'problem';
   if (/zombie/.test(low) && /spur|kommen|unterwegs|eintreffen|horde|näher|anrück|\d+ zombies|zombies haben/.test(low)) return 'horde';
   if (/fast da|gleich da|gleich hier|im anmarsch|auf dem weg hierher/.test(low)) return 'horde';
-  if (/hütte|versteck|wald|unterschlupf|bunker/.test(low)) return 'hut';
+  if (/hütte|versteck|wald|unterschlupf|bunker|lager|camp/.test(low)) return 'hut';
   if (/allein|keine chance/.test(low)) return 'alone';
   if (i === 0 || /apokalypse|ausgebrochen|begonnen/.test(low)) return 'title';
   if (/zombie/.test(low)) return 'horde';
@@ -98,6 +99,9 @@ export function createZombieVisuals(scenes, opts = {}) {
   const allies = Math.max(followers, named.length);
   const examples = named.length ? named : Z.SURV;
   const options = scenes.map((s) => parseOption(s.text)).filter(Boolean);
+  const all = scenes.map((s) => String(s.text || '').toLowerCase()).join(' ');
+  const hasMorning = scenes.some((s, j) => pickZombieShot(s.text, j, scenes.length) === 'morning');
+  const nameVote = /(lager|camp|basis|gruppe)[^.!?]*(name|heißen|nennen|taufen)|(name|heißen|nennen|taufen)[^.!?]*(lager|camp|basis|gruppe)/.test(all);
   const seen = {};
   const hud = { zombies, allies, goal, day };
   return scenes.map((sc, i) => {
@@ -108,7 +112,7 @@ export function createZombieVisuals(scenes, opts = {}) {
     const ally = mentioned.length === 1 && ['talk', 'characters', 'hut', 'problem'].includes(kind) ? mentioned[0] : null;
     if (ally) kind = 'ally';
     const k = (seen[kind] = (seen[kind] || 0) + 1) - 1;
-    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally, option: kind === 'option' ? parseOption(text) : null, options };
+    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally, option: kind === 'option' ? parseOption(text) : null, options, nameVote, day: hasMorning };
     return {
       isAnim: true,
       verein: true, // gleiche Darstellung wie der Vereins-Modus (Sticker-Untertitel, harte Schnitte)
@@ -149,7 +153,7 @@ const SLOTS = [
   [-370, 150], [-220, 150], [220, 150], [370, 150],
 ].map(([x, y]) => [540 + x, 1420 + y]);
 function slotsScene(g, t, filled, popT, c, mouth) {
-  Z.forest(g, t, { mood: 0.35, skipMid: 540 });
+  forestFor(g, t, c, { mood: 0.35, skipMid: 540 });
   Z.hut(g, 540, 1260, 0.75, { t });
   SLOTS.forEach(([x, y], i) => {
     if (i === 6) Z.drawHero(g, 540, 1470, 330, { pose: 'talk', mouth, t });
@@ -183,7 +187,7 @@ function drawScene(g, t, dur, c, mo) {
     case 'hut': {
       const kk = smooth(clamp((k - 0.1) / 0.9));
       cam(g, lerp(540, 450, kk), lerp(980, 1010, kk), lerp(0.82, 1.85, kk), 0, t);
-      Z.forest(g, t, { mood: 0.4, skipMid: 540 });
+      forestFor(g, t, c, { mood: 0.4, skipMid: 540 });
       Z.hut(g, 540, 1260, 1, { t, peek: { dx: 0, dy: 0, mouth: mo, scared: 0 } });
       break;
     }
@@ -196,7 +200,7 @@ function drawScene(g, t, dur, c, mo) {
     case 'horde': {
       const cx = lerp(250, 900, smooth(k));
       cam(g, cx, 880, 1.0, 0, t);
-      Z.forest(g, t, { mood: 1, path: false, moonAt: [cx + 280, 300, 80] });
+      forestFor(g, t, c, { mood: 1, path: false, moonAt: [cx + 280, 300, 80] });
       P(g, '#6e5a44', 5, rr(-1500, 1330, 4100, 230, 0));
       for (let i = 0; i < 30; i++) P(g, '#5a4836', 0, ell(-800 + i * 95, 1400 + (i % 2) * 70, 16, 9));
       const n = Math.min(12, Math.max(3, c.zombies));
@@ -205,7 +209,7 @@ function drawScene(g, t, dur, c, mo) {
     }
     case 'alone': {
       cam(g, 540, 820, 0.95, 0, t);
-      Z.forest(g, t, { mood: 0.8, path: false, moonAt: [540, 300, 70] });
+      forestFor(g, t, c, { mood: 0.8, path: false, moonAt: [540, 300, 70] });
       Z.hut(g, 230, 1330, 0.55, { t });
       Z.drawHero(g, 330, 1520, 300, { pose: 'scared', mouth: mo, t, scared: 1, look: 1 });
       for (let i = 0; i < Math.min(12, Math.max(3, c.zombies)); i++) {
@@ -236,7 +240,7 @@ function drawScene(g, t, dur, c, mo) {
     }
     case 'comment': {
       cam(g, 540, 960, 1, 0, t);
-      Z.forest(g, t, { mood: 0.4 });
+      forestFor(g, t, c, { mood: 0.4 });
       g.fillStyle = 'rgba(10,8,30,0.35)';
       g.fillRect(-100, -100, 1300, 2200);
       Z.drawHero(g, 820, 2050, 700, { pose: 'up', mouth: mo, t });
@@ -245,7 +249,7 @@ function drawScene(g, t, dur, c, mo) {
     case 'ally': {
       // Verbündeter kommt aus dem Wald zur Hütte
       cam(g, 560, 1250, lerp(1.12, 1.2, k), 0, t);
-      Z.forest(g, t, { mood: 0.5, skipMid: 540 });
+      forestFor(g, t, c, { mood: 0.5, skipMid: 540 });
       Z.hut(g, 780, 1260, 0.7, { t });
       const walk = smooth(clamp(k / 0.35));
       const ax = lerp(-120, 400, walk);
@@ -257,7 +261,7 @@ function drawScene(g, t, dur, c, mo) {
     }
     case 'characters': {
       cam(g, lerp(500, 580, k), 1250, 1.25, 0, t);
-      Z.forest(g, t, { mood: 0.4, skipMid: 540 });
+      forestFor(g, t, c, { mood: 0.4, skipMid: 540 });
       Z.hut(g, 540, 1260, 0.75, { t });
       Z.drawHero(g, 300, 1560, 330, { pose: 'talk', mouth: mo, t });
       const said = c.named.filter((a) => c.low.includes(a.name.toLowerCase()));
@@ -273,7 +277,7 @@ function drawScene(g, t, dur, c, mo) {
     }
     case 'defend': {
       cam(g, 540, lerp(1250, 1100, smooth(k)), lerp(1.2, 0.85, smooth(k)), 0, t);
-      Z.forest(g, t, { mood: 1, skipMid: 540, moonAt: [800, 280, 85] });
+      forestFor(g, t, c, { mood: 1, skipMid: 540, moonAt: [800, 280, 85] });
       glowingEyes(g, t);
       Z.hut(g, 540, 1260, 0.75, { t, barricade: k, lit: true });
       edgeZombies(g, t, k);
@@ -283,7 +287,7 @@ function drawScene(g, t, dur, c, mo) {
     }
     case 'fight': {
       cam(g, 540, 1150, lerp(1.0, 1.08, k), 0.25, t);
-      Z.forest(g, t, { mood: 1, skipMid: 540, moonAt: [820, 260, 80] });
+      forestFor(g, t, c, { mood: 1, skipMid: 540, moonAt: [820, 260, 80] });
       Z.hut(g, 540, 1260, 0.75, { t, barricade: 1, lit: true });
       // Zombies kippen nacheinander um
       for (let i = 0; i < 6; i++) {
@@ -301,10 +305,18 @@ function drawScene(g, t, dur, c, mo) {
       Z.drawHero(g, 540, 1640, 300, { pose: 'bat', mouth: mo, t });
       break;
     }
+    case 'morning': {
+      cam(g, 540, 1180, lerp(1.0, 1.08, k), 0, t);
+      forestFor(g, t, c, { day: true, skipMid: 540, moonAt: [830, 330] });
+      Z.hut(g, 540, 1260, 0.85, { t, lit: false, barricade: 1 });
+      const jump = Math.abs(Math.sin(t * 5)) * 30;
+      Z.drawHero(g, 540, 1760 - jump, 470, { pose: 'cheer', mouth: mo, t });
+      break;
+    }
     case 'option': {
       const b = c.option?.build;
       cam(g, b === 'tower' ? 620 : 540, 1150, lerp(0.92, 0.98, k), 0, t);
-      Z.forest(g, t, { mood: 0.2, skipMid: 540 });
+      forestFor(g, t, c, { mood: 0.2, skipMid: 540 });
       const grow = easeOutBack(clamp((t - 0.3) / 0.5));
       if (b === 'tower') drawTower(g, 900, 1330, grow);
       Z.hut(g, 540, 1260, 0.75, { t, barricade: 1 });
@@ -315,14 +327,14 @@ function drawScene(g, t, dur, c, mo) {
     }
     case 'vote': {
       cam(g, 540, 1180, 0.95, 0, t);
-      Z.forest(g, t, { mood: 0.4, skipMid: 540 });
+      forestFor(g, t, c, { mood: 0.4, skipMid: 540 });
       Z.hut(g, 540, 1260, 0.75, { t });
       Z.drawHero(g, 540, 1560, 360, { pose: 'up', mouth: mo, t });
       break;
     }
     case 'final': {
       cam(g, 540, 960, lerp(1.0, 1.12, k), 0, t);
-      Z.forest(g, t, { mood: 1, path: false, moonAt: [540, 640, 260] });
+      forestFor(g, t, c, { mood: 1, path: false, moonAt: [540, 640, 260] });
       Z.drawHero(g, 540, 2250, 1500, { pose: 'bat', mouth: mo, t });
       for (const [hx, hd] of [[90, 0.15], [990, 0.3], [230, 0.45]]) {
         const up = smooth(clamp((k - hd) / 0.25));
@@ -339,7 +351,7 @@ function drawScene(g, t, dur, c, mo) {
       // Erzähler im Wald (abwechselnde Einstellungen)
       const alt = c.k % 2;
       cam(g, alt ? 600 : 480, 1150, lerp(1.25, 1.35, k), 0, t);
-      Z.forest(g, t, { mood: 0.5, skipMid: 540 });
+      forestFor(g, t, c, { mood: 0.5, skipMid: 540 });
       Z.hut(g, alt ? 760 : 300, 1260, 0.7, { t });
       Z.drawHero(g, alt ? 470 : 610, 1640, 520, { pose: 'talk', mouth: mo, t });
     }
@@ -414,6 +426,11 @@ function optionList(g, t, options, end) {
     g.restore();
   }
 }
+// Folge spielt am Tag (es gibt eine "Wir haben überlebt"-Szene): ruhige Szenen hell
+const NIGHT_KINDS = ['horde', 'alone', 'fight', 'final', 'title', 'problem'];
+function forestFor(g, t, c, opts) {
+  Z.forest(g, t, { ...opts, day: c.day && !NIGHT_KINDS.includes(c.kind) });
+}
 function glowingEyes(g, t) {
   for (let i = 0; i < 9; i++) {
     const ex = -300 + i * 200 + (i % 2) * 60;
@@ -470,7 +487,9 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.3, end);
       if (a > 0) {
         card(g, VW / 2, 400, 820, 130, DARK, a, -0.02);
-        label(g, /ausbau|verstärk|ausbauen|aufrüst/.test(c.low) ? 'HÜTTE AUSBAUEN!' : /bunker/.test(c.low) ? 'VERSTECK: BUNKER' : 'VERSTECK: HÜTTE IM WALD', 0, 2, 54, '#ffffff', { sw: 0 });
+        const ht = /name/.test(c.low) && /lager|camp|hütte/.test(c.low) ? 'UNSER LAGER BRAUCHT EINEN NAMEN!' : /ausbau|verstärk|ausbauen|aufrüst/.test(c.low) ? 'HÜTTE AUSBAUEN!' : /bunker/.test(c.low) ? 'VERSTECK: BUNKER' : 'VERSTECK: HÜTTE IM WALD';
+        g.font = '54px "Lilita One", sans-serif';
+        label(g, ht, 0, 2, Math.min(54, (54 * 760) / g.measureText(ht).width), '#ffffff', { sw: 0 });
         g.restore();
       }
       if (/allein/.test(c.low)) {
@@ -560,7 +579,14 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.1, end);
       if (a > 0) {
         card(g, VW / 2, 380, 920, 150, YEL, a, -0.02);
-        if (/waffe/.test(c.low)) {
+        const variant = commentVariant(c);
+        if (variant === 'lager') {
+          label(g, 'WIE SOLL UNSER', 0, -26, 58, DARK, { sw: 0 });
+          label(g, 'LAGER HEISSEN?', 0, 36, 60, DARK, { sw: 0 });
+        } else if (variant === 'build') {
+          label(g, 'TOP-KOMMENTAR ENTSCHEIDET,', 0, -26, 54, DARK, { sw: 0 });
+          label(g, 'WAS WIR BAUEN!', 0, 36, 60, DARK, { sw: 0 });
+        } else if (/waffe/.test(c.low)) {
           label(g, 'NAME + WAFFE', 0, -26, 64, DARK, { sw: 0 });
           label(g, 'IN DIE KOMMENTARE!', 0, 36, 50, DARK, { sw: 0 });
         } else label(g, 'AB IN DIE KOMMENTARE!', 0, 4, 64, DARK, { sw: 0 });
@@ -603,7 +629,7 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.2, end);
       if (a > 0) {
         card(g, VW / 2, 420, 900, 170, RED, a, -0.02);
-        label(g, 'VERTEIDIGT DIE HÜTTE!', 0, 4, 72, '#fff', { sw: 0 });
+        label(g, /brauchen|gesucht|suchen|wer hilft/.test(c.low) ? 'VERTEIDIGER GESUCHT!' : 'VERTEIDIGT DIE HÜTTE!', 0, 4, 72, '#fff', { sw: 0 });
         g.restore();
       }
       break;
@@ -615,6 +641,15 @@ function overlays(g, t, dur, c) {
         card(g, VW / 2, 420, kill ? 900 : 700, 170, RED, a, -0.03);
         const win = /erfolgreich|geschafft|gewonnen|abgewehrt|zurückgeschlagen/.test(c.low);
         label(g, kill ? `${kill[1]} ZOMBIES ERLEDIGT!` : win ? 'GESCHAFFT!' : 'DER KAMPF!', 0, 4, kill ? 76 : 100, '#fff', { sw: 0 });
+        g.restore();
+      }
+      break;
+    }
+    case 'morning': {
+      const a = popIn(t, 0.2, end);
+      if (a > 0) {
+        card(g, VW / 2, 420, 860, 180, YEL, a, -0.03);
+        label(g, /überlebt/.test(c.low) ? 'WIR HABEN ÜBERLEBT!' : 'ES IST TAG!', 0, 4, 80, DARK, { sw: 0 });
         g.restore();
       }
       break;
@@ -673,10 +708,21 @@ const EXAMPLE_COMMENTS = [
   ['Max', 'Max hier, ich nehm die Bratpfanne!!', '#43aa8b', '208'],
   ['Tobi', 'Tobi – Armbrust. Lass kämpfen', '#9b5de5', '154'],
 ];
+function commentVariant(c) {
+  if (/(lager|camp|basis)/.test(c.low) && /name|heißen|nennen|vorschlag/.test(c.low)) return 'lager';
+  if (c.nameVote && /vorschlag|name/.test(c.low) && !/waffe/.test(c.low)) return 'lager';
+  if (/bau/.test(c.low) && /top|likes|entscheidet/.test(c.low)) return 'build';
+  return null;
+}
+const VARIANT_COMMENTS = {
+  lager: [['Lena', 'Fort Hoffnung!!', '#3a86ff', '412'], ['Max', 'Camp Zombiefrei haha', '#43aa8b', '287'], ['Tobi', 'Die letzte Hütte', '#9b5de5', '196']],
+  build: [['Lena', 'Wachturm!!', '#3a86ff', '356'], ['Max', 'Holzzaun, safe', '#43aa8b', '241'], ['Tobi', 'Speere für alle', '#9b5de5', '178']],
+};
 function commentsPanel(g, t, c) {
   const k = smooth(clamp((t - 0.2) / 0.4));
   if (k <= 0) return;
-  const list = c.named.length
+  const variant = commentVariant(c);
+  const list = variant ? VARIANT_COMMENTS[variant] : c.named.length
     ? c.named.slice(0, 3).map((a, i) => {
         const nm = a.name.charAt(0) + a.name.slice(1).toLowerCase();
         return [nm, a.weaponText ? `${nm} – ${a.weaponText}` : `${nm} ist dabei!`, a.shirt, String(300 - i * 70)];
@@ -742,7 +788,7 @@ function endCard(g, t, dur, c) {
   label(g, 'DIE ZOMBIE-', 0, 300, 96, '#ffffff', { sw: 14 });
   label(g, 'APOKALYPSE', 0, 405, 110, '#7ddc4a', { sw: 16 });
   const rows = [
-    [c.options.length >= 2 ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: NAME + WAFFE', YEL],
+    [c.nameVote ? 'KOMMENTIERE: NAME FÜRS LAGER' : c.options.length >= 2 ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: NAME + WAFFE', YEL],
     [`VERBÜNDETE: ${c.allies} / ${c.goal}`, '#7ddc4a'],
     [`ZOMBIES: ${c.zombies}`, '#ff6b6b'],
   ];
@@ -844,6 +890,10 @@ function sfxFor(c) {
     case 'fight':
       for (let i = 0; i < 4; i++) add(0.6 + i * 0.5, 'kick');
       add(0.3, 'groan');
+      break;
+    case 'morning':
+      add(0.2, 'cheer');
+      add(0.3, 'ding');
       break;
     case 'option':
       add(0.15, 'whoosh');
