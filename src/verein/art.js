@@ -278,7 +278,7 @@ export function drawClubhouse(g, t) {
 }
 
 // Auswechselbank (leer, Spinnennetz)
-export function drawBench(g, t) {
+export function drawBench(g, t, bench = []) {
   const { x, base } = PLACES.bench;
   P(g, '#cfd6dc', 6, (g2) => {
     g2.moveTo(x, base);
@@ -287,10 +287,7 @@ export function drawBench(g, t) {
     g2.lineTo(x + 330, base);
   });
   P(g, '#7aa7c7', 5, rect(x + 10, base - 140, 310, 120));
-  P(g, C.wood, 5, rect(x + 30, base - 62, 270, 18));
-  line(g, [[x + 50, base - 44], [x + 50, base - 4]], 7);
-  line(g, [[x + 280, base - 44], [x + 280, base - 4]], 7);
-  // Spinnennetz
+  // Spinnennetz (nur noch in der Ecke)
   g.save();
   g.globalAlpha = 0.8;
   for (let k = 0; k < 6; k++) line(g, [[x + 22, base - 132], [x + 22 + Math.cos(k * 0.3) * 70, base - 132 + Math.sin(k * 0.3) * 70]], 2, '#fff');
@@ -302,6 +299,11 @@ export function drawBench(g, t) {
     g.stroke();
   }
   g.restore();
+  // sitzende Ersatzspieler (Beine verschwinden hinter der Sitzbank)
+  bench.slice(0, 3).forEach((pl, i) => drawPlayer(g, pl, x + 85 + i * 85, base - 22, 150, t + i * 1.7));
+  P(g, C.wood, 5, rect(x + 30, base - 62, 270, 18));
+  line(g, [[x + 50, base - 44], [x + 50, base - 4]], 7);
+  line(g, [[x + 280, base - 44], [x + 280, base - 4]], 7);
   label(g, 'AUSWECHSELBANK', x + 165, base - 165, 24, '#fff', { sw: 6 });
 }
 
@@ -380,7 +382,7 @@ export function drawStand(g, t, fans = 0, fanPop = [], opts = {}) {
   line(g, [[x + w + 105, base - 140], [x + w + 105, base]], 9, '#666');
   label(g, `von ${STAND_SEATS} Plätzen`, x + w + 105, base - 122, 20, '#ffffff', { sw: 5 });
 }
-function nameTag(g, x, y, text, bg = '#ffffff') {
+export function nameTag(g, x, y, text, bg = '#ffffff') {
   g.font = '18px "Lilita One", "Arial Black", sans-serif';
   const w = Math.min(120, g.measureText(text).width + 16);
   P(g, bg, 3, rr(x - w / 2, y - 12, w, 24, 6));
@@ -873,6 +875,9 @@ export function drawPlayer(g, p, x, y, H, t, { wave = 0 } = {}) {
   g.restore();
   g.restore();
 }
+function hair_(g, p, hy, lw) {
+  return hair(g, p, hy, lw);
+}
 function hair(g, p, hy, lw) {
   const c = p.hc;
   switch (p.hair) {
@@ -961,5 +966,179 @@ export function drawLawnSign(g, t) {
   label(g, 'RASEN', 0, -200, 34, '#2f7f45', { sw: 0 });
   label(g, 'BETRETEN', 0, -166, 26, OL, { sw: 0 });
   label(g, 'VERBOTEN!', 0, -138, 26, '#e53935', { sw: 0 });
+  g.restore();
+}
+
+
+// ------------------------------------------------- Kader-Wechsel ---
+// Neue Spieler bekommen ein festes Aussehen aus ihrem Namen (immer gleich).
+const HAIRS = ['short', 'spiky', 'afro', 'mullet', 'pony', 'bowl', 'ginger', 'headband', 'bald'];
+const HAIRCOL = ['#1d1512', '#2a1d16', '#5a3a22', '#c58b3d', '#e2c35a', '#d4622a', '#3b2a20'];
+function hashName(name) {
+  let h = 2166136261;
+  for (const ch of String(name).toLowerCase()) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return h >>> 0;
+}
+export function makePlayer(name, n) {
+  const r = rnd(hashName(name) || 1);
+  return {
+    n,
+    name,
+    skin: Math.floor(r() * C.skin.length),
+    hair: HAIRS[Math.floor(r() * HAIRS.length)],
+    hc: HAIRCOL[Math.floor(r() * HAIRCOL.length)],
+    h: 0.94 + r() * 0.16,
+    w: 0.92 + r() * 0.18,
+    gk: n === 1,
+    beard: r() < 0.25,
+    glasses: r() < 0.12,
+    isNew: true,
+  };
+}
+/** "1 Nico, 10 Houssein, 11 Julien" → neue Startelf + Ersatzbank */
+export function rosterFor(signed = '') {
+  const lineup = PLAYERS.map((p) => ({ ...p }));
+  const bench = [];
+  const news = [];
+  for (const part of String(signed).split(/[,;\n]+/)) {
+    const m = part.match(/(\d{1,2})\s*[-:.]?\s*([\p{L}][\p{L}'-]*)|([\p{L}][\p{L}'-]*)\s*[-:(]?\s*(?:nr\.?\s*)?(\d{1,2})/iu);
+    if (!m) continue;
+    const n = Number(m[1] || m[4]);
+    const name = (m[2] || m[3]).trim();
+    const idx = lineup.findIndex((p) => p.n === n);
+    const np = makePlayer(name, n);
+    if (idx >= 0) {
+      if (!lineup[idx].isNew) bench.push(lineup[idx]);
+      lineup[idx] = np;
+    } else lineup.push(np);
+    news.push(np);
+  }
+  return { lineup, bench, news };
+}
+
+// ---------------------------------------------------- Vereinsteam ---
+// Allgemeine Chibi-Person (für Co-Trainer, Stadionsprecher)
+export function drawPerson(g, x, y, Hpx, o, t = 0) {
+  const s = Hpx / 100;
+  g.save();
+  g.translate(x, y);
+  g.scale(s, s);
+  const lw = 1.6;
+  g.save();
+  g.globalAlpha = 0.2;
+  P(g, '#000', 0, ell(0, 0, 18, 3));
+  g.restore();
+  for (const sx of [-1, 1]) {
+    P(g, o.pants, lw, rr(sx * 6 - 4.5, -24, 9, 20, 3));
+    P(g, o.shoes, lw, ell(sx * 6.5, -3, 6, 3.4));
+  }
+  P(g, o.top, lw, rr(-15, -52, 30, 30, 9));
+  if (o.label) label(g, o.label, 0, -38, 6, '#ffffff', { sw: 0 });
+  const wave = Math.sin(t * 3) * 0.1;
+  // Arme
+  P(g, o.top, lw, rr(-19, -50, 7, 18, 3.5));
+  P(g, C.skin[o.skin], lw, ell(-15.5, -31, 3.5, 3.5));
+  g.save();
+  g.translate(15.5, -48);
+  g.rotate(o.mic ? -1.9 + wave : -0.3);
+  P(g, o.top, lw, rr(-3.5, 0, 7, 16, 3.5));
+  P(g, C.skin[o.skin], lw, ell(0, 17, 3.5, 3.5));
+  if (o.mic) {
+    P(g, '#2b2b2b', 1.2, rr(-2, 16, 4, 10, 2));
+    P(g, '#555', 1.2, ell(0, 15, 3.6, 3.6));
+  }
+  g.restore();
+  if (o.clipboard) {
+    P(g, '#8a5a30', 1.4, rr(-24, -46, 13, 17, 2));
+    P(g, '#ffffff', 0, rect(-22.5, -43, 10, 13));
+    for (let k = 0; k < 4; k++) line(g, [[-21.5, -41 + k * 3], [-14, -41 + k * 3]], 0.7, '#9aa5ad');
+  }
+  // Kopf
+  const hy = -70;
+  P(g, C.skin[o.skin], lw, ell(0, hy, 18, 17.5));
+  g.save();
+  g.translate(0, hy);
+  g.scale(1.62, 1.38);
+  hairShape(g, o.hair, o.hc, lw / 1.6);
+  g.restore();
+  if (o.beard) P(g, o.hc, 1, (g2) => {
+    g2.moveTo(-14, hy + 3);
+    g2.quadraticCurveTo(0, hy + 22, 14, hy + 3);
+    g2.quadraticCurveTo(0, hy + 11, -14, hy + 3);
+  });
+  if (o.headset) {
+    g.beginPath();
+    g.arc(0, hy - 2, 19, Math.PI * 1.1, Math.PI * 1.9);
+    g.lineWidth = 2.4;
+    g.strokeStyle = '#2b2b2b';
+    g.stroke();
+    P(g, '#2b2b2b', 1, ell(-18, hy + 2, 3, 4.5));
+    line(g, [[-17, hy + 6], [-8, hy + 12]], 1.4, '#2b2b2b');
+  }
+  for (const ex of [-6, 6]) {
+    P(g, '#fff', 1.2, ell(ex, hy - 1, 4.2, 5));
+    P(g, OL, 0, ell(ex + 0.5, hy - 0.5, 1.9, 2.3));
+  }
+  g.beginPath();
+  g.arc(0, hy + 7, 4, 0.25, Math.PI - 0.25);
+  g.lineWidth = 1.4;
+  g.strokeStyle = OL;
+  g.stroke();
+  g.restore();
+}
+function hairShape(g, hair, hc, lw) {
+  hair_(g, { hair, hc }, 0, lw);
+}
+// Maskottchen im Diamant-Kostüm
+export function drawMascot(g, x, y, Hpx, t = 0) {
+  const s = Hpx / 100;
+  g.save();
+  g.translate(x, y + Math.abs(Math.sin(t * 4)) * -2);
+  g.scale(s, s);
+  const lw = 1.8;
+  g.save();
+  g.globalAlpha = 0.2;
+  P(g, '#000', 0, ell(0, 0, 18, 3));
+  g.restore();
+  for (const sx of [-1, 1]) {
+    P(g, '#1f4fbf', lw, rr(sx * 6 - 4, -20, 8, 17, 3));
+    P(g, '#ffffff', lw, ell(sx * 6.5, -3, 6.5, 3.6));
+  }
+  // Arme winken
+  for (const sx of [-1, 1]) {
+    g.save();
+    g.translate(sx * 20, -55);
+    g.rotate(sx * (-2.2 + Math.sin(t * 6 + sx) * 0.35));
+    P(g, '#5b86e6', lw, rr(-3.5, 0, 7, 18, 3.5));
+    P(g, '#ffffff', lw, ell(0, 19, 4.5, 4.5));
+    g.restore();
+  }
+  // Diamant-Körper mit Facetten
+  const D = [[0, -102], [26, -78], [0, -18], [-26, -78]];
+  P(g, '#5b86e6', lw * 1.2, poly(D));
+  P(g, '#8fb0f5', 0, poly([[0, -102], [26, -78], [0, -78]]));
+  P(g, '#3d6ad6', 0, poly([[0, -102], [-26, -78], [0, -78]]));
+  P(g, '#2f56b8', 0, poly([[-26, -78], [0, -78], [0, -18]]));
+  P(g, '#4c78dd', 0, poly([[26, -78], [0, -78], [0, -18]]));
+  P(g, null, lw * 1.2, poly(D));
+  line(g, [[-26, -78], [26, -78]], 1.2, '#dfe8ff');
+  // Gesichtsöffnung
+  P(g, '#f2c29b', lw, ell(0, -64, 9, 9));
+  P(g, OL, 0, ell(-3.2, -66, 1.4, 1.8));
+  P(g, OL, 0, ell(3.2, -66, 1.4, 1.8));
+  g.beginPath();
+  g.arc(0, -62, 3, 0.2, Math.PI - 0.2);
+  g.lineWidth = 1.2;
+  g.strokeStyle = OL;
+  g.stroke();
+  crest(g, 0, -40, 6);
+  // Glitzer
+  for (let i = 0; i < 3; i++) {
+    const a = t * 2 + i * 2.1;
+    const sx2 = Math.cos(a) * 34;
+    const sy2 = -70 + Math.sin(a * 1.3) * 30;
+    line(g, [[sx2 - 3, sy2], [sx2 + 3, sy2]], 1.4, '#ffffff');
+    line(g, [[sx2, sy2 - 3], [sx2, sy2 + 3]], 1.4, '#ffffff');
+  }
   g.restore();
 }

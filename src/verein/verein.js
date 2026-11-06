@@ -76,6 +76,11 @@ const SHOTS = {
   clubhouse: [{ a: [1020, 760, 1.6], b: [1000, 770, 1.75], rudi: { ...RUDI_HOUSE, pose: 'pocket' } }],
   follow: [{ a: [2250, 1330, 1.7], b: [2250, 1310, 1.9], rudi: { ...RUDI_MAIN, pose: 'crossed' }, players: true }],
   growth: [{ a: [2330, 790, 1.15], b: [2380, 775, 1.22] }],
+  hired: [{ a: [1180, 1260, 1.3], b: [1180, 1270, 1.4], rudi: { ...RUDI_HOUSE, pose: 'thumbs' }, players: true }],
+  sponsor: [{ a: [2250, 1240, 1.4], b: [2250, 1230, 1.5], rudi: { ...RUDI_MAIN, pose: 'open' }, players: true }],
+  topcomment: [{ a: [2250, 1330, 1.75], b: [2250, 1310, 1.9], rudi: { ...RUDI_MAIN, pose: 'point' }, players: true }],
+  staff: [{ a: [2050, 1380, 1.5], b: [2060, 1370, 1.65], players: true }],
+  newplayer: [{ a: [2400, 1240, 2.2], b: [2400, 1235, 2.4], players: true }],
   voteresult: [
     { a: [1180, 1240, 1.25], b: [1180, 1250, 1.32], rudi: { ...RUDI_HOUSE, pose: 'open' }, players: true },
     { a: [1180, 1280, 1.4], b: [1180, 1290, 1.5], rudi: { ...RUDI_HOUSE, pose: 'thumbs' }, players: true },
@@ -97,12 +102,15 @@ export function pickShot(text, i, n, black) {
   if (/ergebnis|gewonnen|gewinnt|meisten von euch|mehrheit/.test(s)) return 'voteresult';
   if (/\ba\s*[:)]|\bb\s*[:)]|a oder b|abstimm|stimmt ab|\ba für\b/.test(s)) return 'vote';
   if (/reparatur|reparier|investier/.test(s)) return 'repair';
+  if (/eingestellt|bewerbungen bekommen|neu im team/.test(s)) return 'hired';
+  if (/top-kommentar|topkommentar/.test(s)) return 'topcomment';
+  if (/sponsor/.test(s)) return 'sponsor';
   if (/bewerb/.test(s)) return 'apply';
-  if (/verstärkung|offene stellen|maskottchen|kassenwart|co-trainer|stadionsprecher|platzwart|zeugwart|physio/.test(s)) return 'jobs';
+  if (/verstärkung|offene stellen|maskottchen|kassenwart|co-trainer|stadionsprecher|platzwart|zeugwart|physio|ultra/.test(s)) return 'jobs';
   if (/namen?\b/.test(s) && /kommentar/.test(s)) return 'nametag';
   if (/sonntag|samstag|montag|dienstag|mittwoch|donnerstag|freitag|erstes spiel|spiel statt|anpfiff/.test(s)) return 'matchday';
   if (/folgt|folge uns|abonnier|folgen\b|follow da/.test(s) && !/je mehr/.test(s)) return 'follow';
-  if (/unterstützt|community|\d+\s*(leute|follower|fans|unterstützer)/.test(s)) return 'growth';
+  if (/unterstützt|community|fananzahl|von \d+ auf \d+|\d+\s*(leute|follower|fans|unterstützer)/.test(s)) return 'growth';
   if (/geld|kasse|euro|€/.test(s)) return 'money';
   if (/toilett|klo\b|\bwc\b|dixi/.test(s)) return 'toilet';
   if (/getränk|kühlbox|trinken|bier|limo/.test(s)) return 'cooler';
@@ -144,14 +152,69 @@ const JOBS = [
   ['platzwart', 'PLATZWART', 'ball'],
   ['zeugwart', 'ZEUGWART', 'shirt'],
   ['physio', 'PHYSIO', 'plus'],
+  ['ultra', 'ULTRAS', 'flag'],
 ];
 
 /**
  * Baut die Szenen-Bilder für ein Skript.
  * opts: { fans: aktuelle Fan-Zahl, names: [Namen für Tribünenplätze] }
  */
+const ROLE_TYPES = [
+  [/co-?trainer/, 'cotrainer', 'CO-TRAINER'],
+  [/maskottchen/, 'mascot', 'MASKOTTCHEN'],
+  [/stadionsprecher|sprecher/, 'speaker', 'STADIONSPRECHER'],
+  [/kassenwart/, 'treasurer', 'KASSENWART'],
+  [/ultra/, 'ultra', 'ULTRA-FAN'],
+];
+function roleOf(text) {
+  const low = String(text).toLowerCase();
+  const r = ROLE_TYPES.find(([re]) => re.test(low));
+  return r ? { type: r[1], label: r[2] } : { type: 'other', label: String(text).trim().toUpperCase() };
+}
+/** "Bob: Co-Trainer, Antony: Maskottchen" + Sätze wie "Bob wird unser neuer Co-Trainer" */
+function staffFrom(setting, scenes) {
+  const out = [];
+  const add = (name, roleText) => {
+    if (!name || out.some((x) => x.name.toLowerCase() === name.toLowerCase())) return;
+    out.push({ name, ...roleOf(roleText) });
+  };
+  for (const part of String(setting || '').split(/[,;\n]+/)) {
+    const m = part.match(/^\s*([\p{L}][\p{L}'-]*)\s*[:(–-]\s*(.+?)\)?\s*$/u);
+    if (m) add(m[1], m[2]);
+  }
+  for (const sc of scenes) {
+    const m = (sc.text || '').match(/^\s*([\p{Lu}][\p{L}'-]+)\s+(?:wird|ist|bekommt)\b(.*)$/u);
+    if (m && ROLE_TYPES.some(([re]) => re.test(m[2].toLowerCase()))) add(m[1], m[2]);
+  }
+  return out;
+}
+const STOP = new Set(['wir', 'unser', 'unsere', 'der', 'die', 'das', 'und', 'mit', 'tag', 'er', 'sie', 'es', 'auch', 'jetzt', 'außerdem', 'also', 'heute', 'nummer', 'torwart', 'mittelfeld']);
+/** Neue Spieler aus "Name … Nummer 10" im Skript (zusätzlich zu den Einstellungen) */
+function signedFrom(setting, scenes) {
+  const parts = String(setting || '').split(/[,;\n]+/).filter((x) => x.trim());
+  for (const sc of scenes) {
+    for (const m of (sc.text || '').matchAll(/([\p{Lu}][\p{L}'-]+)[^.!?]*?(?:[Nn]ummer|[Nn]r\.?|[Tt]rikot)\s*(\d{1,2})/gu)) {
+      if (!STOP.has(m[1].toLowerCase())) parts.push(`${m[2]} ${m[1]}`);
+    }
+  }
+  return parts.join(', ');
+}
+const POSITIONS = [
+  [/torwart|torhüter/, 'TORWART'],
+  [/zentrale[sn]? mittelfeld|zentralen mittelfeld|zentrales mittelfeld/, 'ZENTRALES MITTELFELD'],
+  [/linke[rsn]? mittelfeld|linker mittelfeldspieler/, 'LINKES MITTELFELD'],
+  [/rechte[rsn]? mittelfeld|rechter mittelfeldspieler/, 'RECHTES MITTELFELD'],
+  [/mittelfeld/, 'MITTELFELD'],
+  [/sturm|stürmer/, 'STURM'],
+  [/abwehr|verteidig|innenverteidig/, 'ABWEHR'],
+];
+
 export function createVereinVisuals(scenes, opts = {}) {
   const fans = Math.max(0, Math.floor(Number(opts.fans) || 0));
+  const roster = A.rosterFor(signedFrom(opts.signed, scenes));
+  const staff = staffFrom(opts.staff, scenes);
+  const kasseStart = Math.max(0, Number(opts.kasse) || 0);
+  let sponsorShown = false;
   const names = (opts.names || []).filter(Boolean).slice(0, A.STAND_SEATS);
   const seen = {};
   let prevVote = null;
@@ -159,13 +222,32 @@ export function createVereinVisuals(scenes, opts = {}) {
   let lastEuro = null;
   let perFollower = null;
   return scenes.map((sc, i) => {
-    let kind = pickShot(sc.text || '', i, scenes.length, sc.black);
-    if (kind === 'intro' && seen.intro !== undefined) kind = 'talk'; // nur einmal Eröffnungsfahrt
-    const k = (seen[kind] = (seen[kind] ?? -1) + 1);
-    const variants = SHOTS[kind];
-    const shot = variants[k % variants.length];
     const text = sc.text || '';
     const low = text.toLowerCase();
+    let kind = pickShot(text, i, scenes.length, sc.black);
+    if (kind === 'intro' && seen.intro !== undefined) kind = 'talk'; // nur einmal Eröffnungsfahrt
+    // Vereinsteam / Neuzugänge im Satz?
+    const member = staff.find((m) => new RegExp(`\\b${m.name}\\b`, 'i').test(text));
+    const newcomers = roster.news.filter((p) => new RegExp(`\\b${p.name}\\b`, 'i').test(text));
+    if (newcomers.length && !['bench', 'slogan'].includes(kind)) kind = 'newplayer';
+    else if (member && !['slogan'].includes(kind)) kind = 'staff';
+    const k = (seen[kind] = (seen[kind] ?? -1) + 1);
+    const variants = SHOTS[kind];
+    let shot = variants[k % variants.length];
+    if (kind === 'staff' && member) shot = staffShot(member.type);
+    if (kind === 'newplayer') {
+      const xs = newcomers.map((p) => playerX(roster.lineup, p.n));
+      const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+      const z = xs.length > 1 ? Math.max(1.4, 2.3 - (Math.max(...xs) - Math.min(...xs)) / 500) : 2.3;
+      shot = { a: [mx, 1240, z], b: [mx, 1235, z * 1.08], players: true };
+    }
+    const positions = newcomers.map((p) => {
+      const after = low.slice(low.indexOf(p.name.toLowerCase()));
+      const next = newcomers.map((q) => (q === p ? -1 : after.indexOf(q.name.toLowerCase(), 1))).filter((x) => x > 0);
+      const seg = next.length ? after.slice(0, Math.min(...next)) : after;
+      return (POSITIONS.find(([re]) => re.test(seg)) || [null, p.n === 1 ? 'TORWART' : ''])[1];
+    });
+    if (kind === 'sponsor') sponsorShown = true;
     let vote = kind === 'vote' || kind === 'voteresult' ? parseVote(text) || prevVote : null;
     if (vote) prevVote = vote;
     // Wer hat gewonnen? ("A hat gewonnen" oder Stichwort der Antwort in den nächsten Sätzen)
@@ -181,9 +263,11 @@ export function createVereinVisuals(scenes, opts = {}) {
     if (eu.length > 1 && /follower/.test(low)) perFollower = eu[1];
     const fixedBefore = netsFixed;
     if (kind === 'repair') netsFixed = true;
-    const growTo = kind === 'growth' ? firstNumber(text) ?? fans : null;
+    const fromTo = text.match(/von\s+(\d+)\s+auf\s+(\d+)/i);
+    const growTo = kind === 'growth' ? (fromTo ? Number(fromTo[2]) : firstNumber(text) ?? fans) : null;
+    const growFrom = kind === 'growth' && fromTo ? Number(fromTo[1]) : 0;
     const jobs = kind === 'jobs' ? JOBS.filter(([k2]) => low.includes(k2)) : [];
-    const ctx = { kind, k, shot, text, low, fans, names, vote, winner, amount, perFollower, netsFixed: fixedBefore, growTo, jobs, first: i === 0 };
+    const ctx = { kind, k, shot, text, low, fans, names, vote, winner, amount, perFollower, netsFixed: fixedBefore, growTo, growFrom, jobs, first: i === 0, roster, staff, member, newcomers, positions, kasseStart, sponsor: sponsorShown };
     return {
       isAnim: true,
       verein: true,
@@ -203,6 +287,37 @@ export function createVereinVisuals(scenes, opts = {}) {
       },
     };
   });
+}
+
+const playerX = (lineup, n) => 1830 + Math.max(0, lineup.findIndex((p) => p.n === n)) * 118;
+const STAFF_POS = { cotrainer: [2630, 1760, 720], mascot: [2690, 1110, 330], speaker: [2990, 985, 300], treasurer: [1520, 1730, 700], ultra: [2500, 900, 240], other: [1400, 1700, 700] };
+function staffShot(type) {
+  const [x, y, h] = STAFF_POS[type] || STAFF_POS.other;
+  const cy = y - h * 0.55;
+  const z = 720 / h;
+  return { a: [x, cy, z * 0.95], b: [x, cy - 5, z * 1.05], players: true };
+}
+function drawStaff(g, m, t, spotlight) {
+  const [x, y, h] = STAFF_POS[m.type] || STAFF_POS.other;
+  if (m.type === 'mascot') A.drawMascot(g, x, y, h, t);
+  else {
+    const looks = {
+      cotrainer: { skin: 0, hair: 'short', hc: '#6b3f22', top: '#3a3f44', pants: '#2b2b30', shoes: '#1d1d1d', clipboard: true, beard: true, label: 'CO' },
+      speaker: { skin: 2, hair: 'spiky', hc: '#1d1512', top: '#7a2fb0', pants: '#2b2b30', shoes: '#ffffff', mic: true, headset: true },
+      treasurer: { skin: 1, hair: 'bowl', hc: '#3b2a20', top: '#2f9e4f', pants: '#2b2b30', shoes: '#1d1d1d', clipboard: true },
+      ultra: { skin: 0, hair: 'bald', hc: '#1d1512', top: '#1f4fbf', pants: '#2b2b30', shoes: '#1d1d1d' },
+      other: { skin: 3, hair: 'short', hc: '#1d1512', top: '#5b6b3a', pants: '#2b2b30', shoes: '#1d1d1d' },
+    };
+    if (m.type === 'speaker') A.P(g, '#8a6a48', 4, A.rr(x - 40, y, 80, 34, 4));
+    A.drawPerson(g, x, y, h, looks[m.type] || looks.other, t);
+  }
+  if (spotlight) {
+    g.save();
+    g.translate(x, y - h * 1.14);
+    g.scale(h / 260, h / 260);
+    A.nameTag(g, 0, 0, m.name.toUpperCase(), '#ffd60a');
+    g.restore();
+  }
 }
 
 // ------------------------------------------------------------------ Welt ---
@@ -227,11 +342,11 @@ function drawWorld(g, W, H, t, dur, c, info) {
   let board = c.fans;
   if (kind === 'growth') {
     // Zähler + Tribüne füllen sich gleichzeitig
-    const n = Math.round(clamp((t - 0.4) / Math.max(0.8, dur * 0.7)) * (c.growTo || 0));
+    const n = Math.round(c.growFrom + clamp((t - 0.4) / Math.max(0.8, dur * 0.7)) * ((c.growTo || 0) - c.growFrom));
     board = n;
     seated = Math.min(A.STAND_SEATS, n);
     const G = Math.max(1, c.growTo || 1);
-    pop = Array.from({ length: A.STAND_SEATS }, (_, j) => (t - 0.4 - (j / G) * Math.max(0.8, dur * 0.7)) / 0.25 + 0.2);
+    pop = Array.from({ length: A.STAND_SEATS }, (_, j) => (j < c.growFrom ? 1 : (t - 0.4 - ((j - c.growFrom) / Math.max(1, G - c.growFrom)) * Math.max(0.8, dur * 0.7)) / 0.25 + 0.2));
   } else if (kind === 'stand_fill') {
     // Vorschau: von den echten Fans bis zur vollen Tribüne (nur neue Plätze ploppen auf)
     const cap = A.STAND_SEATS;
@@ -242,7 +357,7 @@ function drawWorld(g, W, H, t, dur, c, info) {
     pop = Array.from({ length: cap }, (_, j) => (j < have ? 1 : (t - 0.3 - ((j - have) / Math.max(1, cap - have)) * span) / 0.25));
   }
   A.drawStand(g, t, seated, pop, { board, names: c.names, nameTag: kind === 'nametag' });
-  A.drawBench(g, t);
+  A.drawBench(g, t, c.roster.bench);
   A.drawToilet(g, t, kind === 'toilet' ? toiletDoor(t, dur, c) : 0);
   A.drawCooler(g, t, kind === 'cooler' ? smooth(clamp((t - 0.5) / 0.5)) : 0);
   const bt = ballTimes();
@@ -255,7 +370,23 @@ function drawWorld(g, W, H, t, dur, c, info) {
   A.drawFlag(g, t, 'L');
   A.drawFlag(g, t, 'R');
   A.drawLawnSign(g, t);
-  if (shot.players) A.PLAYERS.forEach((pl, j) => A.drawPlayer(g, pl, 1830 + j * 118, 1380, 380, t + j, { wave: shot.wave && pl.n === 9 && p > 0.5 ? 1 : 0 }));
+  for (const m of c.staff) if (m.type !== 'cotrainer' && m.type !== 'treasurer' && m.type !== 'other') drawStaff(g, m, t, c.member === m);
+  if (shot.players) c.roster.lineup.forEach((pl, j) => A.drawPlayer(g, pl, 1830 + j * 118, 1380, 380, t + j, { wave: (shot.wave && pl.n === 9 && p > 0.5) || c.newcomers.includes(pl) ? 1 : 0 }));
+  if (kind === 'newplayer' || kind === 'team') {
+    c.roster.lineup.forEach((pl, j) => {
+      if (!pl.isNew) return;
+      g.save();
+      g.translate(1830 + j * 118, 1380 - 380 * pl.h - 30);
+      g.scale(1.4, 1.4);
+      A.nameTag(g, 0, 0, `${pl.n} ${pl.name.toUpperCase()}`, c.newcomers.includes(pl) ? '#ffd60a' : '#ffffff');
+      g.restore();
+    });
+  }
+  for (const m of c.staff) if (m.type === 'cotrainer' || m.type === 'treasurer' || m.type === 'other') drawStaff(g, m, t, c.member === m);
+  if (c.sponsor) {
+    A.P(g, '#ffd60a', 5, A.rr(2380, 795, 300, 52, 8));
+    A.label(g, 'SPONSOR', 2530, 822, 34, '#262626', { sw: 0 });
+  }
   if (kind === 'goalpost') {
     const b = ballPos(t);
     if (b) A.drawBall(g, b.x, b.y, b.r, b.rot);
@@ -411,6 +542,26 @@ function sfxFor(c) {
     case 'apply':
       add(0.5, 'pop');
       break;
+    case 'hired':
+      add(0.5, 'stamp');
+      add(0.8, 'ding');
+      break;
+    case 'staff':
+      add(0.2, 'whoosh');
+      add(0.7, 'pop');
+      add(1.0, 'cheer');
+      break;
+    case 'newplayer':
+      add(0.2, 'whistleshort');
+      add(0.6, 'cheer');
+      break;
+    case 'sponsor':
+      add(0.4, 'ding');
+      add(0.8, 'cheer');
+      break;
+    case 'topcomment':
+      add(0.4, 'pop');
+      break;
     case 'matchday':
       add(0.1, 'whistle');
       add(0.6, 'cheer');
@@ -468,7 +619,13 @@ function overlays(g, t, dur, c) {
   }
   if (kind === 'bench') {
     const v = popIn(t, T(0.5), end);
-    if (v > 0) {
+    const bench = c.roster.bench;
+    if (v > 0 && bench.length) {
+      card(g, VW / 2, 400, 900, 200, '#ffffff', v, -0.02);
+      label(g, 'AUF DER ERSATZBANK:', 0, -45, 52, BLUE, { sw: 0 });
+      wrapBig(g, bench.map((b) => `${b.name.toUpperCase()} (${b.n})`).join(', '), 0, 40, 54, OL, 0, 820);
+      g.restore();
+    } else if (v > 0) {
       card(g, VW / 2, 420, 860, 170, '#ffffff', v, -0.02);
       label(g, 'AUSWECHSELSPIELER:', -70, 0, 52, OL, { sw: 0 });
       label(g, '0', 330, 0, 96, '#e53935', { sw: 0 });
@@ -585,10 +742,18 @@ function overlays(g, t, dur, c) {
     const m = low.match(/(\d+)\s*(€|euro)/);
     const v = popIn(t, T(0.5), end);
     if (v > 0) {
-      card(g, VW / 2, 400, 820, 170, '#ffffff', v, 0.02);
+      card(g, VW / 2, 400, 820, /mehr|bedeutet|bringt|dazu/.test(low) && m ? 210 : 170, '#ffffff', v, 0.02);
       const kasse = /teamkasse/.test(low) ? 'TEAMKASSE' : 'VEREINSKASSE';
-      const plus = /bedeutet|bringt|plus|dazu|bekommen/.test(low) ? '+' : '';
-      label(g, `${kasse}: ${plus}${m ? m[1] : '50'} €`, 0, 0, 64, '#2f9e4f', { sw: 0 });
+      if (/mehr|bedeutet|bringt|dazu/.test(low) && m) {
+        const add2 = Number(m[1]);
+        const now = Math.round(c.kasseStart + smooth(clamp((t - 0.6) / 1.0)) * add2);
+        label(g, kasse, 0, -45, 50, BLUE, { sw: 0 });
+        label(g, `${now} €`, -60, 30, 84, '#2f9e4f', { sw: 0 });
+        label(g, `+${add2} €`, 280, 30, 50, '#e53935', { sw: 0, rot: -0.1 });
+      } else {
+        const plus = /bedeutet|bringt|plus|dazu|bekommen/.test(low) ? '+' : '';
+        label(g, `${kasse}: ${plus}${m ? m[1] : '50'} €`, 0, 0, 64, '#2f9e4f', { sw: 0 });
+      }
       g.restore();
     }
   }
@@ -614,10 +779,60 @@ function overlays(g, t, dur, c) {
     }
   }
   if (kind === 'slogan') endCard(g, t, dur, c);
+  if (kind === 'hired') {
+    const v = popIn(t, T(0.4), end);
+    if (v > 0) {
+      card(g, VW / 2, 420, 900, 190, '#2f9e4f', v, -0.03);
+      label(g, 'BEWERBUNGEN', 0, -38, 64, '#ffffff', { sw: 0 });
+      label(g, 'ANGENOMMEN!', 0, 42, 76, '#ffd60a', { sw: 0 });
+      g.restore();
+    }
+  }
+  if (kind === 'staff' && c.member) {
+    const v = popIn(t, T(0.3), end);
+    if (v > 0) {
+      card(g, VW / 2, 380, 900, 200, '#ffffff', v, -0.02);
+      label(g, 'NEU IM TEAM:', 0, -45, 50, BLUE, { sw: 0 });
+      wrapBig(g, `${c.member.name.toUpperCase()} – ${c.member.label}`, 0, 40, 66, OL, 0, 820);
+      g.restore();
+    }
+  }
+  if (kind === 'newplayer') {
+    c.newcomers.forEach((pl, i) => {
+      const v = popIn(t, T(0.3 + i * 0.6), end);
+      if (v <= 0) return;
+      card(g, VW / 2, 330 + i * 200, 880, 170, i % 2 ? '#ffffff' : '#ffd60a', v, (i % 2 ? 1 : -1) * 0.02);
+      P(g, BLUE, 6, ell(-330, 0, 62, 62));
+      label(g, String(pl.n), -330, 4, 64, '#ffffff', { sw: 0 });
+      label(g, pl.name.toUpperCase(), 60, c.positions[i] ? -28 : 0, 70, OL, { sw: 0 });
+      if (c.positions[i]) label(g, c.positions[i], 60, 44, 40, BLUE, { sw: 0 });
+      g.restore();
+    });
+  }
+  if (kind === 'sponsor') {
+    const v = popIn(t, T(0.3), end);
+    if (v > 0) {
+      card(g, VW / 2, 400, 860, 200, '#ffd60a', v, -0.03);
+      label(g, 'NEUER SPONSOR!', 60, 0, 80, OL, { sw: 0 });
+      // Handschlag
+      P(g, '#f2c29b', 5, rr(-390, -20, 70, 40, 18));
+      P(g, '#c98a5e', 5, rr(-350, -10, 70, 40, 18));
+      g.restore();
+    }
+  }
+  if (kind === 'topcomment') {
+    const v = popIn(t, T(0.3), end);
+    if (v > 0) {
+      card(g, VW / 2, 400, 940, 210, '#ffffff', v, 0.02);
+      label(g, 'TOP-KOMMENTAR ENTSCHEIDET:', 0, -45, 52, BLUE, { sw: 0 });
+      label(g, /sponsor/.test(low) ? 'WOFÜR DAS SPONSORGELD?' : 'WIE ES WEITERGEHT!', 0, 40, 64, '#e53935', { sw: 0 });
+      g.restore();
+    }
+  }
   if (kind === 'growth') {
     const v = popIn(t, T(0.2), end);
     if (v > 0) {
-      const n = Math.round(clamp((t - 0.4) / Math.max(0.8, dur * 0.7)) * (c.growTo || 0));
+      const n = Math.round(c.growFrom + clamp((t - 0.4) / Math.max(0.8, dur * 0.7)) * ((c.growTo || 0) - c.growFrom));
       card(g, VW / 2, 400, 700, 200, '#ffffff', v, -0.02);
       label(g, 'FOLLOWER', 0, -45, 50, BLUE, { sw: 0 });
       label(g, String(n), 0, 40, 110, '#2f9e4f', { sw: 0 });
@@ -769,6 +984,10 @@ function jobIcon(g, x, y, kind) {
     line(g, [[x, y + 26], [x, y + 44]], 6, '#ffffff');
   } else if (kind === 'shirt') {
     P(g, '#ffffff', 5, poly([[x - 40, y - 20], [x - 20, y - 36], [x + 20, y - 36], [x + 40, y - 20], [x + 26, y - 6], [x + 22, y + 40], [x - 22, y + 40], [x - 26, y - 6]]));
+  } else if (kind === 'flag') {
+    line(g, [[x - 26, y + 42], [x - 26, y - 44]], 6, '#ffffff');
+    P(g, '#ffffff', 4, poly([[x - 24, y - 44], [x + 36, y - 30], [x - 24, y - 12]]));
+    P(g, '#1f4fbf', 0, poly([[x - 24, y - 34], [x + 18, y - 28], [x - 24, y - 22]]));
   } else if (kind === 'plus') {
     P(g, '#ffffff', 0, rect(x - 12, y - 38, 24, 76));
     P(g, '#ffffff', 0, rect(x - 38, y - 12, 76, 24));
@@ -892,14 +1111,14 @@ function endCard(g, t, dur, c) {
     if (kk > 0) wrapBig(g, p.toUpperCase(), VW / 2, 1240 + i * 120, 72 * A.easeOutBack(kk), i ? '#ffd60a' : '#ffffff');
   });
 }
-function wrapBig(g, text, x, y, size, fill) {
+function wrapBig(g, text, x, y, size, fill, sw = 14, maxW = VW - 80) {
   g.font = `${size}px "Lilita One", "Arial Black", sans-serif`;
   const w = g.measureText(text).width;
-  const sc = w > VW - 80 ? (VW - 80) / w : 1;
+  const sc = w > maxW ? maxW / w : 1;
   g.save();
   g.translate(x, y);
   g.scale(sc, sc);
-  label(g, text, 0, 0, size, fill, { sw: 14 });
+  label(g, text, 0, 0, size, fill, { sw });
   g.restore();
 }
 
