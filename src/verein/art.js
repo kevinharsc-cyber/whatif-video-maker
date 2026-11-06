@@ -1006,6 +1006,7 @@ export function rosterFor(signed = '') {
     const n = Number(m[1] || m[4]);
     const name = (m[2] || m[3]).trim();
     const idx = lineup.findIndex((p) => p.n === n);
+    if (idx >= 0 && lineup[idx].isNew && lineup[idx].name.toLowerCase() === name.toLowerCase()) continue;
     const np = makePlayer(name, n);
     if (idx >= 0) {
       if (!lineup[idx].isNew) bench.push(lineup[idx]);

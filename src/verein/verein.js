@@ -188,13 +188,17 @@ function staffFrom(setting, scenes) {
   }
   return out;
 }
-const STOP = new Set(['wir', 'unser', 'unsere', 'der', 'die', 'das', 'und', 'mit', 'tag', 'er', 'sie', 'es', 'auch', 'jetzt', 'außerdem', 'also', 'heute', 'nummer', 'torwart', 'mittelfeld']);
+const STOP = new Set(['wir', 'unser', 'unsere', 'der', 'die', 'das', 'und', 'mit', 'tag', 'er', 'sie', 'es', 'auch', 'jetzt', 'außerdem', 'also', 'heute', 'nummer', 'torwart', 'mittelfeld', 'sturm', 'stürmer', 'abwehr']);
 /** Neue Spieler aus "Name … Nummer 10" im Skript (zusätzlich zu den Einstellungen) */
 function signedFrom(setting, scenes) {
   const parts = String(setting || '').split(/[,;\n]+/).filter((x) => x.trim());
   for (const sc of scenes) {
-    for (const m of (sc.text || '').matchAll(/([\p{Lu}][\p{L}'-]+)[^.!?]*?(?:[Nn]ummer|[Nn]r\.?|[Tt]rikot)\s*(\d{1,2})/gu)) {
-      if (!STOP.has(m[1].toLowerCase())) parts.push(`${m[2]} ${m[1]}`);
+    // Lookahead: jedes großgeschriebene Wort wird geprüft ("Und Eric … Nummer 17" → Eric)
+    const taken = new Set();
+    for (const m of (sc.text || '').matchAll(/(?<![\p{L}])(?=([\p{Lu}][\p{L}'-]+)[^.!?]*?(?:[Nn]ummer|[Nn]r\.?|[Tt]rikot)\s*(\d{1,2}))/gu)) {
+      if (taken.has(m[2]) || STOP.has(m[1].toLowerCase())) continue;
+      taken.add(m[2]);
+      parts.push(`${m[2]} ${m[1]}`);
     }
   }
   return parts.join(', ');
