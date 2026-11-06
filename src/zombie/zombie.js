@@ -23,8 +23,9 @@ export function pickZombieShot(text, i, n) {
   if (/follower|folgt|folge mir|mitglied|beitreten|überlebensgruppe|neue überlebende/.test(low)) return 'follower';
   if (/mindestens|verbündete|ziel|brauchen? \d+/.test(low)) return 'goal';
   if (/brauche (ich )?euch|eure hilfe|helft mir|brauche (ich )?dich|brauchen euch/.test(low)) return 'need';
-  if (/problem|gefahr|angst|oh nein|hilfe!/.test(low) && !/zombie/.test(low)) return 'problem';
+  if (/problem|gefahr|angst|oh nein|hilfe!|nicht mehr viel zeit|keine zeit|die zeit läuft|reicht (noch )?nicht/.test(low) && !/zombie/.test(low)) return 'problem';
   if (/zombie/.test(low) && /spur|kommen|unterwegs|eintreffen|horde|näher|anrück|\d+ zombies|zombies haben/.test(low)) return 'horde';
+  if (/fast da|gleich da|gleich hier|im anmarsch|auf dem weg hierher/.test(low)) return 'horde';
   if (/hütte|versteck|wald|unterschlupf|bunker/.test(low)) return 'hut';
   if (/allein|keine chance/.test(low)) return 'alone';
   if (i === 0 || /apokalypse|ausgebrochen|begonnen/.test(low)) return 'title';
@@ -86,9 +87,13 @@ export function createZombieVisuals(scenes, opts = {}) {
   const hud = { zombies, allies, goal, day };
   return scenes.map((sc, i) => {
     const text = sc.text || '';
-    const kind = sc.black ? 'black' : pickZombieShot(text, i, scenes.length);
+    let kind = sc.black ? 'black' : pickZombieShot(text, i, scenes.length);
+    // Genau ein Verbündeter wird beim Namen genannt → eigene Szene für ihn
+    const mentioned = named.filter((a) => new RegExp(`(?<![\\p{L}])${a.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}])`, 'iu').test(text));
+    const ally = mentioned.length === 1 && ['talk', 'characters', 'hut', 'problem'].includes(kind) ? mentioned[0] : null;
+    if (ally) kind = 'ally';
     const k = (seen[kind] = (seen[kind] || 0) + 1) - 1;
-    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud };
+    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally };
     return {
       isAnim: true,
       verein: true, // gleiche Darstellung wie der Vereins-Modus (Sticker-Untertitel, harte Schnitte)
@@ -138,7 +143,7 @@ function slotsScene(g, t, filled, popT, c, mouth) {
     const a = easeOutBack(clamp((popT - i * 0.33) / 0.3));
     const o = c.named[i] || Z.EXTRA[i % Z.EXTRA.length];
     Z.drawSurv(g, x, y, 290 * Math.max(0.01, a), o, t);
-    if (c.named[i] && a > 0.5) Z.nameTag(g, x, y - 330, c.named[i].name, 0.62);
+    if (c.named[i] && a > 0.5) Z.nameTag(g, x, y - 335, c.named[i].name, 0.95);
   });
 }
 
@@ -220,6 +225,19 @@ function drawScene(g, t, dur, c, mo) {
       g.fillStyle = 'rgba(10,8,30,0.35)';
       g.fillRect(-100, -100, 1300, 2200);
       Z.drawHero(g, 820, 2050, 700, { pose: 'up', mouth: mo, t });
+      break;
+    }
+    case 'ally': {
+      // Verbündeter kommt aus dem Wald zur Hütte
+      cam(g, 560, 1250, lerp(1.12, 1.2, k), 0, t);
+      Z.forest(g, t, { mood: 0.5, skipMid: 540 });
+      Z.hut(g, 780, 1260, 0.7, { t });
+      const walk = smooth(clamp(k / 0.35));
+      const ax = lerp(-120, 400, walk);
+      const ay = 1660 - (walk < 1 ? Math.abs(Math.sin(t * 9)) * 12 : 0);
+      Z.drawSurv(g, ax, ay, 520, c.ally, t);
+      if (walk > 0.6) Z.nameTag(g, ax, ay - 580, c.ally.name, 1.25 * easeOutBack(clamp((walk - 0.6) / 0.4)));
+      Z.drawHero(g, 780, 1680, 480, { pose: 'talk', mouth: mo, t, look: -1 });
       break;
     }
     case 'characters': {
@@ -322,7 +340,7 @@ function team(g, t, c) {
   spots.forEach(([x, y], i) => {
     const o = c.named[i] || (c.allies > i ? Z.EXTRA[i % Z.EXTRA.length] : { sil: true });
     Z.drawSurv(g, x, y, 260, o, t);
-    if (c.named[i]) Z.nameTag(g, x, y - 300, c.named[i].name, 0.55);
+    if (c.named[i]) Z.nameTag(g, x, y - 300, c.named[i].name, 0.85);
   });
 }
 function pow(g, x, y, k) {
@@ -345,6 +363,12 @@ function pow(g, x, y, k) {
 
 // ------------------------------------------------------ Einblendungen ---
 function overlays(g, t, dur, c) {
+  // erste Szene: erst nach dem großen Titel einblenden
+  if (c.i === 0 && c.kind !== 'title') {
+    if (t < 3.5) return;
+    t -= 3.5;
+    dur = Math.max(0.6, dur - 3.5);
+  }
   const end = dur - 0.15;
   switch (c.kind) {
     case 'hut': {
@@ -382,8 +406,8 @@ function overlays(g, t, dur, c) {
         label(g, `${n} ZOMBIES`, 70, 4, n > 99 ? 80 : 100, '#7ddc4a', { sw: 0 });
         g.restore();
       }
-      if (/morgen|heute nacht|bald/.test(c.low)) {
-        const when = /heute nacht/.test(c.low) ? 'HEUTE NACHT!' : /bald/.test(c.low) ? 'BALD!' : 'MORGEN!';
+      if (/morgen|heute nacht|bald|fast da|gleich/.test(c.low)) {
+        const when = /fast da|gleich/.test(c.low) ? 'GLEICH!' : /heute nacht/.test(c.low) ? 'HEUTE NACHT!' : /bald/.test(c.low) ? 'BALD!' : 'MORGEN!';
         const b = popIn(t, Math.min(2.0, dur * 0.5), end);
         if (b > 0) {
           card(g, VW / 2, 620, 620, 110, RED, b, 0.02);
@@ -448,6 +472,26 @@ function overlays(g, t, dur, c) {
         g.restore();
       }
       commentsPanel(g, t, c);
+      break;
+    }
+    case 'ally': {
+      const a = popIn(t, 0.5, end);
+      if (a > 0) {
+        card(g, VW / 2, 410, 860, 200, DARK, a, -0.02);
+        label(g, 'NEU IM TEAM:', 0, -46, 52, '#ffffff', { sw: 0 });
+        label(g, c.ally.name, 0, 34, 96, YEL, { sw: 0 });
+        g.restore();
+      }
+      if (c.ally.weaponText) {
+        const b = popIn(t, 1.2, end);
+        if (b > 0) {
+          const wt = `WAFFE: ${c.ally.weaponText.toUpperCase()}`.slice(0, 34);
+          card(g, VW / 2, 600, 900, 110, '#fff', b, 0.02);
+          g.font = '50px "Lilita One", sans-serif';
+          label(g, wt, 0, 2, Math.min(50, (50 * 820) / g.measureText(wt).width), DARK, { sw: 0 });
+          g.restore();
+        }
+      }
       break;
     }
     case 'characters': {
@@ -673,6 +717,10 @@ function sfxFor(c) {
     case 'comment':
       add(0.1, 'whoosh');
       for (let i = 0; i < 3; i++) add(0.7 + i * 0.9, 'pop');
+      break;
+    case 'ally':
+      add(0.6, 'pop');
+      add(1.25, c.ally.weapon === 'shotgun' ? 'clang' : 'pop');
       break;
     case 'characters':
       for (let i = 0; i < 3; i++) add(0.4 + i * 0.6, 'pop');

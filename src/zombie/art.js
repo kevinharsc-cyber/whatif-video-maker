@@ -401,6 +401,26 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
     P(g, '#d0d6dc', lw, poly([[8, -2.6], [44, -1.5], [48, 0], [44, 1.5], [8, 2.6]]));
     P(g, YEL, lw, rr(6, -6, 3, 12, 1));
     g.restore();
+  } else if (w === 'shotgun') {
+    // (Schrot-)Flinte, quer vor dem Körper; kaputt = Klebeband + Riss
+    g.save();
+    g.translate(18, -38);
+    g.rotate(-0.35);
+    P(g, '#8a5a30', lw, (q) => {
+      q.moveTo(-14, -3);
+      q.lineTo(6, -3);
+      q.lineTo(6, 3);
+      q.lineTo(-12, 7);
+      q.closePath();
+    });
+    P(g, '#59606b', lw, rr(4, -4.5, 40, 4.5, 1.5));
+    P(g, '#6c7480', lw, rr(4, -0.5, 40, 4, 1.5));
+    if (o.broken) {
+      P(g, '#c9ccd1', 1, rr(20, -5.5, 6, 10.5, 1));
+      line(g, [[-9, -2], [-6, 1], [-8, 4]], 0.8, '#3a2412');
+      line(g, [[44, -4], [46, -6]], 1, '#59606b');
+    }
+    g.restore();
   } else if (w === 'shovel') {
     g.save();
     g.translate(20, -36);
@@ -422,6 +442,7 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
 // Waffe aus dem Kommentar → gezeichnete Waffe
 export function weaponKind(text = '') {
   const w = String(text).toLowerCase();
+  if (/flinte|gewehr|shotgun|pistole|knarre|revolver/.test(w)) return 'shotgun';
   if (/pfanne|topf/.test(w)) return 'pan';
   if (/armbrust|bogen|pfeil/.test(w)) return 'crossbow';
   if (/axt|beil/.test(w)) return 'axe';
@@ -451,6 +472,7 @@ export function makeAlly(name, weapon = '') {
     pants: pick(['#2b2d42', '#4a4e69', '#3d405b', '#34466b']),
     weapon: weaponKind(weapon),
     weaponText: String(weapon || '').trim(),
+    broken: /kaputt|schrott|rostig|alt/i.test(String(weapon || '')),
   };
 }
 export function nameTag(g, x, y, name, s = 1) {
