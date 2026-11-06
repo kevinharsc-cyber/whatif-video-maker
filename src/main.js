@@ -222,7 +222,7 @@ function vereinNames() {
 }
 
 function buildAnimVisuals(sc, visualMode) {
-  if (visualMode === 'verein') return createVereinVisuals(sc.scenes, { fans: settings.vereinFans, names: vereinNames(), nets: !!settings.vereinNets });
+  if (visualMode === 'verein') return createVereinVisuals(sc.scenes, { fans: settings.vereinFans, names: vereinNames(), nets: !!settings.vereinNets, kasse: settings.vereinKasse, signed: settings.vereinSigned, staff: settings.vereinStaff });
   const n = sc.scenes.length;
   let gotUp = false;
   let prevShot = null;
@@ -822,6 +822,9 @@ function openSettings() {
   $('sFans').value = String(settings.vereinFans || 0);
   $('sNames').value = settings.vereinNames || '';
   $('sNets').checked = !!settings.vereinNets;
+  $('sKasse').value = String(settings.vereinKasse || 0);
+  $('sSigned').value = settings.vereinSigned || '';
+  $('sStaff').value = settings.vereinStaff || '';
   $('sQuality').value = settings.quality;
   $('sMusic').checked = settings.music;
   $('sMood').value = settings.musicMood;
@@ -848,6 +851,9 @@ function readSettingsForm() {
     vereinFans: Math.max(0, parseInt(String($('sFans').value).replace(/\D/g, ''), 10) || 0),
     vereinNames: $('sNames').value.trim(),
     vereinNets: $('sNets').checked,
+    vereinKasse: Math.max(0, parseInt(String($('sKasse').value).replace(/\D/g, ''), 10) || 0),
+    vereinSigned: $('sSigned').value.trim(),
+    vereinStaff: $('sStaff').value.trim(),
     quality: $('sQuality').value,
     music: $('sMusic').checked,
     musicMood: $('sMood').value,

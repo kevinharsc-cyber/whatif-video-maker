@@ -100,7 +100,7 @@
           <button class="icon-btn" value="close" aria-label="Schließen">✕</button>
         </div>
         <p class="small">👆 Mit dem Finger <b>im Fenster</b> nach oben wischen, um alle Einstellungen zu sehen.</p>
-        <p class="small">App-Version: <b>41 (Stimme Achird)</b></p>
+        <p class="small">App-Version: <b>42 (Kader & Team)</b></p>
         <button type="button" id="btnDeviceCheck" class="ghost wide">🔍 Gerät prüfen (Video-Encoder)</button>
         <pre id="deviceCheck" class="device-check hidden"></pre>
         <button type="button" id="btnSelfTest" class="ghost wide">🧪 Test: 2 kurze Szenen erstellen</button>
@@ -130,6 +130,12 @@
           <label class="lbl" for="sNames">Namen auf der Tribüne (aus den Kommentaren, mit Komma getrennt)</label>
           <textarea id="sNames" rows="2" placeholder="z. B. Lena, Max, Tobi"></textarea>
           <label class="check"><input id="sNets" type="checkbox" /> Neue Tornetze (ab Tag 2 anhaken)</label>
+          <label class="lbl" for="sKasse">Teamkasse vor diesem Video (€)</label>
+          <input id="sKasse" type="text" inputmode="numeric" placeholder="0" />
+          <label class="lbl" for="sSigned">Neuzugänge im Kader (Nummer Name, mit Komma)</label>
+          <input id="sSigned" type="text" placeholder="z. B. 1 Nico, 10 Houssein, 11 Julien" />
+          <label class="lbl" for="sStaff">Vereinsteam (Name: Aufgabe, mit Komma)</label>
+          <input id="sStaff" type="text" placeholder="z. B. Bob: Co-Trainer, Antony: Maskottchen" />
         </div>
 
         <label class="lbl" for="sStyle">Bildstil <small>(nur bei KI-Bilder / Fotos)</small></label>
