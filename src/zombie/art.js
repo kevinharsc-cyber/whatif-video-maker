@@ -441,19 +441,63 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
       q.closePath();
     });
     g.restore();
+  } else if (w === 'pistol') {
+    g.save();
+    g.translate(21, -37);
+    g.rotate(-0.5);
+    P(g, '#4a4f58', lw, rr(0, -3, 16, 5, 1.5));
+    P(g, '#6b7480', lw, ell(4, 1, 3.4, 3.4));
+    P(g, '#6b4426', lw, rr(-3, 0, 5, 9, 2));
+    g.restore();
+  } else if (w === 'knife') {
+    g.save();
+    g.translate(21, -37);
+    g.rotate(-0.9);
+    P(g, '#3a2a20', lw, rr(-2, -1.8, 8, 3.6, 1.5));
+    P(g, '#d0d6dc', lw, Z_poly([[6, -2.2], [20, -0.6], [6, 2.2]]));
+    g.restore();
+  } else if (w === 'rifle') {
+    g.save();
+    g.translate(16, -40);
+    g.rotate(-0.25);
+    P(g, '#6b4426', lw, Z_poly([[-14, -2], [2, -3], [2, 3], [-12, 6]]));
+    P(g, '#3a3f46', lw, rr(0, -3.5, 34, 6, 1.5));
+    P(g, '#3a3f46', lw, rr(8, 1.5, 4, 8, 1.5));
+    P(g, '#2b2f35', lw, rr(32, -2.5, 10, 2.5, 1));
+    g.restore();
   }
-  P(g, c(o.skin), lw, ell(20.5, -36, 4, 4));
+  if (w === 'tank') {
+    // Mini-Panzer: die Person steht in der Luke
+    g.save();
+    g.translate(0, 0);
+    P(g, '#3d4a2a', lw, rr(-40, -16, 80, 16, 8));
+    for (let k2 = -32; k2 <= 32; k2 += 13) P(g, '#6b7480', 1.2, ell(k2, -8, 4.5, 4.5));
+    P(g, '#6b7f3a', lw, rr(-36, -38, 72, 24, 6));
+    P(g, '#5a6b30', lw, ell(0, -40, 20, 9));
+    P(g, '#5a6b30', lw, rr(16, -44, 34, 6, 3));
+    P(g, '#fff', 0, rr(-30, -32, 9, 4, 2));
+    g.restore();
+  } else P(g, c(o.skin), lw, ell(20.5, -36, 4, 4));
   g.restore();
 }
+const Z_poly = (pts) => (q) => {
+  q.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) q.lineTo(pts[i][0], pts[i][1]);
+  q.closePath();
+};
 
 // Waffe aus dem Kommentar → gezeichnete Waffe
 export function weaponKind(text = '') {
   const w = String(text).toLowerCase();
-  if (/flinte|gewehr|shotgun|pistole|knarre|revolver/.test(w)) return 'shotgun';
+  if (/panzer|tank/.test(w)) return 'tank';
+  if (/revolver|pistole|colt|glock/.test(w)) return 'pistol';
+  if (/\b(ak|kn|m)\s*-?\d{2}\b|sturmgewehr|maschinengewehr|\bmg\b|rifle/.test(w)) return 'rifle';
+  if (/flinte|gewehr|shotgun|knarre/.test(w)) return 'shotgun';
+  if (/messer|dolch/.test(w)) return 'knife';
   if (/pfanne|topf/.test(w)) return 'pan';
   if (/armbrust|bogen|pfeil/.test(w)) return 'crossbow';
   if (/axt|beil/.test(w)) return 'axe';
-  if (/schwert|katana|machete|messer|säbel/.test(w)) return 'sword';
+  if (/schwert|katana|machete|säbel/.test(w)) return 'sword';
   if (/schaufel|spaten|harke|rechen/.test(w)) return 'shovel';
   return 'bat';
 }
