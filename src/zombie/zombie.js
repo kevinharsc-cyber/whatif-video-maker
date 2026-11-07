@@ -101,8 +101,10 @@ export function createZombieVisuals(scenes, opts = {}) {
     }
     return null;
   })();
-  const goal = goalText ?? Math.max(1, Math.floor(Number(opts.goal) || 11));
   const allies = Math.max(followers, named.length);
+  let goal = goalText ?? Math.max(1, Math.floor(Number(opts.goal) || 11));
+  // Ziel schon erreicht und nicht im Skript genannt → nächstes rundes Ziel
+  if (!goalText && allies >= goal) goal = Math.ceil((allies + 1) / 50) * 50;
   const examples = named.length ? named : Z.SURV;
   const options = scenes.map((s) => parseOption(s.text)).filter(Boolean);
   const all = scenes.map((s) => String(s.text || '').toLowerCase()).join(' ');
@@ -317,21 +319,29 @@ function drawScene(g, t, dur, c, mo) {
       cam(g, 540, 1300, lerp(1.06, 0.98, smooth(k)), 0, t);
       forestFor(g, t, c, { skipMid: 540, mood: 0.4 });
       Z.hut(g, 540, 1240, 0.62, { t, barricade: 1, lit: !c.day });
-      const n = Math.min(24, c.crowdN);
-      const spots = crowdSpots(n);
-      const order = spots.map((p, i) => [p, i]).sort((x, y) => x[0][1] - y[0][1]);
+      // Menge als fertige Reihen-Bilder (schnell genug fürs iPhone, auch bei 100 Leuten)
+      const crowd = crowdFor(c, g);
       let heroDone = false;
-      for (const [[x, y, h], i] of order) {
-        if (!heroDone && y > 1600) {
+      crowd.rows.forEach((r) => {
+        if (!heroDone && r.y > 1700) {
           Z.drawHero(g, 540, 1640, 330, { pose: 'cheer', mouth: mo, t });
           heroDone = true;
         }
-        const a = easeOutBack(clamp((t - 0.3 - i * (1.6 / Math.max(1, n))) / 0.3));
-        if (a <= 0) continue;
-        const o = c.named[i] || Z.EXTRA[i % Z.EXTRA.length];
-        Z.drawSurv(g, x, y, h * a, o, t);
-        if (c.named[i] && a > 0.6) Z.nameTag(g, x, y - h * 1.12, c.named[i].name, 0.62);
-      }
+        const a = easeOutBack(clamp((t - 0.3 - r.reveal * 0.2) / 0.35));
+        if (a <= 0) return;
+        g.save();
+        g.translate(0, r.y);
+        g.scale(1, a);
+        g.drawImage(r.canvas, 0, -r.top, VW, r.hgt);
+        g.restore();
+      });
+      if (!heroDone) Z.drawHero(g, 540, 1640, 330, { pose: 'cheer', mouth: mo, t });
+      heroDone = true;
+      // Namensschilder der genannten Verbündeten (vorne)
+      crowd.tags.forEach(([x, y, h, name], i) => {
+        const a = clamp((t - 0.5 - i * 0.12) / 0.3);
+        if (a > 0) Z.nameTag(g, x, y - h * 1.12, name, 0.62 * easeOutBack(a));
+      });
       if (!heroDone) Z.drawHero(g, 540, 1640, 330, { pose: 'cheer', mouth: mo, t });
       break;
     }
@@ -390,17 +400,66 @@ function drawScene(g, t, dur, c, mo) {
   }
   g.restore();
 }
-// Plätze für die Menge: hinten klein, vorne groß, Mitte frei für den Helden
-function crowdSpots(n) {
-  const rows = [
-    { y: 1440, h: 210, xs: [140, 250, 360, 720, 830, 940, 30, 1050] },
-    { y: 1530, h: 245, xs: [110, 235, 360, 720, 845, 970] },
-    { y: 1650, h: 285, xs: [150, 300, 780, 930, 20, 1060] },
-    { y: 1780, h: 320, xs: [90, 990, 260, 820] },
-  ];
-  const out = [];
-  for (const r of rows) for (const x of r.xs) out.push([x, r.y, r.h]);
-  return out.slice(0, n);
+// Menge: Reihen von vorne (groß) nach hinten (klein); vorne bleibt die Mitte für den Helden frei
+const CROWD_ROWS = [
+  { y: 1790, h: 300, sp: 150, gap: 150 },
+  { y: 1660, h: 255, sp: 118, gap: 135 },
+  { y: 1545, h: 220, sp: 98, gap: 0 },
+  { y: 1445, h: 188, sp: 84, gap: 0 },
+  { y: 1362, h: 160, sp: 72, gap: 0 },
+  { y: 1294, h: 138, sp: 62, gap: 0 },
+  { y: 1238, h: 120, sp: 54, gap: 0 },
+  { y: 1190, h: 104, sp: 47, gap: 0 },
+  { y: 1150, h: 90, sp: 41, gap: 0 },
+];
+const FILLER_WEAPONS = ['Schläger', 'Pfanne', 'Axt', 'Schaufel', 'Machete', 'Armbrust', 'Messer', 'Flinte', ''];
+export function crowdLayout(n) {
+  const rows = [];
+  let left = n;
+  CROWD_ROWS.forEach((r, ri) => {
+    if (left <= 0) return;
+    const xs = [];
+    const off = ri % 2 ? r.sp / 2 : 0;
+    for (let x = 30 + off; x <= 1050; x += r.sp) if (!r.gap || Math.abs(x - 540) > r.gap) xs.push(x);
+    // von der Mitte nach außen auffüllen
+    xs.sort((a, b) => Math.abs(a - 540) - Math.abs(b - 540));
+    const take = xs.slice(0, left);
+    left -= take.length;
+    rows.push({ ...r, xs: take.sort((a, b) => a - b), reveal: ri });
+  });
+  return rows;
+}
+const CROWD_CACHE = new WeakMap();
+function crowdFor(c, g) {
+  const m = g.getTransform();
+  const scale = Math.min(2, Math.max(0.5, Math.round(Math.hypot(m.a, m.b) * 1.1 * 4) / 4));
+  const hit = CROWD_CACHE.get(c);
+  if (hit && hit.scale === scale) return hit;
+  const n = Math.min(120, c.crowdN);
+  const rows = crowdLayout(n);
+  const tags = [];
+  let idx = 0;
+  const built = rows.map((r) => {
+    const hgt = r.h * 1.35;
+    const cv = document.createElement('canvas');
+    cv.width = Math.ceil(VW * scale);
+    cv.height = Math.ceil(hgt * scale);
+    const q = cv.getContext('2d');
+    q.scale(scale, scale);
+    q.translate(0, hgt - 6);
+    r.xs.forEach((x) => {
+      const named = c.named[idx];
+      const o = named || Z.makeAlly(`Ü${idx}`, FILLER_WEAPONS[idx % FILLER_WEAPONS.length]);
+      Z.drawSurv(q, x, 0, r.h, o, idx * 0.37);
+      if (named) tags.push([x, r.y, r.h, named.name]);
+      idx++;
+    });
+    return { canvas: cv, y: r.y, top: hgt - 6, hgt, reveal: r.reveal };
+  });
+  // hinten zuerst zeichnen
+  const res = { scale, rows: built.reverse(), tags };
+  CROWD_CACHE.set(c, res);
+  return res;
 }
 function drawWire(g, s) {
   if (s <= 0) return;
@@ -718,9 +777,9 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.2, end);
       if (a > 0) {
         const n = Math.round(c.crowdN * clamp((t - 0.3) / 1.6));
-        card(g, VW / 2, 420, 860, 200, DARK, a, -0.02);
-        label(g, String(n), -230, 4, 130, YEL, { sw: 0 });
-        label(g, 'ÜBERLEBENDE!', 110, 4, 76, '#ffffff', { sw: 0 });
+        card(g, VW / 2, 430, 760, 240, DARK, a, -0.02);
+        label(g, String(n), 0, -38, 130, YEL, { sw: 0 });
+        label(g, 'ÜBERLEBENDE!', 0, 66, 70, '#ffffff', { sw: 0 });
         g.restore();
       }
       break;
