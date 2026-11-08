@@ -17,16 +17,19 @@ export function pickZombieShot(text, i, n) {
   if (last && /folg|morgen|kampf|sehen uns|bis morgen/.test(low)) return 'final';
   if (/\ba\s*[:)].+\bb\s*[:)]/.test(low) || /\ba oder b\b/.test(low)) return 'vote';
   if (OPTION_RE.test(String(text || ''))) return 'option';
+  if (/willkommen in|hat (jetzt |endlich )?einen namen|heißt (jetzt|ab jetzt)/.test(low)) return 'welcome';
   if (/abstimmung|hat gewonnen|habt (euch )?entschieden|haben sich für|die meisten von euch/.test(low) && !/kommentar/.test(low)) return 'result';
+  if (/^danke|danke an|vielen dank/.test(low)) return 'thanks';
+  if (/keine angst|so viele wie nie|wir sind bereit|gemeinsam schaffen wir/.test(low) && !/kommentar/.test(low)) return 'ready';
   if (/nacht bricht|bricht die nacht|sonne geht unter|es wird dunkel|dämmerung|neigt sich dem ende|der abend/.test(low) && !/zombie/.test(low) && !/\b\d+\s+(überlebende|follower|verbündete|leute)\b/.test(low)) return 'evening';
-  if (/lager|basis|base|camp/.test(low) && (/erweiter|vergrößer|größer|ausgebaut|geschützt|schützt/.test(low) || (/zaun/.test(low) && /bau|steht|errichte|rund um|um das|um die|um unser/.test(low)))) return 'base';
+  if (/lager|basis|base|camp/.test(low) && (/erweiter|vergrößer|größer|ausgebaut|geschützt|schützt|schaut euch an|seht euch an|überblick/.test(low) || (/zaun/.test(low) && /bau|steht|errichte|rund um|um das|um die|um unser/.test(low)))) return 'base';
   if (/kommentar|schreib/.test(low)) return 'comment';
   if (/charakter|eigene figur|teil unserer geschichte|neu (in|bei) (unserer|der) gruppe|neu dabei|sind neu|ist neu/.test(low)) return 'characters';
   if (/erfolgreich|geschafft|gewonnen|abgewehrt|zurückgeschlagen/.test(low) && /verteidig|wehr|zombie|angriff|kampf/.test(low)) return 'fight';
   if (/verteidig|barrikad|vernagel|bretter/.test(low)) return 'defend';
   if (i > 0 && /kämpf|angriff|greifen an|attack|besieg|erledigt|ausgeschaltet|vernichtet|schlacht/.test(low)) return 'fight';
   if (/\b\d+\s+(überlebende|follower|verbündete|leute)\b/.test(low) && !/mindestens|brauchen|fehlen|ziel/.test(low)) return 'crowd';
-  if (/follower|folgt|folge mir|mitglied|beitreten|überlebensgruppe|neue überlebende/.test(low)) return 'follower';
+  if (/follower|follow\b|folgt|folge mir|mitglied|beitreten|überlebensgruppe|neue überlebende/.test(low)) return 'follower';
   if (/mindestens|verbündete|ziel|brauchen? \d+/.test(low)) return 'goal';
   if (/brauche (ich )?euch|eure hilfe|helft mir|brauche (ich )?dich|brauchen euch/.test(low)) return 'need';
   if (/überlebt|die sonne|es ist tag|guten morgen|nacht ist vorbei|endlich tag/.test(low) && !/zombies? (kommen|sind|greifen)/.test(low)) return 'morning';
@@ -118,6 +121,9 @@ export function createZombieVisuals(scenes, opts = {}) {
   const examples = named.length ? named : Z.SURV;
   const options = scenes.map((s) => parseOption(s.text)).filter(Boolean);
   const all = scenes.map((s) => String(s.text || '').toLowerCase()).join(' ');
+  const welcomeM = scenes.map((s) => String(s.text || '').match(/[Ww]illkommen in ([A-ZÄÖÜ0-9][\wÄÖÜäöüß-]*(?:\s+[A-ZÄÖÜ0-9][\wÄÖÜäöüß-]*)*)/)).find(Boolean);
+  const defendVote = scenes.some((s) => /verteidig/i.test(s.text || '') && /top-?kommentar|kommentar|entscheidet/i.test(s.text || ''));
+  const campName = welcomeM ? welcomeM[1].toUpperCase() : null;
   const firstOpt = scenes.findIndex((s) => parseOption(s.text));
   const eveningAt = scenes.findIndex((s, j) => pickZombieShot(s.text, j, scenes.length) === 'evening');
   const hasEvening = eveningAt >= 0;
@@ -134,7 +140,7 @@ export function createZombieVisuals(scenes, opts = {}) {
     const ally = mentioned.length === 1 && ['talk', 'characters', 'hut', 'problem'].includes(kind) ? mentioned[0] : null;
     if (ally) kind = 'ally';
     const k = (seen[kind] = (seen[kind] || 0) + 1) - 1;
-    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally, mentioned, crowdN: kind === 'crowd' ? Number(low0(text).match(/\b(\d+)\s+(überlebende|follower|verbündete|leute)/)[1]) : kind === 'base' ? allies : 0, result: kind === 'result' ? resultOf(text) : null, option: kind === 'option' ? parseOption(text) : null, options, nameVote, day: hasMorning, optionsAreNames: options.length >= 2 && options.every((o) => !o.build), dusk: hasEvening && i > eveningAt, evening: hasEvening && i <= eveningAt, afterOptions: firstOpt >= 0 && i > firstOpt };
+    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally, mentioned, crowdN: kind === 'crowd' ? Number(low0(text).match(/\b(\d+)\s+(überlebende|follower|verbündete|leute)/)[1]) : kind === 'base' ? allies : 0, result: kind === 'result' ? resultOf(text) : null, option: kind === 'option' ? parseOption(text) : null, options, nameVote, day: hasMorning || !!campName, optionsAreNames: options.length >= 2 && options.every((o) => !o.build), dusk: hasEvening && i > eveningAt, evening: hasEvening && i <= eveningAt, afterOptions: firstOpt >= 0 && i > firstOpt, campName, defendVote };
     return {
       isAnim: true,
       verein: true, // gleiche Darstellung wie der Vereins-Modus (Sticker-Untertitel, harte Schnitte)
@@ -276,12 +282,27 @@ function drawScene(g, t, dur, c, mo) {
       Z.drawHero(g, 540, 1680, 400, { pose: 'cheer', mouth: mo, t });
       break;
     }
+    case 'welcome': {
+      // Base von weiter weg und leicht von oben, Schild an Ketten fällt herein
+      const kk = smooth(clamp((t - 1.4) / Math.max(1, dur - 1.6)));
+      cam(g, 540, lerp(1330, 1280, kk), lerp(0.72, 1.1, kk), 0, t);
+      drawBase(g, t, c, mo, { hang: { text: c.campName || 'UNSER LAGER', k: clamp((t - 0.4) / 0.6) } });
+      break;
+    }
+    case 'thanks':
+    case 'ready': {
+      cam(g, 540, 1290, lerp(0.92, 0.98, k), 0, t);
+      drawBase(g, t, c, mo, {});
+      break;
+    }
     case 'base':
     case 'evening': {
       // größeres Lager: Hütte, Zelte, Drahtzaun rundherum, alle Überlebenden drinnen
       const alt = c.k % 2;
-      cam(g, 540, alt ? 1300 : 1260, alt ? lerp(1.0, 0.94, k) : lerp(0.9, 0.97, k), 0, t);
-      const fk = c.kind === 'base' && /zaun/.test(c.low) && !/geschützt|schützt/.test(c.low) ? smooth(clamp((t - 0.4) / 1.6)) : 1;
+      const wide = /schaut euch an|seht euch an|überblick/.test(c.low);
+      if (wide) cam(g, 540, 1300, lerp(0.74, 0.82, smooth(k)), 0, t);
+      else cam(g, 540, alt ? 1300 : 1260, alt ? lerp(1.0, 0.94, k) : lerp(0.9, 0.97, k), 0, t);
+      const fk = c.kind === 'base' && /zaun/.test(c.low) && !/geschützt|schützt|schaut|seht/.test(c.low) ? smooth(clamp((t - 0.4) / 1.6)) : 1;
       drawBase(g, t, c, mo, { fk, dusk: c.kind === 'evening' });
       break;
     }
@@ -510,7 +531,7 @@ function crowdFor(c, g) {
   return res;
 }
 // Großes Lager mit Zelten, Drahtzaun und allen Überlebenden (Abend: Dämmerung)
-function drawBase(g, t, c, mo, { fk = 1, dusk = false, sign = null } = {}) {
+function drawBase(g, t, c, mo, { fk = 1, dusk = false, sign = null, hang = null } = {}) {
   if (dusk) Z.forest(g, t, { mood: 0, skipMid: 540, moonAt: [830, 360, 80] });
   else forestFor(g, t, c, { skipMid: 540, mood: 0.3 });
   wireLine(g, [-60, 1150], [1140, 1150], 70, fk);
@@ -536,6 +557,32 @@ function drawBase(g, t, c, mo, { fk = 1, dusk = false, sign = null } = {}) {
   } else Z.drawHero(g, 540, 1640, 330, { pose: 'cheer', mouth: mo, t });
   if (sign) campSign(g, sign.text, sign.k);
   wireLine(g, [-230, 1900], [1310, 1900], 260, fk);
+  // Tor mit Namensschild an Ketten (sobald das Lager einen Namen hat)
+  const name = hang ? hang.text : c.campName;
+  if (name) gateSign(g, t, name, hang ? hang.k : 1);
+}
+function gateSign(g, t, text, k) {
+  P(g, '#6b4426', 7, rr(330, 1080, 44, 830, 8));
+  P(g, '#6b4426', 7, rr(706, 1080, 44, 830, 8));
+  P(g, '#7a4b2a', 7, rr(300, 1060, 480, 46, 10));
+  if (k <= 0) return;
+  const drop = 1 - easeOutBack(clamp(k));
+  const sw = Math.sin(t * 2.2) * 0.035 * (0.4 + drop);
+  g.save();
+  g.translate(540, 1100 - drop * 380);
+  g.rotate(sw);
+  for (const cx of [-150, 150]) for (let i = 0; i < 6; i++) P(g, null, 4, ell(cx, 14 + i * 16, 6, 9));
+  g.save();
+  g.translate(0, 110);
+  P(g, '#000', 0, rr(-230, -2, 460, 130, 16));
+  P(g, '#b5844f', 8, rr(-230, -14, 460, 130, 16));
+  for (const y of [22, 58, 92]) line(g, [[-222, y], [222, y]], 3, '#9a6a3c');
+  for (const x of [-205, 205]) P(g, '#5a5f66', 3, ell(x, 6, 7, 7));
+  g.font = '80px "Lilita One", sans-serif';
+  const s = Math.min(1, 410 / g.measureText(text).width);
+  label(g, text, 0, 52, 80 * s, '#3a2412', { sw: 0 });
+  g.restore();
+  g.restore();
 }
 // Holzschild mit dem Lagernamen (Namens-Abstimmung)
 function campSign(g, text, k) {
@@ -805,7 +852,7 @@ function overlays(g, t, dur, c) {
       }
       if (/morgen|heute nacht|bald|fast da|gleich|in \d+ tagen|an tag \d+/.test(c.low)) {
         const tagM = c.low.match(/tag (\d+)/);
-        const when = tagM && /in \d+ tagen|an tag/.test(c.low) ? `TAG ${tagM[1]}!` : /in (\d+) tagen/.test(c.low) ? `IN ${c.low.match(/in (\d+) tagen/)[1]} TAGEN!` : /fast da|gleich/.test(c.low) ? 'GLEICH!' : /heute nacht/.test(c.low) ? 'HEUTE NACHT!' : /bald/.test(c.low) ? 'BALD!' : 'MORGEN!';
+        const when = /morgen abend/.test(c.low) ? 'MORGEN ABEND!' : tagM && /in \d+ tagen|an tag/.test(c.low) ? `TAG ${tagM[1]}!` : /in (\d+) tagen/.test(c.low) ? `IN ${c.low.match(/in (\d+) tagen/)[1]} TAGEN!` : /fast da|gleich/.test(c.low) ? 'GLEICH!' : /heute nacht/.test(c.low) ? 'HEUTE NACHT!' : /bald/.test(c.low) ? 'BALD!' : 'MORGEN!';
         const b = popIn(t, Math.min(2.0, dur * 0.5), end);
         if (b > 0) {
           card(g, VW / 2, 620, 620, 110, RED, b, 0.02);
@@ -867,6 +914,9 @@ function overlays(g, t, dur, c) {
         if (variant === 'lager') {
           label(g, 'WIE SOLL UNSER', 0, -26, 58, DARK, { sw: 0 });
           label(g, 'LAGER HEISSEN?', 0, 36, 60, DARK, { sw: 0 });
+        } else if (variant === 'defend') {
+          label(g, 'TOP-KOMMENTAR ENTSCHEIDET,', 0, -26, 54, DARK, { sw: 0 });
+          label(g, 'WIE WIR VERTEIDIGEN!', 0, 36, 58, DARK, { sw: 0 });
         } else if (variant === 'build') {
           label(g, 'TOP-KOMMENTAR ENTSCHEIDET,', 0, -26, 54, DARK, { sw: 0 });
           label(g, 'WAS WIR BAUEN!', 0, 36, 60, DARK, { sw: 0 });
@@ -929,6 +979,28 @@ function overlays(g, t, dur, c) {
       }
       break;
     }
+    case 'welcome': {
+      const a = popIn(t, 0.9, end);
+      if (a > 0) {
+        card(g, VW / 2, 400, 900, 220, DARK, a, -0.02);
+        label(g, 'IHR HABT ABGESTIMMT:', 0, -50, 54, '#ffffff', { sw: 0 });
+        const nm = c.campName || 'UNSER LAGER';
+        g.font = '84px "Lilita One", sans-serif';
+        label(g, nm, 0, 40, Math.min(84, (84 * 800) / g.measureText(nm).width), YEL, { sw: 0 });
+        g.restore();
+      }
+      break;
+    }
+    case 'thanks':
+    case 'ready': {
+      const a = popIn(t, 0.2, end);
+      if (a > 0) {
+        card(g, VW / 2, 400, 820, 170, c.kind === 'thanks' ? '#fe2c55' : GREEN, a, -0.02);
+        label(g, c.kind === 'thanks' ? 'DANKE AN EUCH ALLE!' : 'WIR SIND BEREIT!', 0, 4, 76, '#fff', { sw: 0 });
+        g.restore();
+      }
+      break;
+    }
     case 'evening': {
       const a = popIn(t, 0.2, end);
       if (a > 0) {
@@ -967,6 +1039,13 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.2, end);
       if (a > 0) {
         const n = Math.round(c.crowdN * clamp((t - 0.3) / 1.6));
+        if (/follow/.test(c.low)) {
+          card(g, VW / 2, 430, 900, 240, DARK, a, -0.02);
+          label(g, `${n} FOLLOWER =`, 0, -46, 86, '#ffffff', { sw: 0 });
+          label(g, `${n} ÜBERLEBENDE!`, 0, 52, 86, YEL, { sw: 0 });
+          g.restore();
+          break;
+        }
         card(g, VW / 2, 430, 760, 240, DARK, a, -0.02);
         label(g, String(n), 0, -38, 130, YEL, { sw: 0 });
         label(g, 'ÜBERLEBENDE!', 0, 66, 70, '#ffffff', { sw: 0 });
@@ -1023,7 +1102,7 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.1, end);
       if (a > 0) {
         card(g, VW / 2, 420, 860, 170, DARK, a, 0.02);
-        label(g, /morgen/.test(c.low) && /kampf/.test(c.low) ? 'MORGEN: DER KAMPF!' : /morgen/.test(c.low) ? 'BIS MORGEN!' : 'FOLGE & ÜBERLEBE!', 0, 4, 76, '#7ddc4a', { sw: 0 });
+        label(g, /ernst/.test(c.low) ? 'MORGEN WIRD ES ERNST!' : /morgen/.test(c.low) && /kampf/.test(c.low) ? 'MORGEN: DER KAMPF!' : /morgen/.test(c.low) ? 'BIS MORGEN!' : 'FOLGE & ÜBERLEBE!', 0, 4, 76, '#7ddc4a', { sw: 0 });
         g.restore();
       }
       endCard(g, t, dur, c);
@@ -1040,11 +1119,13 @@ const EXAMPLE_COMMENTS = [
 function commentVariant(c) {
   if (/(lager|camp|basis)/.test(c.low) && /name|heißen|nennen|vorschlag/.test(c.low)) return 'lager';
   if (c.nameVote && /vorschlag|name/.test(c.low) && !/waffe/.test(c.low)) return 'lager';
+  if (/verteidig/.test(c.low) && /top|likes|entscheidet/.test(c.low)) return 'defend';
   if (/bau/.test(c.low) && /top|likes|entscheidet/.test(c.low)) return 'build';
   return null;
 }
 const VARIANT_COMMENTS = {
   lager: [['Lena', 'Fort Hoffnung!!', '#3a86ff', '412'], ['Max', 'Camp Zombiefrei haha', '#43aa8b', '287'], ['Tobi', 'Die letzte Hütte', '#9b5de5', '196']],
+  defend: [['Lena', 'Fallen vor dem Zaun graben!', '#3a86ff', '388'], ['Max', 'Mini-Panzer ans Tor!!', '#43aa8b', '265'], ['Tobi', 'Wachen auf dem Dach', '#9b5de5', '171']],
   build: [['Lena', 'Wachturm!!', '#3a86ff', '356'], ['Max', 'Holzzaun, safe', '#43aa8b', '241'], ['Tobi', 'Speere für alle', '#9b5de5', '178']],
 };
 function commentsPanel(g, t, c) {
@@ -1117,7 +1198,7 @@ function endCard(g, t, dur, c) {
   label(g, 'DIE ZOMBIE-', 0, 300, 96, '#ffffff', { sw: 14 });
   label(g, 'APOKALYPSE', 0, 405, 110, '#7ddc4a', { sw: 16 });
   const rows = [
-    [c.optionsAreNames ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : c.nameVote && c.options.length >= 2 ? `KOMMENTIERE: NAME + ${c.options.map((o) => o.letter).join('/')}` : c.nameVote ? 'KOMMENTIERE: NAME FÜRS LAGER' : c.options.length >= 2 ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: NAME + WAFFE', YEL],
+    [c.defendVote ? 'KOMMENTIERE: WIE VERTEIDIGEN WIR?' : c.optionsAreNames ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : c.nameVote && c.options.length >= 2 ? `KOMMENTIERE: NAME + ${c.options.map((o) => o.letter).join('/')}` : c.nameVote ? 'KOMMENTIERE: NAME FÜRS LAGER' : c.options.length >= 2 ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: NAME + WAFFE', YEL],
     [`VERBÜNDETE: ${c.allies} / ${c.goal}`, '#7ddc4a'],
     [`ZOMBIES: ${c.zombies}`, '#ff6b6b'],
   ];
@@ -1228,6 +1309,15 @@ function sfxFor(c) {
       add(0.2, 'ding');
       add(0.6, 'hammer');
       add(1.2, 'cheer');
+      break;
+    case 'welcome':
+      add(0.5, 'whoosh');
+      add(1.0, 'clang');
+      add(1.1, 'cheer');
+      break;
+    case 'thanks':
+    case 'ready':
+      add(0.2, 'cheer');
       break;
     case 'base':
       add(0.3, 'hammer');
