@@ -223,7 +223,7 @@ function vereinNames() {
 }
 
 function buildAnimVisuals(sc, visualMode) {
-  if (visualMode === 'zombie') return createZombieVisuals(sc.scenes, { followers: settings.zombieFollowers, allies: settings.zombieAllies, zombies: settings.zombieCount, goal: settings.zombieGoal });
+  if (visualMode === 'zombie') return createZombieVisuals(sc.scenes, { followers: settings.zombieFollowers, allies: settings.zombieAllies, zombies: settings.zombieCount, goal: settings.zombieGoal, camp: settings.zombieCamp });
   if (visualMode === 'verein') return createVereinVisuals(sc.scenes, { fans: settings.vereinFans, names: vereinNames(), nets: !!settings.vereinNets, kasse: settings.vereinKasse, signed: settings.vereinSigned, staff: settings.vereinStaff });
   const n = sc.scenes.length;
   let gotUp = false;
@@ -835,6 +835,7 @@ function openSettings() {
   $('zAllies').value = settings.zombieAllies || '';
   $('zCount').value = String(settings.zombieCount ?? 10);
   $('zGoal').value = String(settings.zombieGoal || 11);
+  $('zCamp').value = settings.zombieCamp || '';
   $('sQuality').value = settings.quality;
   $('sMusic').checked = settings.music;
   $('sMood').value = settings.musicMood;
@@ -867,6 +868,7 @@ function readSettingsForm() {
     zombieFollowers: Math.max(0, parseInt(String($('zFollowers').value).replace(/\D/g, ''), 10) || 0),
     zombieAllies: $('zAllies').value.trim(),
     zombieCount: Math.max(0, parseInt(String($('zCount').value).replace(/\D/g, ''), 10) || 0),
+    zombieCamp: $('zCamp').value.trim(),
     zombieGoal: Math.max(1, parseInt(String($('zGoal').value).replace(/\D/g, ''), 10) || 11),
     quality: $('sQuality').value,
     music: $('sMusic').checked,

@@ -18,10 +18,13 @@ export function pickZombieShot(text, i, n) {
   if (/\ba\s*[:)].+\bb\s*[:)]/.test(low) || /\ba oder b\b/.test(low)) return 'vote';
   if (OPTION_RE.test(String(text || ''))) return 'option';
   if (/willkommen in|hat (jetzt |endlich )?einen namen|heißt (jetzt|ab jetzt)/.test(low)) return 'welcome';
+  if (TOPC_RE.test(String(text || ''))) return 'topcomment';
+  if (/\bgraben\b/.test(low) && /bau|grab|heb|zaun|rund um|um den|um unser/.test(low) && !/kommentar/.test(low)) return 'moat';
   if (/abstimmung|hat gewonnen|habt (euch )?entschieden|haben sich für|die meisten von euch/.test(low) && !/kommentar/.test(low)) return 'result';
   if (/^danke|danke an|vielen dank/.test(low)) return 'thanks';
   if (/keine angst|so viele wie nie|wir sind bereit|gemeinsam schaffen wir/.test(low) && !/kommentar/.test(low)) return 'ready';
   if (/nacht bricht|bricht die nacht|sonne geht unter|es wird dunkel|dämmerung|neigt sich dem ende|der abend/.test(low) && !/zombie/.test(low) && !/\b\d+\s+(überlebende|follower|verbündete|leute)\b/.test(low)) return 'evening';
+  if (/schaut euch an|seht euch an|von oben|überblick/.test(low) && !/zombie/.test(low)) return 'base';
   if (/lager|basis|base|camp/.test(low) && (/erweiter|vergrößer|größer|ausgebaut|geschützt|schützt|schaut euch an|seht euch an|überblick/.test(low) || (/zaun/.test(low) && /bau|steht|errichte|rund um|um das|um die|um unser/.test(low)))) return 'base';
   if (/kommentar|schreib/.test(low)) return 'comment';
   if (/charakter|eigene figur|teil unserer geschichte|neu (in|bei) (unserer|der) gruppe|neu dabei|sind neu|ist neu/.test(low)) return 'characters';
@@ -44,6 +47,8 @@ export function pickZombieShot(text, i, n) {
 }
 
 const low0 = (s) => String(s || '').toLowerCase();
+// "Der Top-Kommentar von Soldier 1 hat entschieden: Ein Graben vor dem Zaun!"
+const TOPC_RE = /top-?kommentar von ([^:–—]+?)(?:\s+(?:hat entschieden|sagt|meint|schreibt|hat geschrieben))?\s*[:–—]\s*(.+)$/i;
 // "… haben sich für den Drahtzaun entschieden" → { build, name }
 function resultOf(text) {
   const low = low0(text);
@@ -123,7 +128,11 @@ export function createZombieVisuals(scenes, opts = {}) {
   const all = scenes.map((s) => String(s.text || '').toLowerCase()).join(' ');
   const welcomeM = scenes.map((s) => String(s.text || '').match(/[Ww]illkommen in ([A-ZÄÖÜ0-9][\wÄÖÜäöüß-]*(?:\s+[A-ZÄÖÜ0-9][\wÄÖÜäöüß-]*)*)/)).find(Boolean);
   const defendVote = scenes.some((s) => /verteidig/i.test(s.text || '') && /top-?kommentar|kommentar|entscheidet/i.test(s.text || ''));
-  const campName = welcomeM ? welcomeM[1].toUpperCase() : null;
+  const campName = welcomeM ? welcomeM[1].toUpperCase() : String(opts.camp || '').trim().toUpperCase() || null;
+  const hasWelcome = !!welcomeM;
+  const allLow = scenes.map((s) => low0(s.text)).join(' ');
+  const duskAll = /neigt sich dem ende|zum abend|am abend hin|gegen abend|nacht bricht|sonne geht unter/.test(allLow);
+  const moatAt = scenes.findIndex((s, j) => pickZombieShot(s.text, j, scenes.length) === 'moat');
   const firstOpt = scenes.findIndex((s) => parseOption(s.text));
   const eveningAt = scenes.findIndex((s, j) => pickZombieShot(s.text, j, scenes.length) === 'evening');
   const hasEvening = eveningAt >= 0;
@@ -137,10 +146,10 @@ export function createZombieVisuals(scenes, opts = {}) {
     // Genau ein Verbündeter wird beim Namen genannt → eigene Szene für ihn
     const mentioned = named.filter((a) => new RegExp(`(?<![\\p{L}])${a.name.split(/\s+/)[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}])`, 'iu').test(text));
     if (mentioned.length >= 2 && ['talk', 'hut', 'follower'].includes(kind)) kind = 'characters';
-    const ally = mentioned.length === 1 && ['talk', 'characters', 'hut', 'problem'].includes(kind) ? mentioned[0] : null;
+    const ally = mentioned.length === 1 && !['final', 'vote', 'option', 'comment', 'crowd', 'topcomment', 'moat', 'welcome', 'black'].includes(kind) ? mentioned[0] : null;
     if (ally) kind = 'ally';
     const k = (seen[kind] = (seen[kind] || 0) + 1) - 1;
-    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally, mentioned, crowdN: kind === 'crowd' ? Number(low0(text).match(/\b(\d+)\s+(überlebende|follower|verbündete|leute)/)[1]) : kind === 'base' ? allies : 0, result: kind === 'result' ? resultOf(text) : null, option: kind === 'option' ? parseOption(text) : null, options, nameVote, day: hasMorning || !!campName, optionsAreNames: options.length >= 2 && options.every((o) => !o.build), dusk: hasEvening && i > eveningAt, evening: hasEvening && i <= eveningAt, afterOptions: firstOpt >= 0 && i > firstOpt, campName, defendVote };
+    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally, mentioned, crowdN: kind === 'crowd' ? Number(low0(text).match(/\b(\d+)\s+(überlebende|follower|verbündete|leute)/)[1]) : kind === 'base' ? allies : 0, result: kind === 'result' ? resultOf(text) : null, option: kind === 'option' ? parseOption(text) : null, options, nameVote, day: hasMorning || (hasWelcome && !duskAll), duskAll, moat: moatAt >= 0 && i >= moatAt ? (i === moatAt ? 'dig' : 'done') : null, topc: kind === 'topcomment' ? text.match(TOPC_RE) : null, optionsAreNames: options.length >= 2 && options.every((o) => !o.build), dusk: hasEvening && i > eveningAt, evening: hasEvening && i <= eveningAt, afterOptions: firstOpt >= 0 && i > firstOpt, campName, defendVote };
     return {
       isAnim: true,
       verein: true, // gleiche Darstellung wie der Vereins-Modus (Sticker-Untertitel, harte Schnitte)
@@ -290,6 +299,17 @@ function drawScene(g, t, dur, c, mo) {
       drawAerial(g, t, c, { sign: c.campName || 'UNSER LAGER', signK: clamp((t - 0.4) / 0.6) });
       break;
     }
+    case 'topcomment': {
+      cam(g, 540, 1000, lerp(1.0, 1.05, k), 0, t);
+      drawAerial(g, t, c, { sign: c.campName });
+      break;
+    }
+    case 'moat': {
+      // Graben wird rund um den Zaun ausgehoben
+      cam(g, 540, lerp(1000, 1060, smooth(k)), lerp(0.92, 0.8, smooth(k)), 0, t);
+      drawAerial(g, t, c, { sign: c.campName, moatK: smooth(clamp((t - 0.3) / Math.max(1.2, dur - 0.8))) });
+      break;
+    }
     case 'thanks':
     case 'ready': {
       cam(g, 540, 1000, lerp(1.0, 1.06, k), 0, t);
@@ -300,7 +320,7 @@ function drawScene(g, t, dur, c, mo) {
     case 'evening': {
       // größeres Lager: Hütte, Zelte, Drahtzaun rundherum, alle Überlebenden drinnen
       const alt = c.k % 2;
-      const wide = /schaut euch an|seht euch an|überblick/.test(c.low);
+      const wide = /schaut euch an|seht euch an|überblick|von oben/.test(c.low);
       if (wide) {
         // Überblick aus der Vogelperspektive, Kamera fährt langsam zurück
         cam(g, 540, lerp(980, 940, smooth(k)), lerp(1.12, 0.96, smooth(k)), 0, t);
@@ -486,6 +506,8 @@ const CROWD_ROWS = [
   { y: 1238, h: 120, sp: 54, gap: 0 },
   { y: 1190, h: 104, sp: 47, gap: 0 },
   { y: 1150, h: 90, sp: 41, gap: 0 },
+  { y: 1116, h: 78, sp: 36, gap: 0 },
+  { y: 1086, h: 68, sp: 32, gap: 0 },
 ];
 const FILLER_WEAPONS = ['Schläger', 'Pfanne', 'Axt', 'Schaufel', 'Machete', 'Armbrust', 'Messer', 'Flinte', ''];
 export function crowdLayout(n) {
@@ -510,7 +532,7 @@ function crowdFor(c, g) {
   const scale = Math.min(2, Math.max(0.5, Math.round(Math.hypot(m.a, m.b) * 1.1 * 4) / 4));
   const hit = CROWD_CACHE.get(c);
   if (hit && hit.scale === scale) return hit;
-  const n = Math.min(120, c.crowdN || c.allies);
+  const n = Math.min(170, c.crowdN || c.allies);
   const rows = crowdLayout(n);
   const tags = [];
   let idx = 0;
@@ -567,19 +589,21 @@ function buildAerial(c, scale) {
   const cv = document.createElement('canvas');
   cv.width = Math.ceil(VW * scale);
   cv.height = Math.ceil(1920 * scale);
-  const q = cv.getContext('2d');
+  let q = cv.getContext('2d');
   q.scale(scale, scale);
-  const day = c.day !== false;
+  const pal = aerialPal(c);
+  const day = pal === 'day';
+  const dusk = pal === 'dusk';
   // Himmel + Waldrand ganz oben
-  q.fillStyle = day ? '#8fd0f5' : '#2a2552';
+  q.fillStyle = day ? '#8fd0f5' : dusk ? '#f0a070' : '#2a2552';
   q.fillRect(0, 0, VW, 520);
   for (let i = 0; i < 16; i++) Z.pine(q, -40 + i * 75, 470 + (i % 3) * 12, 240 + (i % 4) * 30, day ? '#3f8f45' : '#24533f', day ? '#327a3a' : '#1d4434', 6);
   // Wiese
-  q.fillStyle = day ? '#7cb84e' : '#3e5530';
+  q.fillStyle = day ? '#7cb84e' : dusk ? '#6a8a40' : '#3e5530';
   q.fillRect(0, 460, VW, 1500);
   for (let i = 0; i < 40; i++) {
     const [x, y] = aproj(((i * 263) % 1300) - 110, ((i * 157) % 1250) - 60);
-    P(q, day ? '#8cc85a' : '#46603a', 0, ell(x, y, 60, 18));
+    P(q, day ? '#8cc85a' : dusk ? '#789a48' : '#46603a', 0, ell(x, y, 60, 18));
   }
   // Weg zum Tor
   const w0 = aproj(500, 880), w1 = aproj(580, 880), w2 = aproj(640, 1250), w3 = aproj(440, 1250);
@@ -588,18 +612,28 @@ function buildAerial(c, scale) {
   const f = FENCE;
   const corners = [aproj(f.x0, f.z0), aproj(f.x1, f.z0), aproj(f.x1, f.z1), aproj(f.x0, f.z1)];
   P(q, '#b99a6a', 0, Z.poly(corners.map(([x, y]) => [x, y])));
+  // ab hier: Objekte auf eigener (durchsichtiger) Ebene, damit der Graben darunter liegen kann
+  const cv2 = document.createElement('canvas');
+  cv2.width = cv.width;
+  cv2.height = cv.height;
+  const groundCv = cv;
+  {
+    const q2 = cv2.getContext('2d');
+    q2.scale(scale, scale);
+    q = q2;
+  }
   // Bäume außen (hinten + Seiten)
   const trees = [];
   for (let zz = 0; zz <= 1150; zz += 120) {
-    trees.push([40 - (zz % 240) / 6, zz]);
-    trees.push([1040 + (zz % 240) / 6, zz]);
+    trees.push([-30 - (zz % 240) / 6, zz]);
+    trees.push([1110 + (zz % 240) / 6, zz]);
   }
-  for (let xx = 120; xx <= 960; xx += 110) trees.push([xx, 60]);
+  for (let xx = 120; xx <= 960; xx += 110) trees.push([xx, 0]);
   // Zaun hinten + Seiten
   const fh = (zz) => 60 * aproj(0, zz)[2];
   const P0 = aproj(f.x0, f.z0), P1 = aproj(f.x1, f.z0), P2 = aproj(f.x1, f.z1), P3 = aproj(f.x0, f.z1);
   const items = [];
-  for (const [x, zz] of trees) items.push([zz, () => { const [px, py, s] = aproj(x, zz); Z.pine(q, px, py, 230 * s, day ? '#3f8f45' : '#24533f', day ? '#327a3a' : '#1d4434', 5); }]);
+  for (const [x, zz] of trees) items.push([zz, () => { const [px, py, s] = aproj(x, zz); Z.pine(q, px, py, 230 * s, day || dusk ? '#3f8f45' : '#24533f', day || dusk ? '#327a3a' : '#1d4434', 5); }]);
   items.push([f.z0 - 1, () => wireLine(q, [P0[0], P0[1]], [P1[0], P1[1]], fh(f.z0), 1)]);
   items.push([f.z0, () => { wireLine(q, [P0[0], P0[1]], [P3[0], P3[1]], fh(f.z0), 1, fh(f.z1)); wireLine(q, [P1[0], P1[1]], [P2[0], P2[1]], fh(f.z0), 1, fh(f.z1)); }]);
   // Hütte, Zelte, Feuerstelle, Leute
@@ -616,16 +650,73 @@ function buildAerial(c, scale) {
   const gl = aproj(480, f.z1), gr = aproj(600, f.z1);
   wireLine(q, [P3[0], P3[1]], [gl[0], gl[1]], fh(f.z1), 1);
   wireLine(q, [gr[0], gr[1]], [P2[0], P2[1]], fh(f.z1), 1);
-  return cv;
+  return { ground: groundCv, objects: cv2 };
 }
-function drawAerial(g, t, c, { sign = null, signK = 1, cheer = false } = {}) {
+function aerialPal(c) {
+  if (c.day) return 'day';
+  if (c.duskAll && !NIGHT_KINDS.includes(c.kind)) return 'dusk';
+  return 'night';
+}
+// Graben rund um den Zaun (k = wie weit ausgehoben, 0…1), mit Brücke vor dem Tor
+function drawMoat(g, k) {
+  if (k <= 0) return;
+  const f = FENCE;
+  const d1 = 28;
+  const d2 = 92;
+  // Umlauf: vorne rechts vom Tor → rechts → hinten → links → vorne links
+  const path = [[600, f.z1 + d1], [f.x1 + d1, f.z1 + d1], [f.x1 + d1, f.z0 - d1], [f.x0 - d1, f.z0 - d1], [f.x0 - d1, f.z1 + d1], [480, f.z1 + d1]];
+  const len = (p, q) => Math.hypot(q[0] - p[0], q[1] - p[1]);
+  const total = path.slice(1).reduce((s2, p, i) => s2 + len(path[i], p), 0);
+  let left = total * k;
+  const off = d2 - d1;
+  for (let i = 0; i < path.length - 1 && left > 0; i++) {
+    const a = path[i];
+    const b = path[i + 1];
+    const L = len(a, b);
+    const f2 = Math.min(1, left / L);
+    left -= L;
+    const e = [lerp(a[0], b[0], f2), lerp(a[1], b[1], f2)];
+    // Außenversatz je Kante
+    const nx = (b[1] - a[1]) / L;
+    const nz = -(b[0] - a[0]) / L;
+    const outer = (p) => [p[0] - nx * off, p[1] - nz * off];
+    const quad = [a, e, outer(e), outer(a)].map(([X, Zz]) => aproj(X, Zz));
+    P(g, '#4a2f18', 3, Z.poly(quad.map(([x, y]) => [x, y])));
+    const inner = [a, e].map(([X, Zz]) => aproj(X, Zz));
+    line(g, inner.map(([x, y]) => [x, y + 6]), 5, '#2e1c0e');
+  }
+  // Erdhaufen außen
+  for (let i = 0; i < Math.floor(k * 14); i++) {
+    const t2 = i / 14;
+    const X = lerp(f.x1 + d2 + 20, f.x0 - d2 - 20, t2);
+    const [x, y, s2] = aproj(X, f.z0 - d2 - 20);
+    P(g, '#8a6a44', 3, ell(x, y, 26 * s2, 11 * s2));
+  }
+  if (k > 0.98) {
+    // Holzbrücke vor dem Tor
+    const br = [aproj(495, f.z1 + 10), aproj(585, f.z1 + 10), aproj(585, f.z1 + d2 + 14), aproj(495, f.z1 + d2 + 14)];
+    P(g, '#b5844f', 4, Z.poly(br.map(([x, y]) => [x, y])));
+    for (let j = 1; j < 5; j++) {
+      const zz = f.z1 + 10 + ((d2 + 4) * j) / 5;
+      line(g, [aproj(495, zz), aproj(585, zz)].map(([x, y]) => [x, y]), 2.5, '#7a4b2a');
+    }
+  }
+}
+function drawAerial(g, t, c, { sign = null, signK = 1, cheer = false, moatK = null } = {}) {
   const m = g.getTransform();
   const scale = Math.min(2.2, Math.max(0.6, Math.round(Math.hypot(m.a, m.b) * 1.2 * 4) / 4));
   let hit = AER_CACHE.get(c);
   if (!hit || hit.scale !== scale) AER_CACHE.set(c, (hit = { scale, cv: buildAerial(c, scale) }));
-  g.fillStyle = c.day !== false ? '#7cb84e' : '#3e5530';
+  const pal = aerialPal(c);
+  g.fillStyle = pal === 'day' ? '#7cb84e' : pal === 'dusk' ? '#6a8a40' : '#3e5530';
   g.fillRect(-600, -600, 2300, 3200);
-  g.drawImage(hit.cv, 0, 0, VW, 1920);
+  g.drawImage(hit.cv.ground, 0, 0, VW, 1920);
+  if (pal === 'dusk') {
+    g.fillStyle = 'rgba(255,140,60,0.10)';
+    g.fillRect(-600, -600, 2300, 3200);
+  }
+  drawMoat(g, moatK ?? (c.moat ? 1 : 0));
+  g.drawImage(hit.cv.objects, 0, 0, VW, 1920);
   // Lagerfeuer (bewegt)
   const [fx, fy, fs] = aproj(FIRE[0], FIRE[1]);
   for (let k = 0; k < 3; k++) {
@@ -873,7 +964,7 @@ function optionList(g, t, options, end, withName = false) {
 // Folge spielt am Tag (es gibt eine "Wir haben überlebt"-Szene): ruhige Szenen hell
 const NIGHT_KINDS = ['horde', 'alone', 'fight', 'final', 'title', 'problem'];
 function forestFor(g, t, c, opts) {
-  if (c.evening && !NIGHT_KINDS.includes(c.kind)) return Z.forest(g, t, { ...opts, mood: 0, day: false });
+  if ((c.evening || c.duskAll) && !c.day && !NIGHT_KINDS.includes(c.kind)) return Z.forest(g, t, { ...opts, mood: 0, day: false });
   Z.forest(g, t, { ...opts, day: c.day && !NIGHT_KINDS.includes(c.kind) });
 }
 function glowingEyes(g, t) {
@@ -1057,7 +1148,8 @@ function overlays(g, t, dur, c) {
       if (c.ally.weaponText) {
         const b = popIn(t, 1.2, end);
         if (b > 0) {
-          const wt = `WAFFE: ${c.ally.weaponText.toUpperCase()}`.slice(0, 34);
+          const role = /schmied|sheriff|schütze|arzt|koch|wache|späher|sanitäter|mechaniker/i.test(c.ally.weaponText);
+          const wt = (role ? c.ally.weaponText.toUpperCase() : `WAFFE: ${c.ally.weaponText.toUpperCase()}`).slice(0, 34);
           card(g, VW / 2, 600, 900, 110, '#fff', b, 0.02);
           g.font = '50px "Lilita One", sans-serif';
           label(g, wt, 0, 2, Math.min(50, (50 * 820) / g.measureText(wt).width), DARK, { sw: 0 });
@@ -1107,6 +1199,65 @@ function overlays(g, t, dur, c) {
       }
       break;
     }
+    case 'topcomment': {
+      const m = c.topc;
+      const a = popIn(t, 0.2, end);
+      if (a > 0 && m) {
+        g.save();
+        g.translate(VW / 2, 480);
+        g.scale(a, a);
+        g.rotate(-0.015);
+        P(g, '#000', 0, rr(-480, -150, 960, 320, 30));
+        P(g, '#1c1c1e', 7, rr(-480, -160, 960, 320, 30));
+        P(g, YEL, 7, rr(-200, -215, 400, 80, 40));
+        label(g, 'TOP-KOMMENTAR', 0, -174, 46, DARK, { sw: 0 });
+        // Profilbild (Helm mit Visier)
+        P(g, '#d9dce0', 5, ell(-370, -20, 70, 70));
+        P(g, '#3a3f46', 4, ell(-370, -34, 50, 44));
+        g.save();
+        const vg = g.createLinearGradient(-410, 0, -330, 0);
+        vg.addColorStop(0, '#5b6cff');
+        vg.addColorStop(0.5, '#ff9f1c');
+        vg.addColorStop(1, '#2ec4b6');
+        P(g, vg, 3, rr(-412, -40, 84, 26, 12));
+        g.restore();
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.font = '44px "Lilita One", sans-serif';
+        g.fillStyle = '#9a9aa2';
+        g.fillText(m[1].trim(), -270, -80);
+        const txt = m[2].replace(/[!.]+$/, '');
+        g.font = '60px "Lilita One", sans-serif';
+        const tw = g.measureText(txt).width;
+        if (tw > 640) g.font = `${Math.floor((60 * 640) / tw)}px "Lilita One", sans-serif`;
+        g.fillStyle = '#ffffff';
+        g.fillText(txt, -270, 0);
+        // Herz
+        g.fillStyle = '#fe2c55';
+        g.beginPath();
+        const hx = 400;
+        const hy = 0;
+        g.moveTo(hx, hy + 22);
+        g.bezierCurveTo(hx - 40, hy - 6, hx - 18, hy - 36, hx, hy - 14);
+        g.bezierCurveTo(hx + 18, hy - 36, hx + 40, hy - 6, hx, hy + 22);
+        g.fill();
+        g.font = '36px "Lilita One", sans-serif';
+        g.fillStyle = '#fe2c55';
+        g.textAlign = 'center';
+        g.fillText('TOP', hx, 62);
+        g.restore();
+      }
+      break;
+    }
+    case 'moat': {
+      const a = popIn(t, 0.2, end);
+      if (a > 0) {
+        card(g, VW / 2, 400, 920, 170, DARK, a, -0.02);
+        label(g, 'WIR GRABEN EINEN GRABEN!', 0, 4, 66, YEL, { sw: 0 });
+        g.restore();
+      }
+      break;
+    }
     case 'thanks':
     case 'ready': {
       const a = popIn(t, 0.2, end);
@@ -1140,7 +1291,10 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.2, end);
       if (a > 0) {
         card(g, VW / 2, 400, 900, 170, DARK, a, -0.02);
-        label(g, /zaun/.test(c.low) ? 'DRAHTZAUN UM DAS LAGER!' : 'UNSER LAGER WÄCHST!', 0, 4, /zaun/.test(c.low) ? 62 : 74, YEL, { sw: 0 });
+        const wideTxt = /schaut euch an|seht euch an|von oben|überblick/.test(c.low) ? (c.campName ? `DAS IST ${c.campName}!` : 'UNSER LAGER!') : null;
+        const bt = wideTxt || (/zaun/.test(c.low) ? 'DRAHTZAUN UM DAS LAGER!' : 'UNSER LAGER WÄCHST!');
+        g.font = '74px "Lilita One", sans-serif';
+        label(g, bt, 0, 4, Math.min(74, (74 * 820) / g.measureText(bt).width), YEL, { sw: 0 });
         g.restore();
       }
       const b = popIn(t, 1.0, end);
@@ -1218,7 +1372,7 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.1, end);
       if (a > 0) {
         card(g, VW / 2, 420, 860, 170, DARK, a, 0.02);
-        label(g, /ernst/.test(c.low) ? 'MORGEN WIRD ES ERNST!' : /morgen/.test(c.low) && /kampf/.test(c.low) ? 'MORGEN: DER KAMPF!' : /morgen/.test(c.low) ? 'BIS MORGEN!' : 'FOLGE & ÜBERLEBE!', 0, 4, 76, '#7ddc4a', { sw: 0 });
+        label(g, /überleben\s*\?/.test(c.low) ? 'ÜBERLEBEN WIR?!' : /ernst/.test(c.low) ? 'MORGEN WIRD ES ERNST!' : /morgen/.test(c.low) && /kampf/.test(c.low) ? 'MORGEN: DER KAMPF!' : /morgen/.test(c.low) ? 'BIS MORGEN!' : 'FOLGE & ÜBERLEBE!', 0, 4, 76, '#7ddc4a', { sw: 0 });
         g.restore();
       }
       endCard(g, t, dur, c);
@@ -1425,6 +1579,13 @@ function sfxFor(c) {
       add(0.2, 'ding');
       add(0.6, 'hammer');
       add(1.2, 'cheer');
+      break;
+    case 'topcomment':
+      add(0.2, 'pop');
+      add(0.5, 'ding');
+      break;
+    case 'moat':
+      for (let i = 0; i < 5; i++) add(0.5 + i * 0.7, 'stamp');
       break;
     case 'welcome':
       add(0.5, 'whoosh');

@@ -17,6 +17,7 @@ export const DEFAULTS = {
   zombieAllies: '',
   zombieCount: 10,
   zombieGoal: 11,
+  zombieCamp: '',
   followEnabled: true,
   followName: '',
   followImage: '',

@@ -359,6 +359,32 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
       P(g, hc, lw, poly([[-21, -77], [-19, -92], [-10, -97], [0, -99], [10, -97], [19, -92], [21, -77], [14, -86], [4, -88], [-6, -87], [-15, -85]]));
     }
   }
+  // Kopfbedeckung / Abzeichen
+  if (!sil && o.hat === 'sheriff') {
+    P(g, '#8a5a30', lw, ell(0, -90, 30, 6));
+    P(g, '#8a5a30', lw, (q) => {
+      q.moveTo(-15, -90);
+      q.quadraticCurveTo(-16, -112, -6, -108);
+      q.quadraticCurveTo(0, -104, 6, -108);
+      q.quadraticCurveTo(16, -112, 15, -90);
+      q.closePath();
+    });
+    P(g, '#5a3a1e', 0, rr(-15, -96, 30, 4, 1));
+    // Stern auf dem Hemd
+    const st = [];
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 ? 2.4 : 5.4;
+      const ang = (i / 10) * Math.PI * 2 - Math.PI / 2;
+      st.push([-7 + Math.cos(ang) * r, -46 + Math.sin(ang) * r]);
+    }
+    P(g, '#ffd23f', 1, poly(st));
+  }
+  if (!sil && o.hat === 'smith') {
+    // Lederschürze
+    P(g, '#7a4b2a', lw, rr(-12, -50, 24, 28, 4));
+    line(g, [[-12, -50], [-9, -56]], 1.4, '#5a3a1e');
+    line(g, [[12, -50], [9, -56]], 1.4, '#5a3a1e');
+  }
   // Waffe in der rechten Hand
   const w = o.weapon;
   if (w === 'bat') {
@@ -441,6 +467,31 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
       q.closePath();
     });
     g.restore();
+  } else if (w === 'hammer') {
+    g.save();
+    g.translate(20, -36);
+    g.rotate(-1.1);
+    P(g, '#8a5a30', lw, rr(-2, -2, 30, 4, 2));
+    P(g, '#5f6670', lw, rr(24, -7, 10, 14, 2));
+    g.restore();
+  } else if (w === 'bow') {
+    g.save();
+    g.translate(22, -40);
+    g.beginPath();
+    g.moveTo(0, -24);
+    g.quadraticCurveTo(14, 0, 0, 24);
+    g.lineWidth = 3.2;
+    g.strokeStyle = '#8a5a30';
+    g.stroke();
+    line(g, [[0, -23], [-4, 0], [0, 23]], 0.8, '#eee');
+    line(g, [[-4, 0], [22, -2]], 1.4, '#6b4426');
+    P(g, '#c0c6cc', 0.8, poly([[22, -5], [28, -2], [22, 1]]));
+    g.restore();
+  } else if (w === 'holster') {
+    // Revolver im Holster an der Hüfte
+    P(g, '#6b4426', lw, rr(-21, -30, 9, 14, 3));
+    P(g, '#3a3f46', lw, rr(-19, -34, 5, 6, 1.5));
+    line(g, [[-16, -32], [16, -29]], 2, '#5a3a1e');
   } else if (w === 'pistol') {
     g.save();
     g.translate(21, -37);
@@ -489,13 +540,16 @@ const Z_poly = (pts) => (q) => {
 // Waffe aus dem Kommentar → gezeichnete Waffe
 export function weaponKind(text = '') {
   const w = String(text).toLowerCase();
+  if (/sheriff|holster/.test(w)) return 'holster';
+  if (/schmied|hammer/.test(w)) return 'hammer';
   if (/panzer|tank/.test(w)) return 'tank';
   if (/revolver|pistole|colt|glock/.test(w)) return 'pistol';
   if (/\b(ak|kn|m)\s*-?\d{2}\b|sturmgewehr|maschinengewehr|\bmg\b|rifle/.test(w)) return 'rifle';
   if (/flinte|gewehr|shotgun|knarre/.test(w)) return 'shotgun';
   if (/messer|dolch/.test(w)) return 'knife';
   if (/pfanne|topf/.test(w)) return 'pan';
-  if (/armbrust|bogen|pfeil/.test(w)) return 'crossbow';
+  if (/armbrust/.test(w)) return 'crossbow';
+  if (/bogen|pfeil/.test(w)) return 'bow';
   if (/axt|beil/.test(w)) return 'axe';
   if (/schwert|katana|machete|säbel/.test(w)) return 'sword';
   if (/schaufel|spaten|harke|rechen/.test(w)) return 'shovel';
@@ -524,6 +578,7 @@ export function makeAlly(name, weapon = '') {
     weapon: weaponKind(weapon),
     weaponText: String(weapon || '').trim(),
     broken: /kaputt|schrott|rostig|alt/i.test(String(weapon || '')),
+    hat: /sheriff/i.test(String(weapon || '')) ? 'sheriff' : /schmied/i.test(String(weapon || '')) ? 'smith' : null,
   };
 }
 export function nameTag(g, x, y, name, s = 1) {
