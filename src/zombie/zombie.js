@@ -284,15 +284,16 @@ function drawScene(g, t, dur, c, mo) {
     }
     case 'welcome': {
       // Base von weiter weg und leicht von oben, Schild an Ketten fällt herein
-      const kk = smooth(clamp((t - 1.4) / Math.max(1, dur - 1.6)));
-      cam(g, 540, lerp(1330, 1280, kk), lerp(0.72, 1.1, kk), 0, t);
-      drawBase(g, t, c, mo, { hang: { text: c.campName || 'UNSER LAGER', k: clamp((t - 0.4) / 0.6) } });
+      // Vogelperspektive (schräg von oben): Kamera fährt langsam aufs Tor zu
+      const kk = smooth(clamp((t - 0.8) / Math.max(1, dur - 1)));
+      cam(g, 540, lerp(1040, 1250, kk), lerp(0.95, 1.2, kk), 0, t);
+      drawAerial(g, t, c, { sign: c.campName || 'UNSER LAGER', signK: clamp((t - 0.4) / 0.6) });
       break;
     }
     case 'thanks':
     case 'ready': {
-      cam(g, 540, 1290, lerp(0.92, 0.98, k), 0, t);
-      drawBase(g, t, c, mo, {});
+      cam(g, 540, 1000, lerp(1.0, 1.06, k), 0, t);
+      drawAerial(g, t, c, { sign: c.campName, cheer: true });
       break;
     }
     case 'base':
@@ -300,8 +301,13 @@ function drawScene(g, t, dur, c, mo) {
       // größeres Lager: Hütte, Zelte, Drahtzaun rundherum, alle Überlebenden drinnen
       const alt = c.k % 2;
       const wide = /schaut euch an|seht euch an|überblick/.test(c.low);
-      if (wide) cam(g, 540, 1300, lerp(0.74, 0.82, smooth(k)), 0, t);
-      else cam(g, 540, alt ? 1300 : 1260, alt ? lerp(1.0, 0.94, k) : lerp(0.9, 0.97, k), 0, t);
+      if (wide) {
+        // Überblick aus der Vogelperspektive, Kamera fährt langsam zurück
+        cam(g, 540, lerp(980, 940, smooth(k)), lerp(1.12, 0.96, smooth(k)), 0, t);
+        drawAerial(g, t, c, { sign: c.campName });
+        break;
+      }
+      cam(g, 540, alt ? 1300 : 1260, alt ? lerp(1.0, 0.94, k) : lerp(0.9, 0.97, k), 0, t);
       const fk = c.kind === 'base' && /zaun/.test(c.low) && !/geschützt|schützt|schaut|seht/.test(c.low) ? smooth(clamp((t - 0.4) / 1.6)) : 1;
       drawBase(g, t, c, mo, { fk, dusk: c.kind === 'evening' });
       break;
@@ -529,6 +535,116 @@ function crowdFor(c, g) {
   const res = { scale, rows: built.reverse(), tags };
   CROWD_CACHE.set(c, res);
   return res;
+}
+// ------------------------------------------------- Vogelperspektive ---
+// Boden-Koordinaten: X quer (0…1080), Z Tiefe (0 hinten … 1000 vorne), Kamera schräg von oben
+function aproj(X, Z) {
+  const s = 0.82 + (0.5 * Z) / 1000;
+  return [540 + (X - 540) * s, 430 + Z * 1.32 * (0.86 + (0.2 * Z) / 1000), s];
+}
+const FENCE = { x0: 120, x1: 960, z0: 160, z1: 880 };
+const TENTS = [[250, 300, '#ff9f1c'], [830, 300, '#2ec4b6'], [210, 590, '#e71d36'], [870, 610, '#9b5de5'], [300, 790, '#3a86ff'], [780, 800, '#fee440']];
+const FIRE = [540, 580];
+const AER_CACHE = new WeakMap();
+function aerialPeople(n) {
+  const pts = [];
+  for (let Z = 200; Z <= 850; Z += 46) {
+    for (let X = 160 + ((Z / 46) % 2) * 23; X <= 920; X += 46) {
+      if (X > 380 && X < 700 && Z < 430) continue; // Hütte
+      if (Math.hypot(X - FIRE[0], (Z - FIRE[1]) * 1.3) < 105) continue; // Feuer
+      if (TENTS.some(([tx, tz]) => Math.hypot(X - tx, (Z - tz) * 1.4) < 95)) continue;
+      if (Math.abs(X - 540) < 40 && Z > 700) continue; // Weg zum Tor
+      pts.push([X, Z]);
+    }
+  }
+  // gleichmäßig verteilt auswählen (nicht nur vorne)
+  const out = [];
+  const step = pts.length / Math.max(1, n);
+  for (let i = 0; i < Math.min(n, pts.length); i++) out.push(pts[Math.floor(i * step)]);
+  return out;
+}
+function buildAerial(c, scale) {
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(VW * scale);
+  cv.height = Math.ceil(1920 * scale);
+  const q = cv.getContext('2d');
+  q.scale(scale, scale);
+  const day = c.day !== false;
+  // Himmel + Waldrand ganz oben
+  q.fillStyle = day ? '#8fd0f5' : '#2a2552';
+  q.fillRect(0, 0, VW, 520);
+  for (let i = 0; i < 16; i++) Z.pine(q, -40 + i * 75, 470 + (i % 3) * 12, 240 + (i % 4) * 30, day ? '#3f8f45' : '#24533f', day ? '#327a3a' : '#1d4434', 6);
+  // Wiese
+  q.fillStyle = day ? '#7cb84e' : '#3e5530';
+  q.fillRect(0, 460, VW, 1500);
+  for (let i = 0; i < 40; i++) {
+    const [x, y] = aproj(((i * 263) % 1300) - 110, ((i * 157) % 1250) - 60);
+    P(q, day ? '#8cc85a' : '#46603a', 0, ell(x, y, 60, 18));
+  }
+  // Weg zum Tor
+  const w0 = aproj(500, 880), w1 = aproj(580, 880), w2 = aproj(640, 1250), w3 = aproj(440, 1250);
+  P(q, '#c9a06a', 5, Z.poly([w0, w1, w2, w3].map(([x, y]) => [x, y])));
+  // Lagerboden (festgetretene Erde)
+  const f = FENCE;
+  const corners = [aproj(f.x0, f.z0), aproj(f.x1, f.z0), aproj(f.x1, f.z1), aproj(f.x0, f.z1)];
+  P(q, '#b99a6a', 0, Z.poly(corners.map(([x, y]) => [x, y])));
+  // Bäume außen (hinten + Seiten)
+  const trees = [];
+  for (let zz = 0; zz <= 1150; zz += 120) {
+    trees.push([40 - (zz % 240) / 6, zz]);
+    trees.push([1040 + (zz % 240) / 6, zz]);
+  }
+  for (let xx = 120; xx <= 960; xx += 110) trees.push([xx, 60]);
+  // Zaun hinten + Seiten
+  const fh = (zz) => 60 * aproj(0, zz)[2];
+  const P0 = aproj(f.x0, f.z0), P1 = aproj(f.x1, f.z0), P2 = aproj(f.x1, f.z1), P3 = aproj(f.x0, f.z1);
+  const items = [];
+  for (const [x, zz] of trees) items.push([zz, () => { const [px, py, s] = aproj(x, zz); Z.pine(q, px, py, 230 * s, day ? '#3f8f45' : '#24533f', day ? '#327a3a' : '#1d4434', 5); }]);
+  items.push([f.z0 - 1, () => wireLine(q, [P0[0], P0[1]], [P1[0], P1[1]], fh(f.z0), 1)]);
+  items.push([f.z0, () => { wireLine(q, [P0[0], P0[1]], [P3[0], P3[1]], fh(f.z0), 1, fh(f.z1)); wireLine(q, [P1[0], P1[1]], [P2[0], P2[1]], fh(f.z0), 1, fh(f.z1)); }]);
+  // Hütte, Zelte, Feuerstelle, Leute
+  items.push([340, () => { const [x, y, s] = aproj(540, 340); Z.hut(q, x, y, 0.42 * s, { t: 1, barricade: 1, lit: !day }); }]);
+  for (const [tx, tz, col] of TENTS) items.push([tz, () => { const [x, y, s] = aproj(tx, tz); tent(q, x, y, 0.9 * s, col); }]);
+  items.push([FIRE[1] - 2, () => { const [x, y, s] = aproj(FIRE[0], FIRE[1]); for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; P(q, '#8a8f96', 3, ell(x + Math.cos(a) * 46 * s, y + Math.sin(a) * 16 * s, 10 * s, 7 * s)); } P(q, '#7a4b2a', 4, rr(x - 34 * s, y - 8 * s, 68 * s, 12 * s, 5)); }]);
+  const n = Math.min(160, c.crowdN || c.allies || 0);
+  aerialPeople(n).forEach(([X, Zz], i) => {
+    const o = c.named[i] || Z.makeAlly(`Ü${i}`, FILLER_WEAPONS[i % FILLER_WEAPONS.length]);
+    items.push([Zz, () => { const [x, y, s] = aproj(X, Zz); Z.drawSurv(q, x, y, 92 * s, o, i * 0.4); }]);
+  });
+  items.sort((a, b) => a[0] - b[0]).forEach(([, fn]) => fn());
+  // Zaun vorne (mit Lücke fürs Tor)
+  const gl = aproj(480, f.z1), gr = aproj(600, f.z1);
+  wireLine(q, [P3[0], P3[1]], [gl[0], gl[1]], fh(f.z1), 1);
+  wireLine(q, [gr[0], gr[1]], [P2[0], P2[1]], fh(f.z1), 1);
+  return cv;
+}
+function drawAerial(g, t, c, { sign = null, signK = 1, cheer = false } = {}) {
+  const m = g.getTransform();
+  const scale = Math.min(2.2, Math.max(0.6, Math.round(Math.hypot(m.a, m.b) * 1.2 * 4) / 4));
+  let hit = AER_CACHE.get(c);
+  if (!hit || hit.scale !== scale) AER_CACHE.set(c, (hit = { scale, cv: buildAerial(c, scale) }));
+  g.fillStyle = c.day !== false ? '#7cb84e' : '#3e5530';
+  g.fillRect(-600, -600, 2300, 3200);
+  g.drawImage(hit.cv, 0, 0, VW, 1920);
+  // Lagerfeuer (bewegt)
+  const [fx, fy, fs] = aproj(FIRE[0], FIRE[1]);
+  for (let k = 0; k < 3; k++) {
+    const h = (38 + Math.sin(t * 9 + k * 2) * 8) * fs;
+    P(g, ['#ff6b1a', '#ffb703', '#ffe066'][k], 0, Z.poly([[fx - (20 - k * 6) * fs, fy - 4 * fs], [fx + Math.sin(t * 7 + k) * 4 * fs, fy - h - (2 - k) * 12 * fs], [fx + (20 - k * 6) * fs, fy - 4 * fs]]));
+  }
+  // Held am Feuer
+  const [hx, hy, hs] = aproj(540, 700);
+  Z.drawHero(g, hx, hy - (cheer ? Math.abs(Math.sin(t * 5)) * 10 : 0), 125 * hs, { pose: 'cheer', mouth: 0, t });
+  // Tor mit Schild an Ketten
+  if (sign) {
+    const [gx, gy, gs] = aproj(540, FENCE.z1);
+    g.save();
+    g.translate(gx, gy);
+    g.scale(gs * 0.3, gs * 0.3);
+    g.translate(-540, -1910);
+    gateSign(g, t, sign, signK);
+    g.restore();
+  }
 }
 // Großes Lager mit Zelten, Drahtzaun und allen Überlebenden (Abend: Dämmerung)
 function drawBase(g, t, c, mo, { fk = 1, dusk = false, sign = null, hang = null } = {}) {

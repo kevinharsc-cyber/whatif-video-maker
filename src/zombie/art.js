@@ -570,7 +570,7 @@ export function moon(g, x, y, r) {
   P(g, '#f0dc9a', 0, ell(x + r * 0.35, y + r * 0.25, r * 0.24, r * 0.24));
   P(g, '#f0dc9a', 0, ell(x + r * 0.1, y - r * 0.45, r * 0.11, r * 0.11));
 }
-function pine(g, x, y, h, c1, c2, lw = 6) {
+export function pine(g, x, y, h, c1, c2, lw = 6) {
   const w = h * 0.4;
   P(g, '#5a3a24', lw, rr(x - w * 0.09, y - h * 0.16, w * 0.18, h * 0.17, 4));
   for (let i = 0; i < 3; i++) {
