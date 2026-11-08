@@ -18,7 +18,8 @@ export function pickZombieShot(text, i, n) {
   if (/\ba\s*[:)].+\bb\s*[:)]/.test(low) || /\ba oder b\b/.test(low)) return 'vote';
   if (OPTION_RE.test(String(text || ''))) return 'option';
   if (/abstimmung|hat gewonnen|habt (euch )?entschieden|haben sich für|die meisten von euch/.test(low) && !/kommentar/.test(low)) return 'result';
-  if (/lager|basis|base|camp/.test(low) && (/erweiter|vergrößer|größer|ausgebaut/.test(low) || (/zaun/.test(low) && /bau|steht|errichte|rund um|um das|um die|um unser/.test(low)))) return 'base';
+  if (/nacht bricht|bricht die nacht|sonne geht unter|es wird dunkel|dämmerung|neigt sich dem ende|der abend/.test(low) && !/zombie/.test(low) && !/\b\d+\s+(überlebende|follower|verbündete|leute)\b/.test(low)) return 'evening';
+  if (/lager|basis|base|camp/.test(low) && (/erweiter|vergrößer|größer|ausgebaut|geschützt|schützt/.test(low) || (/zaun/.test(low) && /bau|steht|errichte|rund um|um das|um die|um unser/.test(low)))) return 'base';
   if (/kommentar|schreib/.test(low)) return 'comment';
   if (/charakter|eigene figur|teil unserer geschichte|neu (in|bei) (unserer|der) gruppe|neu dabei|sind neu|ist neu/.test(low)) return 'characters';
   if (/erfolgreich|geschafft|gewonnen|abgewehrt|zurückgeschlagen/.test(low) && /verteidig|wehr|zombie|angriff|kampf/.test(low)) return 'fight';
@@ -117,6 +118,9 @@ export function createZombieVisuals(scenes, opts = {}) {
   const examples = named.length ? named : Z.SURV;
   const options = scenes.map((s) => parseOption(s.text)).filter(Boolean);
   const all = scenes.map((s) => String(s.text || '').toLowerCase()).join(' ');
+  const firstOpt = scenes.findIndex((s) => parseOption(s.text));
+  const eveningAt = scenes.findIndex((s, j) => pickZombieShot(s.text, j, scenes.length) === 'evening');
+  const hasEvening = eveningAt >= 0;
   const hasMorning = scenes.some((s, j) => pickZombieShot(s.text, j, scenes.length) === 'morning');
   const nameVote = /(lager|camp|basis|gruppe)[^.!?]*(name|heißen|nennen|taufen)|(name|heißen|nennen|taufen)[^.!?]*(lager|camp|basis|gruppe)/.test(all);
   const seen = {};
@@ -130,7 +134,7 @@ export function createZombieVisuals(scenes, opts = {}) {
     const ally = mentioned.length === 1 && ['talk', 'characters', 'hut', 'problem'].includes(kind) ? mentioned[0] : null;
     if (ally) kind = 'ally';
     const k = (seen[kind] = (seen[kind] || 0) + 1) - 1;
-    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally, mentioned, crowdN: kind === 'crowd' ? Number(low0(text).match(/\b(\d+)\s+(überlebende|follower|verbündete|leute)/)[1]) : kind === 'base' ? allies : 0, result: kind === 'result' ? resultOf(text) : null, option: kind === 'option' ? parseOption(text) : null, options, nameVote, day: hasMorning };
+    const c = { kind, k, text, low: text.toLowerCase(), i, n: scenes.length, last: i === scenes.length - 1, named, examples, allies, goal, zombies, vote: kind === 'vote' ? parseVote(text) : null, hud, ally, mentioned, crowdN: kind === 'crowd' ? Number(low0(text).match(/\b(\d+)\s+(überlebende|follower|verbündete|leute)/)[1]) : kind === 'base' ? allies : 0, result: kind === 'result' ? resultOf(text) : null, option: kind === 'option' ? parseOption(text) : null, options, nameVote, day: hasMorning, optionsAreNames: options.length >= 2 && options.every((o) => !o.build), dusk: hasEvening && i > eveningAt, evening: hasEvening && i <= eveningAt, afterOptions: firstOpt >= 0 && i > firstOpt };
     return {
       isAnim: true,
       verein: true, // gleiche Darstellung wie der Vereins-Modus (Sticker-Untertitel, harte Schnitte)
@@ -272,32 +276,13 @@ function drawScene(g, t, dur, c, mo) {
       Z.drawHero(g, 540, 1680, 400, { pose: 'cheer', mouth: mo, t });
       break;
     }
-    case 'base': {
+    case 'base':
+    case 'evening': {
       // größeres Lager: Hütte, Zelte, Drahtzaun rundherum, alle Überlebenden drinnen
       const alt = c.k % 2;
       cam(g, 540, alt ? 1300 : 1260, alt ? lerp(1.0, 0.94, k) : lerp(0.9, 0.97, k), 0, t);
-      forestFor(g, t, c, { skipMid: 540, mood: 0.3 });
-      const fk = /zaun/.test(c.low) ? smooth(clamp((t - 0.4) / 1.6)) : 1;
-      wireLine(g, [-60, 1150], [1140, 1150], 70, fk);
-      tent(g, 200, 1185, 0.9, '#ff9f1c');
-      tent(g, 880, 1185, 0.9, '#2ec4b6');
-      Z.hut(g, 540, 1190, 0.55, { t, barricade: 1, lit: !c.day });
-      tent(g, 90, 1290, 1.1, '#e71d36');
-      tent(g, 990, 1290, 1.1, '#9b5de5');
-      wireLine(g, [-60, 1150], [-230, 1900], 70, fk, 260);
-      wireLine(g, [1140, 1150], [1310, 1900], 70, fk, 260);
-      const crowd = crowdFor(c, g);
-      let heroDone = false;
-      crowd.rows.forEach((r) => {
-        if (!heroDone && r.y > 1700) {
-          Z.drawHero(g, 540, 1640, 330, { pose: 'cheer', mouth: mo, t });
-          heroDone = true;
-        }
-        g.drawImage(r.canvas, 0, r.y - r.top, VW, r.hgt);
-      });
-      if (!heroDone) Z.drawHero(g, 540, 1640, 330, { pose: 'cheer', mouth: mo, t });
-      crowd.tags.forEach(([x, y, h, name]) => Z.nameTag(g, x, y - h * 1.12, name, 0.55));
-      wireLine(g, [-230, 1900], [1310, 1900], 260, fk);
+      const fk = c.kind === 'base' && /zaun/.test(c.low) && !/geschützt|schützt/.test(c.low) ? smooth(clamp((t - 0.4) / 1.6)) : 1;
+      drawBase(g, t, c, mo, { fk, dusk: c.kind === 'evening' });
       break;
     }
     case 'goal': {
@@ -338,7 +323,7 @@ function drawScene(g, t, dur, c, mo) {
         if (a <= 0) return;
         const x = 470 + i * (list.length > 3 ? 125 : 165);
         Z.drawSurv(g, x, 1560, 330 * a, o, t);
-        Z.nameTag(g, x, 1560 - 375, o.name, 0.9 * a);
+        Z.nameTag(g, x, 1560 - 375 - (i % 2) * 60, o.name, 0.9 * a * Math.min(1, 7 / o.name.length));
       });
       break;
     }
@@ -413,6 +398,11 @@ function drawScene(g, t, dur, c, mo) {
     }
     case 'option': {
       const b = c.option?.build;
+      if (!b && c.optionsAreNames) {
+        cam(g, 540, 1280, lerp(0.95, 1.0, k), 0, t);
+        drawBase(g, t, c, mo, { dusk: c.dusk, sign: { text: c.option.short, k: easeOutBack(clamp((t - 0.3) / 0.45)) } });
+        break;
+      }
       cam(g, b === 'tower' ? 620 : 540, 1150, lerp(0.92, 0.98, k), 0, t);
       forestFor(g, t, c, { mood: 0.2, skipMid: 540 });
       const grow = easeOutBack(clamp((t - 0.3) / 0.5));
@@ -493,7 +483,7 @@ function crowdFor(c, g) {
   const scale = Math.min(2, Math.max(0.5, Math.round(Math.hypot(m.a, m.b) * 1.1 * 4) / 4));
   const hit = CROWD_CACHE.get(c);
   if (hit && hit.scale === scale) return hit;
-  const n = Math.min(120, c.crowdN);
+  const n = Math.min(120, c.crowdN || c.allies);
   const rows = crowdLayout(n);
   const tags = [];
   let idx = 0;
@@ -518,6 +508,51 @@ function crowdFor(c, g) {
   const res = { scale, rows: built.reverse(), tags };
   CROWD_CACHE.set(c, res);
   return res;
+}
+// Großes Lager mit Zelten, Drahtzaun und allen Überlebenden (Abend: Dämmerung)
+function drawBase(g, t, c, mo, { fk = 1, dusk = false, sign = null } = {}) {
+  if (dusk) Z.forest(g, t, { mood: 0, skipMid: 540, moonAt: [830, 360, 80] });
+  else forestFor(g, t, c, { skipMid: 540, mood: 0.3 });
+  wireLine(g, [-60, 1150], [1140, 1150], 70, fk);
+  tent(g, 200, 1185, 0.9, '#ff9f1c');
+  tent(g, 880, 1185, 0.9, '#2ec4b6');
+  Z.hut(g, 540, 1190, 0.55, { t, barricade: 1, lit: !c.day || dusk });
+  tent(g, 90, 1290, 1.1, '#e71d36');
+  tent(g, 990, 1290, 1.1, '#9b5de5');
+  wireLine(g, [-60, 1150], [-230, 1900], 70, fk, 260);
+  wireLine(g, [1140, 1150], [1310, 1900], 70, fk, 260);
+  if (c.allies || c.crowdN) {
+    const crowd = crowdFor(c, g);
+    let heroDone = false;
+    crowd.rows.forEach((r) => {
+      if (!heroDone && r.y > 1700) {
+        Z.drawHero(g, 540, 1640, 330, { pose: 'cheer', mouth: mo, t });
+        heroDone = true;
+      }
+      g.drawImage(r.canvas, 0, r.y - r.top, VW, r.hgt);
+    });
+    if (!heroDone) Z.drawHero(g, 540, 1640, 330, { pose: 'cheer', mouth: mo, t });
+    crowd.tags.forEach(([x, y, h, name]) => Z.nameTag(g, x, y - h * 1.12, name, 0.55));
+  } else Z.drawHero(g, 540, 1640, 330, { pose: 'cheer', mouth: mo, t });
+  if (sign) campSign(g, sign.text, sign.k);
+  wireLine(g, [-230, 1900], [1310, 1900], 260, fk);
+}
+// Holzschild mit dem Lagernamen (Namens-Abstimmung)
+function campSign(g, text, k) {
+  if (k <= 0) return;
+  g.save();
+  g.translate(540, 1390);
+  g.scale(k, k);
+  g.rotate(-0.03);
+  P(g, '#6b4426', 6, rr(-330, -40, 34, 300, 6));
+  P(g, '#6b4426', 6, rr(296, -40, 34, 300, 6));
+  P(g, '#000', 0, rr(-380, -190, 760, 180, 20));
+  P(g, '#b5844f', 8, rr(-380, -200, 760, 180, 20));
+  for (const y of [-150, -100, -55]) line(g, [[-370, y], [370, y]], 3, '#9a6a3c');
+  g.font = '96px "Lilita One", sans-serif';
+  const s = Math.min(1, 660 / g.measureText(text).width);
+  label(g, text, 0, -110, 96 * s, '#3a2412', { sw: 0 });
+  g.restore();
 }
 // Drahtzaun von a nach b (Pfostenhöhe h1 → h2), k = wie weit fertig gebaut (0…1)
 function wireLine(g, a, b, h1, k = 1, h2 = h1) {
@@ -675,6 +710,7 @@ function optionList(g, t, options, end, withName = false) {
 // Folge spielt am Tag (es gibt eine "Wir haben überlebt"-Szene): ruhige Szenen hell
 const NIGHT_KINDS = ['horde', 'alone', 'fight', 'final', 'title', 'problem'];
 function forestFor(g, t, c, opts) {
+  if (c.evening && !NIGHT_KINDS.includes(c.kind)) return Z.forest(g, t, { ...opts, mood: 0, day: false });
   Z.forest(g, t, { ...opts, day: c.day && !NIGHT_KINDS.includes(c.kind) });
 }
 function glowingEyes(g, t) {
@@ -734,7 +770,7 @@ function overlays(g, t, dur, c) {
       if (a > 0) {
         card(g, VW / 2, 400, 820, 130, DARK, a, -0.02);
         const noun = /basis/.test(c.low) ? 'BASIS' : /lager|camp/.test(c.low) ? 'LAGER' : 'HÜTTE';
-        const ht = /name/.test(c.low) && /lager|camp|hütte|basis/.test(c.low) ? (noun === 'BASIS' ? 'UNSERE BASIS BRAUCHT EINEN NAMEN!' : 'UNSER LAGER BRAUCHT EINEN NAMEN!') : /ausbau|verstärk|ausbauen|aufrüst|aufwert/.test(c.low) ? `${noun} AUFWERTEN!` : /bunker/.test(c.low) ? 'VERSTECK: BUNKER' : 'VERSTECK: HÜTTE IM WALD';
+        const ht = /name/.test(c.low) && /lager|camp|hütte|basis/.test(c.low) ? (noun === 'BASIS' ? 'UNSERE BASIS BRAUCHT EINEN NAMEN!' : 'UNSER LAGER BRAUCHT EINEN NAMEN!') : /aufwert|aufrüst/.test(c.low) ? `${noun} AUFWERTEN!` : /ausbau|verstärk|bau\w*\s.*\saus\b/.test(c.low) ? `${noun} AUSBAUEN!` : /bunker/.test(c.low) ? 'VERSTECK: BUNKER' : 'VERSTECK: HÜTTE IM WALD';
         g.font = '54px "Lilita One", sans-serif';
         label(g, ht, 0, 2, Math.min(54, (54 * 760) / g.measureText(ht).width), '#ffffff', { sw: 0 });
         g.restore();
@@ -824,7 +860,7 @@ function overlays(g, t, dur, c) {
       break;
     }
     case 'comment': {
-      const a = c.options.length >= 2 ? 0 : popIn(t, 0.1, end);
+      const a = c.options.length >= 2 && c.afterOptions ? 0 : popIn(t, 0.1, end);
       if (a > 0) {
         card(g, VW / 2, 380, 920, 150, YEL, a, -0.02);
         const variant = commentVariant(c);
@@ -840,7 +876,7 @@ function overlays(g, t, dur, c) {
         } else label(g, 'AB IN DIE KOMMENTARE!', 0, 4, 64, DARK, { sw: 0 });
         g.restore();
       }
-      if (c.options.length >= 2) optionList(g, t, c.options, end, c.nameVote);
+      if (c.options.length >= 2 && c.afterOptions) optionList(g, t, c.options, end, c.nameVote && !c.optionsAreNames);
       else commentsPanel(g, t, c);
       break;
     }
@@ -889,6 +925,15 @@ function overlays(g, t, dur, c) {
         card(g, VW / 2, 420, kill ? 900 : 700, 170, RED, a, -0.03);
         const win = /erfolgreich|geschafft|gewonnen|abgewehrt|zurückgeschlagen/.test(c.low);
         label(g, kill ? `${kill[1]} ZOMBIES ERLEDIGT!` : win ? 'GESCHAFFT!' : 'DER KAMPF!', 0, 4, kill ? 76 : 100, '#fff', { sw: 0 });
+        g.restore();
+      }
+      break;
+    }
+    case 'evening': {
+      const a = popIn(t, 0.2, end);
+      if (a > 0) {
+        card(g, VW / 2, 400, 860, 170, DARK, a, -0.02);
+        label(g, 'DIE NACHT BRICHT AN …', 0, 4, 70, '#ffb35c', { sw: 0 });
         g.restore();
       }
       break;
@@ -1072,7 +1117,7 @@ function endCard(g, t, dur, c) {
   label(g, 'DIE ZOMBIE-', 0, 300, 96, '#ffffff', { sw: 14 });
   label(g, 'APOKALYPSE', 0, 405, 110, '#7ddc4a', { sw: 16 });
   const rows = [
-    [c.nameVote && c.options.length >= 2 ? `KOMMENTIERE: NAME + ${c.options.map((o) => o.letter).join('/')}` : c.nameVote ? 'KOMMENTIERE: NAME FÜRS LAGER' : c.options.length >= 2 ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: NAME + WAFFE', YEL],
+    [c.optionsAreNames ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : c.nameVote && c.options.length >= 2 ? `KOMMENTIERE: NAME + ${c.options.map((o) => o.letter).join('/')}` : c.nameVote ? 'KOMMENTIERE: NAME FÜRS LAGER' : c.options.length >= 2 ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: NAME + WAFFE', YEL],
     [`VERBÜNDETE: ${c.allies} / ${c.goal}`, '#7ddc4a'],
     [`ZOMBIES: ${c.zombies}`, '#ff6b6b'],
   ];
@@ -1174,6 +1219,10 @@ function sfxFor(c) {
     case 'fight':
       for (let i = 0; i < 4; i++) add(0.6 + i * 0.5, 'kick');
       add(0.3, 'groan');
+      break;
+    case 'evening':
+      add(0.2, 'crickets');
+      add(0.5, 'whoosh');
       break;
     case 'result':
       add(0.2, 'ding');
