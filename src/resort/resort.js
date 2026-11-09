@@ -29,7 +29,8 @@ export function pickResortShot(text, i, n) {
   if (/mitarbeiter|chefkoch|animateur|sicherheitschef|stellvertretend/.test(low)) return 'jobs';
   if (/name/.test(low) && /resort|kommentar/.test(low)) return 'name';
   if (/kommentar|likes/.test(low)) return 'comment';
-  if (/\d[\d.]*\s*follower\s*=/.test(low)) return 'counter';
+  if (/kasse|euro|€/.test(low) && /\d/.test(low)) return 'money';
+  if (/\d[\d.]*\s*follower\s*=/.test(low) || (/\d[\d.]*\s*follower/.test(low) && /besucher/.test(low))) return 'counter';
   if (/follower/.test(low) && /besucher/.test(low)) return 'visitors';
   if (/schlafen|essen|spaß/.test(low)) return 'needs';
   if (/gar nichts|keine gebäude|nicht mal/.test(low)) return 'nothing';
@@ -56,13 +57,20 @@ export function createResortVisuals(scenes, opts = {}) {
   const followers = Math.max(0, Math.floor(Number(opts.followers) || 0));
   const options = scenes.map((s) => optionOf(s.text)).filter(Boolean);
   const m = String(scenes.map((s) => s.text).join(' ')).match(/folge\s*(\d+)/i);
-  const hud = { folge: m ? Number(m[1]) : 1, visitors: followers };
+  const all = scenes.map((s) => String(s.text || '')).join(' ');
+  const per = (() => {
+    const a = all.match(/pro follower[^.!?]*?(\d[\d.]*)\s*(k|tausend)?\s*(?:euro|€)/i) || all.match(/(\d[\d.]*)\s*(k|tausend)?\s*(?:euro|€)?\s*pro follower/i);
+    if (!a) return Number(opts.perFollower) || 0;
+    return Number(a[1].replace(/\./g, '')) * (a[2] ? 1000 : 1);
+  })();
+  const kasse = Number(opts.kasse) || followers * per;
+  const hud = { folge: m ? Number(m[1]) : 1, visitors: followers, kasse };
   const seen = {};
   return scenes.map((sc, i) => {
     const text = sc.text || '';
     const kind = pickResortShot(text, i, scenes.length);
     const k = (seen[kind] = (seen[kind] || 0) + 1) - 1;
-    const c = { kind, k, i, text, low: text.toLowerCase(), n: scenes.length, followers, options, option: kind === 'option' ? optionOf(text) : null, optIndex: options.indexOf(options.find((o) => o === optionOf(text))) };
+    const c = { kind, k, i, text, low: text.toLowerCase(), n: scenes.length, followers, per, kasse, options, option: kind === 'option' ? optionOf(text) : null, optIndex: options.indexOf(options.find((o) => o === optionOf(text))) };
     if (c.option) c.optIndex = options.findIndex((o) => o.letter === c.option.letter);
     return {
       isAnim: true,
@@ -405,6 +413,107 @@ function drawTourists(g, n, t, { y0 = 1500, spread = 1, walk = 0 } = {}) {
   }
 }
 
+// ------------------------------------------------- Vogelperspektive ---
+// Boden: X quer (0…1080), Z Tiefe (0 = am Strand hinten … 1000 vorne), Kamera schräg von oben
+function rproj(X, Zz) {
+  const s = 0.8 + (0.5 * Zz) / 1000;
+  return [540 + (X - 540) * s, 560 + Zz * 1.25 * (0.86 + (0.2 * Zz) / 1000), s];
+}
+const PLOT = { x0: 110, x1: 970, z0: 120, z1: 900 };
+const AER = new WeakMap();
+function buildPlot(c, scale) {
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(VW * scale);
+  cv.height = Math.ceil(1920 * scale);
+  const q = cv.getContext('2d');
+  q.scale(scale, scale);
+  // Himmel ganz oben, Meer, Strand
+  q.fillStyle = '#9fdcff';
+  q.fillRect(0, 0, VW, 330);
+  q.fillStyle = SEA;
+  q.fillRect(0, 330, VW, 190);
+  q.fillStyle = '#f4dca0';
+  q.fillRect(0, 500, VW, 90);
+  q.fillStyle = '#8cd06a';
+  q.fillRect(0, 580, VW, 1400);
+  for (let i = 0; i < 40; i++) {
+    const [x, y] = rproj(((i * 263) % 1300) - 110, ((i * 157) % 1150) - 40);
+    P(q, '#9edb7a', 0, ell(x, y, 60, 18));
+  }
+  // Grundstück: Rasen etwas heller + Absperrung
+  const f = PLOT;
+  const cs = [rproj(f.x0, f.z0), rproj(f.x1, f.z0), rproj(f.x1, f.z1), rproj(f.x0, f.z1)];
+  P(q, '#a6e07f', 0, poly(cs.map(([x, y]) => [x, y])));
+  const edge = (a, b) => {
+    const n = Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 70);
+    const pts = [];
+    for (let i = 0; i <= n; i++) pts.push(rproj(lerp(a[0], b[0], i / n), lerp(a[1], b[1], i / n)));
+    line(q, pts.map(([x, y, s]) => [x, y - 34 * s]), 3, RED);
+    for (const [x, y, s] of pts) P(q, '#c8955c', 2, rr(x - 4 * s, y - 42 * s, 8 * s, 44 * s, 2));
+  };
+  edge([f.x0, f.z0], [f.x1, f.z0]);
+  edge([f.x0, f.z0], [f.x0, f.z1]);
+  edge([f.x1, f.z0], [f.x1, f.z1]);
+  // Vermessungs-Markierungen auf dem leeren Grundstück
+  for (const [X, Zz] of [[330, 380], [760, 380], [330, 690], [760, 690]]) {
+    const [x, y, s] = rproj(X, Zz);
+    line(q, [[x - 22 * s, y], [x + 22 * s, y]], 4, '#fff');
+    line(q, [[x, y - 10 * s], [x, y + 10 * s]], 4, '#fff');
+  }
+  // Palmen am Strand und an den Seiten
+  const items = [];
+  for (let i = 0; i < 9; i++) items.push([30, () => { const [x, y, s] = rproj(-20 + i * 140, 30); palm(q, x, y, 230 * s, 0.5, i % 2 ? 1 : -1); }]);
+  for (let zz = 200; zz <= 1000; zz += 200) {
+    items.push([zz, () => { const [x, y, s] = rproj(30, zz); palm(q, x, y, 260 * s, 0.5, 1); }]);
+    items.push([zz, () => { const [x, y, s] = rproj(1050, zz); palm(q, x, y, 260 * s, 0.5, -1); }]);
+  }
+  // Besucher (so viele wie Follower) mit Koffern
+  // beim Kauf ist das Grundstück noch leer, am Ende stehen alle Besucher drauf
+  const n = c.kind === 'plot' ? 0 : Math.min(160, c.followers || 0);
+  const spots = [];
+  for (let Zz = 200; Zz <= 860; Zz += 44) for (let X = 160 + ((Zz / 44) % 2) * 22; X <= 920; X += 44) {
+    if (Math.hypot(X - 540, (Zz - 520) * 1.2) < 120) continue;
+    spots.push([X, Zz]);
+  }
+  const step = spots.length / Math.max(1, n);
+  for (let i = 0; i < Math.min(n, spots.length); i++) {
+    const [X, Zz] = spots[Math.floor(i * step)];
+    const o = Z.makeAlly(`Gast${i}`, i % 3 ? 'Koffer' : '');
+    items.push([Zz, () => { const [x, y, s] = rproj(X, Zz); Z.drawSurv(q, x, y, 90 * s, o, i * 0.4); }]);
+  }
+  items.sort((a, b) => a[0] - b[0]).forEach(([, fn]) => fn());
+  // vorne: Absperrung + VERKAUFT-Schild
+  edge([f.x0, f.z1], [f.x1, f.z1]);
+  const [sx, sy, ss] = rproj(860, 960);
+  q.save();
+  q.translate(sx, sy);
+  q.scale(ss * 0.7, ss * 0.7);
+  P(q, '#7a4b2a', 5, rr(-8, -40, 16, 140, 3));
+  P(q, '#fff', 6, rr(-120, -150, 240, 110, 12));
+  label(q, 'VERKAUFT!', 0, -95, 48, RED, { sw: 0 });
+  q.restore();
+  return cv;
+}
+function drawPlotAerial(g, t, c, cheer) {
+  const m = g.getTransform();
+  const scale = Math.min(2.2, Math.max(0.6, Math.round(Math.hypot(m.a, m.b) * 1.2 * 4) / 4));
+  let hit = AER.get(c);
+  if (!hit || hit.scale !== scale) AER.set(c, (hit = { scale, cv: buildPlot(c, scale) }));
+  g.fillStyle = '#9fdcff';
+  g.fillRect(-600, -600, 2300, 1000);
+  g.fillStyle = '#8cd06a';
+  g.fillRect(-600, 400, 2300, 2400);
+  g.drawImage(hit.cv, 0, 0, VW, 1920);
+  // Wellen
+  for (let i = 0; i < 10; i++) {
+    const x = ((i * 130 + t * 40) % 1200) - 60;
+    line(g, [[x, 360 + (i % 3) * 50], [x + 50, 354 + (i % 3) * 50]], 4, '#bff4ff');
+  }
+  // Manager in der Mitte des Grundstücks
+  const [mx, my, ms] = rproj(540, 520);
+  drawManager(g, mx, my - (cheer ? Math.abs(Math.sin(t * 5)) * 8 : 0), 140 * ms, { pose: cheer ? 'open' : 'clip', mouth: 0, t });
+}
+
 // ----------------------------------------------------------- Szenen ---
 function drawScene(g, t, dur, c, mo) {
   const k = clamp(t / dur);
@@ -419,9 +528,29 @@ function drawScene(g, t, dur, c, mo) {
       break;
     }
     case 'plot': {
-      cam(g, 540, lerp(1250, 1180, k), lerp(0.9, 0.75, smooth(k)));
-      land(g, t);
-      drawManager(g, 540, 1720, 300, { pose: 'open', mouth: mo, t });
+      // Grundstück von oben: Kamera fährt zurück und zeigt die ganze Fläche
+      cam(g, 540, lerp(1050, 960, smooth(k)), lerp(1.25, 0.92, smooth(k)));
+      drawPlotAerial(g, t, c, 0);
+      break;
+    }
+    case 'money': {
+      cam(g, 540, 1180, lerp(1.2, 1.3, k));
+      land(g, t, { stakes: false, sold: false });
+      // Münzregen
+      for (let i = 0; i < 26; i++) {
+        const x = (i * 197) % 1080;
+        const y = ((t * 520 + i * 173) % 1500) + 300;
+        P(g, GOLD, 4, ell(x, y, 24, 24 * Math.abs(Math.cos(t * 4 + i))));
+      }
+      // Geldkoffer
+      g.save();
+      g.translate(300, 1560);
+      P(g, '#2b2b2b', 6, rr(-150, -110, 300, 190, 18));
+      P(g, '#3d9a50', 4, rr(-130, -150, 260, 60, 8));
+      for (let i = 0; i < 4; i++) P(g, '#58b368', 3, rr(-125 + i * 64, -165 - (i % 2) * 10, 58, 40, 4));
+      label(g, '€', 0, -10, 90, GOLD, { sw: 10 });
+      g.restore();
+      drawManager(g, 700, 1990, 860, { pose: 'open', mouth: mo, t });
       break;
     }
     case 'problem':
@@ -517,9 +646,8 @@ function drawScene(g, t, dur, c, mo) {
       break;
     }
     case 'final': {
-      cam(g, 540, 1150, lerp(0.95, 1.05, k));
-      land(g, t);
-      drawManager(g, 540, 1800, 480, { pose: 'open', mouth: mo, t });
+      cam(g, 540, lerp(980, 1040, k), lerp(0.95, 1.1, k));
+      drawPlotAerial(g, t, c, 1);
       break;
     }
     default: {
@@ -559,8 +687,25 @@ function overlays(g, t, dur, c) {
       simple('HERZLICH WILLKOMMEN!');
       break;
     case 'plot':
-      simple('RIESIGES GRUNDSTÜCK!');
+      simple('UNSER GRUNDSTÜCK VON OBEN!', DARK, GOLD, 1580);
       break;
+    case 'money': {
+      const a = popIn(t, 0.1, end);
+      if (a > 0) {
+        const n = Math.round(c.kasse * smooth(clamp((t - 0.3) / Math.max(0.8, end - 1.2))));
+        card(g, VW / 2, 440, 940, 260, DARK, a, -0.02);
+        label(g, 'TEAMKASSE:', 0, -70, 56, '#ffffff', { sw: 0 });
+        label(g, `${n.toLocaleString('de-DE')} €`, 0, 20, 110, GOLD, { sw: 0 });
+        g.restore();
+      }
+      const b = popIn(t, 1.0, end);
+      if (b > 0 && c.per) {
+        card(g, VW / 2, 650, 820, 110, '#3d9a50', b, 0.02);
+        label(g, `${c.per.toLocaleString('de-DE')} € PRO FOLLOWER`, 0, 2, 54, '#fff', { sw: 0 });
+        g.restore();
+      }
+      break;
+    }
     case 'problem':
       simple('KLEINES PROBLEM …', RED, '#fff');
       break;
@@ -721,7 +866,7 @@ function endCard(g, t, dur, c) {
   g.scale(s, s);
   label(g, 'WIR BAUEN EIN', 0, 300, 84, '#ffffff', { sw: 14 });
   label(g, 'LUXUS-RESORT', 0, 405, 110, GOLD, { sw: 16 });
-  const rows = [['KOMMENTIERE: WAS BAUEN WIR ZUERST?', GOLD], ['+ NAMEN FÜRS RESORT!', '#fff'], [`BESUCHER: ${c.followers}`, '#7ddc4a']];
+  const rows = [['KOMMENTIERE: WAS BAUEN WIR ZUERST?', GOLD], ['+ NAMEN FÜRS RESORT!', '#fff'], [`BESUCHER: ${c.followers}  ·  KASSE: ${fmtMoney(c.kasse)}`, '#7ddc4a']];
   rows.forEach(([x, col], i) => {
     P(g, '#000', 0, rr(-440, 520 + i * 135 + 10, 880, 108, 24));
     P(g, '#22203d', 6, rr(-440, 520 + i * 135, 880, 108, 24));
@@ -739,6 +884,11 @@ function endCard(g, t, dur, c) {
   label(g, '+ FOLGEN & EINCHECKEN', 0, 1, 52, '#ffffff', { sw: 0 });
   g.restore();
   g.restore();
+}
+function fmtMoney(v) {
+  if (v >= 1e6) return `${(v / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 1 })} MIO €`;
+  if (v >= 1000) return `${Math.round(v / 1000)}K €`;
+  return `${v} €`;
 }
 function drawResortTitle(g, W, t, hud, hide) {
   g.save();
@@ -760,6 +910,7 @@ function drawResortTitle(g, W, t, hud, hide) {
   } else if (!hide) {
     chip(g, 36, 150, 240, DARK, `FOLGE ${hud.folge}`, GOLD, 44);
     chip(g, VW - 336, 150, 300, '#2ec4b6', `BESUCHER: ${hud.visitors}`, '#fff', 38);
+    if (hud.kasse) chip(g, VW - 336, 230, 300, '#3d9a50', `KASSE: ${fmtMoney(hud.kasse)}`, '#fff', 38);
   }
   g.restore();
 }
@@ -801,6 +952,10 @@ function sfxFor(c) {
       break;
     case 'promise':
       add(0.2, 'chirp');
+      break;
+    case 'money':
+      for (let i = 0; i < 6; i++) add(0.3 + i * 0.25, 'ding');
+      add(1.8, 'cheer');
       break;
     case 'decide':
       add(0.02, 'whoosh');
