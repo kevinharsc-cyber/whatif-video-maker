@@ -26,15 +26,16 @@ const BUILD_WORDS = [
 export function pickResortShot(text, i, n) {
   const low = String(text || '').toLowerCase();
   if (i === n - 1) return 'final';
+  if (i === 0) return 'intro';
   if (OPTION_RE.test(text)) return 'option';
   if (/gar nichts|keine gebäude|nicht mal/.test(low)) return 'nothing';
   if (/ihr entscheidet|entscheidet über alles/.test(low)) return 'decide';
   if (/mitarbeiter|chefkoch|animateur|sicherheitschef|stellvertretend/.test(low)) return 'jobs';
   if (/name/.test(low) && /resort|kommentar/.test(low)) return 'name';
-  if (/kommentar|likes/.test(low)) return 'comment';
+  if (/kommentar|likes|stimmt ab|abstimm/.test(low)) return 'comment';
   if (/kasse|euro|€/.test(low) && /\d/.test(low)) return 'money';
-  if (/\d[\d.]*\s*follower\s*=/.test(low) || (/\d[\d.]*\s*follower/.test(low) && /besucher/.test(low))) return 'counter';
-  if (/follower/.test(low) && /besucher/.test(low)) return 'visitors';
+  if (/\d[\d.]*\s*follower\s*=/.test(low) || (/\d[\d.]*\s*follower/.test(low) && /besucher|gäste|gast/.test(low))) return 'counter';
+  if (/follower/.test(low) && /besucher|gast|gäste/.test(low)) return 'visitors';
   if (/schlafen|essen|spaß/.test(low)) return 'needs';
   if (/gar nichts|keine gebäude|nicht mal/.test(low)) return 'nothing';
   if (/weiß nicht|womit|anfangen|aber welches|welches hotel/.test(low)) return 'confused';
@@ -754,7 +755,7 @@ function drawScene(g, t, dur, c, mo) {
       drawTourists(g, c.kind === 'counter' ? Math.ceil(clamp((t - 0.3) / 1.6) * 30) : 30, t, { spread: 0.9 });
       if (c.kind === 'needs') {
         // Gedankenblasen: Bett, Essen, Spaß
-        ['BETT', 'ESSEN', 'SPASS'].forEach((w, i) => {
+        (/hotel/.test(c.low) ? ['BETT?', 'ZIMMER?', 'HOTEL!'] : ['BETT', 'ESSEN', 'SPASS']).forEach((w, i) => {
           const a = easeOutBack(clamp((t - 0.5 - i * 0.6) / 0.35));
           if (a <= 0) return;
           g.save();
@@ -861,7 +862,7 @@ function overlays(g, t, dur, c) {
   };
   switch (c.kind) {
     case 'intro':
-      simple('HERZLICH WILLKOMMEN!');
+      simple(/urlaub/.test(c.low) ? 'DU DARFST HIER URLAUB MACHEN!' : 'HERZLICH WILLKOMMEN!');
       break;
     case 'plot':
       simple(/\d/.test(c.low) ? 'PLATZ FÜR 20.000 BESUCHER!' : 'UNSER RIESEN-GRUNDSTÜCK!', DARK, GOLD, 1580);
@@ -906,7 +907,7 @@ function overlays(g, t, dur, c) {
       break;
     }
     case 'visitors':
-      simple('1 FOLLOWER = 1 BESUCHER!');
+      simple(/gast|gäste/.test(c.low) ? '1 FOLLOWER = 1 GAST!' : '1 FOLLOWER = 1 BESUCHER!');
       break;
     case 'counter': {
       const a = popIn(t, 0.1, end);
@@ -916,13 +917,13 @@ function overlays(g, t, dur, c) {
         const n = Math.round(top * smooth(clamp((t - 0.2) / Math.max(0.8, end - 0.6))));
         card(g, VW / 2, 430, 900, 240, DARK, a, -0.02);
         label(g, `${n.toLocaleString('de-DE')} FOLLOWER =`, 0, -46, 76, '#fff', { sw: 0 });
-        label(g, `${n.toLocaleString('de-DE')} BESUCHER!`, 0, 50, 84, GOLD, { sw: 0 });
+        label(g, `${n.toLocaleString('de-DE')} ${/gäste|gast/.test(c.low) ? 'GÄSTE' : 'BESUCHER'}!`, 0, 50, 84, GOLD, { sw: 0 });
         g.restore();
       }
       break;
     }
     case 'needs':
-      simple('SCHLAFEN · ESSEN · SPASS');
+      simple(/hotel/.test(c.low) ? 'ALS ERSTES: EIN HOTEL!' : 'SCHLAFEN · ESSEN · SPASS');
       break;
     case 'option': {
       const o = c.option;
@@ -950,7 +951,7 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.1, end);
       if (a > 0) {
         card(g, VW / 2, 380, 920, 150, GOLD, a, -0.02);
-        label(g, c.kind === 'name' ? 'WIE HEISST UNSER RESORT?' : c.options.length >= 2 ? `SCHREIB ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}!` : 'MEISTE LIKES ENTSCHEIDET!', 0, 4, 62, DARK, { sw: 0 });
+        label(g, c.kind === 'name' ? 'WIE HEISST UNSER RESORT?' : c.options.length >= 2 ? `STIMMT AB: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}?` : 'MEISTE LIKES ENTSCHEIDET!', 0, 4, 62, DARK, { sw: 0 });
         g.restore();
       }
       const list = c.kind === 'name'
@@ -987,7 +988,7 @@ function overlays(g, t, dur, c) {
       simple('IHR ENTSCHEIDET ÜBER ALLES!', DARK, GOLD);
       break;
     case 'final':
-      simple('WILLKOMMEN IN UNSEREM RESORT!', DARK, GOLD);
+      simple(/urlaub/.test(c.low) ? 'DEIN URLAUB IST GEBUCHT!' : 'WILLKOMMEN IN UNSEREM RESORT!', DARK, GOLD);
       endCard(g, t, dur, c);
       break;
     default:
@@ -1052,15 +1053,15 @@ function endCard(g, t, dur, c) {
   g.scale(s, s);
   label(g, 'WIR BAUEN EIN', 0, 300, 84, '#ffffff', { sw: 14 });
   label(g, 'LUXUS-RESORT', 0, 405, 110, GOLD, { sw: 16 });
-  const rows = [[c.options.length >= 2 ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: WAS BAUEN WIR ZUERST?', GOLD], ['+ NAMEN FÜRS RESORT!', '#fff'], [`BESUCHER: ${c.followers}  ·  KASSE: ${fmtMoney(c.kasse)}`, '#7ddc4a']];
+  const rows = [[c.options.length >= 2 ? `STIMM AB: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: WAS BAUEN WIR ZUERST?', GOLD], ['+ NAMEN FÜRS RESORT!', '#fff'], [`GÄSTE: ${c.followers}  ·  KASSE: ${fmtMoney(c.kasse)}`, '#7ddc4a']];
   rows.forEach(([x, col], i) => {
     P(g, '#000', 0, rr(-440, 520 + i * 135 + 10, 880, 108, 24));
     P(g, '#22203d', 6, rr(-440, 520 + i * 135, 880, 108, 24));
     g.font = '50px "Lilita One", sans-serif';
     label(g, x, 0, 575 + i * 135, Math.min(50, (50 * 820) / g.measureText(x).width), col, { sw: 0 });
   });
-  label(g, 'JEDER FOLLOWER =', 0, 990, 62, '#ffffff', { sw: 10 });
-  label(g, 'EIN BESUCHER', 0, 1070, 74, GOLD, { sw: 12 });
+  label(g, 'FOLGEN =', 0, 990, 62, '#ffffff', { sw: 10 });
+  label(g, 'DEIN URLAUB IM RESORT!', 0, 1070, 74, GOLD, { sw: 12 });
   const pk = 1 + 0.04 * Math.sin(t * 8);
   g.save();
   g.translate(0, 1580);
@@ -1088,14 +1089,15 @@ function drawResortTitle(g, W, t, hud, hide) {
       g.rotate(-0.04);
       label(g, `FOLGE ${hud.folge}`, 0, 0, 150, GOLD, { sw: 24 });
       g.restore();
-      card(g, VW / 2, 560, 960, 220, DARK, a, 0.02);
-      label(g, 'WIR BAUEN EIN', 0, -46, 76, '#ffffff', { sw: 0 });
-      label(g, 'LUXUS-RESORT!', 0, 48, 92, GOLD, { sw: 0 });
+      card(g, VW / 2, 590, 960, 290, DARK, a, 0.02);
+      label(g, 'WIR ERÖFFNEN EIN', 0, -80, 76, '#ffffff', { sw: 0 });
+      label(g, 'LUXUS-RESORT!', 0, 12, 92, GOLD, { sw: 0 });
+      label(g, '…UND DU MACHST HIER URLAUB!', 0, 96, 50, '#7ddc4a', { sw: 0 });
       g.restore();
     }
   } else if (!hide) {
     chip(g, 36, 150, 240, DARK, `FOLGE ${hud.folge}`, GOLD, 44);
-    chip(g, VW - 336, 150, 300, '#2ec4b6', `BESUCHER: ${hud.visitors}`, '#fff', 38);
+    chip(g, VW - 336, 150, 300, '#2ec4b6', `GÄSTE: ${hud.visitors}`, '#fff', 38);
     if (hud.kasse) chip(g, VW - 336, 230, 300, '#3d9a50', `KASSE: ${fmtMoney(hud.kasse)}`, '#fff', 38);
   }
   g.restore();
