@@ -78,7 +78,7 @@ export async function synthesize(ctx, scenes, settings, onProgress, log) {
   // Lange Skripte + Gemini-Schlüssel: Gemini-Stimme nehmen. Die kostenlose Piper-
   // Stimme läuft auf dem iPhone und braucht dort sehr viel Arbeitsspeicher.
   if (settings.geminiKey && scenes.length > 12 && settings.autoGeminiVoice !== false) {
-    const auto = settings.visualMode === 'zombie' ? 'Puck' : settings.visualMode === 'verein' ? 'Achird' : 'Charon';
+    const auto = ['zombie', 'resort'].includes(settings.visualMode) ? 'Puck' : settings.visualMode === 'verein' ? 'Achird' : 'Charon';
     try {
       log(`Langes Skript: nutze die Gemini-Stimme „${auto}“ (braucht auf dem iPhone kaum Speicher) …`);
       return await withInfo(geminiTTS(ctx, scenes, settings, auto, onProgress), `Gemini „${auto}“`);
@@ -421,6 +421,14 @@ export function speakInstruction(settings) {
       'der seinen Zuschauern locker und natürlich von seinem kleinen Fußballverein erzählt – mit einem Lächeln in der Stimme. ' +
       `${fast ? 'Flüssiges, eher zügiges' : 'Flüssiges, natürliches'} Tempo. Nicht übertrieben, nicht aufgeregt, nicht dramatisch, nicht düster. ` +
       'Mache nur kurze Pausen:'
+    );
+  }
+  if (settings.visualMode === 'resort') {
+    return (
+      'Sprich den folgenden deutschen Text wie ein charismatischer, gut gelaunter Resort-Manager, der seine Zuschauer begeistert ' +
+      'in sein Luxus-Resort einlädt: energiegeladen, selbstbewusst, mit einem Lächeln in der Stimme und echter Vorfreude. ' +
+      'Sprich die Zuschauer direkt an (DU), betone Zahlen, Geldbeträge und Wörter in Großbuchstaben kräftig. ' +
+      `${fast ? 'Schnelles, mitreißendes' : 'Zügiges, mitreißendes'} Tempo, kaum Pausen:`
     );
   }
   if (settings.visualMode === 'zombie') {
