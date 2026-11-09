@@ -262,7 +262,7 @@ function grad(g, key, make) {
   if (!m.has(key)) m.set(key, make());
   return m.get(key);
 }
-function palm(g, x, y, h, t, lean = 1) {
+export function palm(g, x, y, h, t, lean = 1) {
   g.save();
   g.translate(x, y);
   const sway = Math.sin(t * 1.3 + x) * 0.04;
