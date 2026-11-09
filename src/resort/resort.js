@@ -26,6 +26,7 @@ const BUILD_WORDS = [
 export function pickResortShot(text, i, n) {
   const low = String(text || '').toLowerCase();
   if (i === n - 1) return 'final';
+  if (i === 0 && /kasse|euro|€/.test(low) && /\d/.test(low)) return 'money';
   if (i === 0) return 'intro';
   if (OPTION_RE.test(text)) return 'option';
   if (/gar nichts|keine gebäude|nicht mal/.test(low)) return 'nothing';
@@ -38,7 +39,7 @@ export function pickResortShot(text, i, n) {
   if (/follower/.test(low) && /besucher|gast|gäste/.test(low)) return 'visitors';
   if (/schlafen|essen|spaß/.test(low)) return 'needs';
   if (/gar nichts|keine gebäude|nicht mal/.test(low)) return 'nothing';
-  if (/weiß nicht|womit|anfangen|aber welches|welches hotel/.test(low)) return 'confused';
+  if (/weiß nicht|womit|anfangen|welches/.test(low)) return 'confused';
   if (/problem/.test(low)) return 'problem';
   if (/grundstück/.test(low) && /gekauft|riesig/.test(low)) return 'plot';
   if (/ich sage euch|luxuriöseste|machen/.test(low)) return 'promise';
@@ -847,9 +848,9 @@ const JOBS = [
 ];
 function overlays(g, t, dur, c) {
   if (c.i === 0) {
-    if (t < 3.5) return;
-    t -= 3.5;
-    dur = Math.max(0.6, dur - 3.5);
+    if (t < 2.4) return;
+    t -= 2.4;
+    dur = Math.max(0.6, dur - 2.4);
   }
   const end = dur - 0.15;
   const simple = (txt, fill = DARK, col = GOLD, y = 400) => {
@@ -1051,7 +1052,7 @@ function endCard(g, t, dur, c) {
   g.save();
   g.translate(VW / 2, 0);
   g.scale(s, s);
-  label(g, 'WIR BAUEN EIN', 0, 300, 84, '#ffffff', { sw: 14 });
+  label(g, 'WIR ERÖFFNEN EIN', 0, 300, 84, '#ffffff', { sw: 14 });
   label(g, 'LUXUS-RESORT', 0, 405, 110, GOLD, { sw: 16 });
   const rows = [[c.options.length >= 2 ? `STIMM AB: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: WAS BAUEN WIR ZUERST?', GOLD], ['+ NAMEN FÜRS RESORT!', '#fff'], [`GÄSTE: ${c.followers}  ·  KASSE: ${fmtMoney(c.kasse)}`, '#7ddc4a']];
   rows.forEach(([x, col], i) => {
@@ -1080,8 +1081,8 @@ function fmtMoney(v) {
 function drawResortTitle(g, W, t, hud, hide) {
   g.save();
   g.scale(W / VW, W / VW);
-  if (t < 3.4) {
-    const a = popIn(t, 0.35, 3.3, 0.35);
+  if (t < 2.4) {
+    const a = popIn(t, 0.1, 2.3, 0.25);
     if (a > 0) {
       g.save();
       g.translate(VW / 2, 330);
