@@ -467,6 +467,13 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
       q.closePath();
     });
     g.restore();
+  } else if (w === 'suitcase') {
+    // Rollkoffer neben der Hand
+    P(g, '#3a86ff', lw, rr(18, -30, 16, 22, 3));
+    line(g, [[22, -30], [22, -40], [30, -40], [30, -30]], 1.6, '#555');
+    P(g, '#222', 0, ell(21, -7, 2.2, 2.2));
+    P(g, '#222', 0, ell(31, -7, 2.2, 2.2));
+    P(g, '#ffd23f', 0, rr(18, -21, 16, 3, 1));
   } else if (w === 'sniper') {
     // Scharfschützengewehr mit Zielfernrohr
     g.save();
@@ -553,6 +560,7 @@ const Z_poly = (pts) => (q) => {
 // Waffe aus dem Kommentar → gezeichnete Waffe
 export function weaponKind(text = '') {
   const w = String(text).toLowerCase();
+  if (/koffer|gepäck|urlaub|tourist/.test(w)) return 'suitcase';
   if (/sniper|scharfschütze|zielfernrohr/.test(w)) return 'sniper';
   if (/sheriff|holster/.test(w)) return 'holster';
   if (/schmied|hammer/.test(w)) return 'hammer';
