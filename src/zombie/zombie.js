@@ -313,12 +313,14 @@ function drawScene(g, t, dur, c, mo) {
     case 'tower': {
       // Aussichtsturm: beim Bau aus der Vogelperspektive, sonst Nahaufnahme oben
       if (c.tower === 'build') {
-        cam(g, lerp(620, 800, smooth(k)), lerp(900, 600, smooth(k)), lerp(0.92, 1.25, smooth(k)), 0, t);
+        cam(g, lerp(620, 850, smooth(k)), lerp(900, 560, smooth(k)), lerp(0.92, 1.25, smooth(k)), 0, t);
         drawAerial(g, t, c, { sign: c.campName, towerK: smooth(clamp((t - 0.3) / 1.6)) });
       } else {
         const [tx, ty] = aproj(TOWER[0], TOWER[1]);
-        if (c.k % 2) cam(g, tx - 60, ty - 330, lerp(1.5, 1.35, k), 0, t);
-        else cam(g, tx, ty - 430, lerp(1.9, 2.1, k), 0, t);
+        // nicht über den Bildrand des Lagers hinaus schauen
+        const zz = c.k % 2 ? lerp(1.5, 1.35, k) : lerp(1.9, 2.1, k);
+        const cx = Math.min(c.k % 2 ? tx - 60 : tx, VW - 540 / zz);
+        cam(g, cx, ty - (c.k % 2 ? 330 : 430), zz, 0, t);
         drawAerial(g, t, c, { sign: c.campName });
       }
       break;
@@ -591,7 +593,7 @@ function aproj(X, Z) {
 const FENCE = { x0: 120, x1: 960, z0: 160, z1: 880 };
 const TENTS = [[250, 300, '#ff9f1c'], [830, 300, '#2ec4b6'], [210, 590, '#e71d36'], [870, 610, '#9b5de5'], [300, 790, '#3a86ff'], [780, 800, '#fee440']];
 const FIRE = [540, 580];
-const TOWER = [905, 215];
+const TOWER = [958, 162];
 const AER_CACHE = new WeakMap();
 function aerialPeople(n, tower = false) {
   const pts = [];
