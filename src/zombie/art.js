@@ -467,6 +467,19 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
       q.closePath();
     });
     g.restore();
+  } else if (w === 'sniper') {
+    // Scharfschützengewehr mit Zielfernrohr
+    g.save();
+    g.translate(12, -40);
+    g.rotate(-0.12);
+    P(g, '#4a5a3a', lw, Z_poly([[-16, -2], [4, -3], [4, 3], [-14, 7]]));
+    P(g, '#2f3540', lw, rr(2, -3, 44, 5, 1.5));
+    P(g, '#2b2f35', lw, rr(44, -2, 14, 3, 1));
+    P(g, '#1f2328', lw, rr(10, -10, 18, 6, 3));
+    P(g, '#7ec8ff', 0, ell(27, -7, 1.6, 2.2));
+    line(g, [[30, 2], [26, 12]], 1.4, '#2f3540');
+    line(g, [[30, 2], [34, 12]], 1.4, '#2f3540');
+    g.restore();
   } else if (w === 'hammer') {
     g.save();
     g.translate(20, -36);
@@ -540,6 +553,7 @@ const Z_poly = (pts) => (q) => {
 // Waffe aus dem Kommentar → gezeichnete Waffe
 export function weaponKind(text = '') {
   const w = String(text).toLowerCase();
+  if (/sniper|scharfschütze|zielfernrohr/.test(w)) return 'sniper';
   if (/sheriff|holster/.test(w)) return 'holster';
   if (/schmied|hammer/.test(w)) return 'hammer';
   if (/panzer|tank/.test(w)) return 'tank';
