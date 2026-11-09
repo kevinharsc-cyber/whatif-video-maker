@@ -14,6 +14,9 @@ export const prepareResort = () => prepareVerein();
 // ------------------------------------------------------- Stichwörter ---
 const OPTION_RE = /^\s*(?:option\s*)?([a-e1-5])\s*[:)]\s*(.+)$/i;
 const BUILD_WORDS = [
+  ['tower', /hochhaus|wolkenkratzer|turm-?hotel/],
+  ['corner', /eckgebäude|eck-?hotel|l-form/],
+  ['shape', /formgebäude|form-?hotel|fischform|in form/],
   ['hotel', /hotel/],
   ['waterpark', /wasserpark|rutsche/],
   ['villa', /villa/],
@@ -34,7 +37,7 @@ export function pickResortShot(text, i, n) {
   if (/follower/.test(low) && /besucher/.test(low)) return 'visitors';
   if (/schlafen|essen|spaß/.test(low)) return 'needs';
   if (/gar nichts|keine gebäude|nicht mal/.test(low)) return 'nothing';
-  if (/weiß nicht|womit|anfangen/.test(low)) return 'confused';
+  if (/weiß nicht|womit|anfangen|aber welches|welches hotel/.test(low)) return 'confused';
   if (/problem/.test(low)) return 'problem';
   if (/grundstück/.test(low) && /gekauft|riesig/.test(low)) return 'plot';
   if (/ich sage euch|luxuriöseste|machen/.test(low)) return 'promise';
@@ -49,7 +52,7 @@ function optionOf(text) {
   const low = m[2].toLowerCase();
   const b = BUILD_WORDS.find(([, re]) => re.test(low));
   const build = b ? b[0] : null;
-  const name = { hotel: '5-STERNE-HOTEL', waterpark: 'WASSERPARK', villa: 'VIP-VILLA', pool: 'RIESEN-POOL', restaurant: 'RESTAURANT' }[build] || m[2].replace(/[.!?]+$/, '').toUpperCase().slice(0, 22);
+  const name = { tower: 'HOCHHAUS-HOTEL', corner: 'ECKGEBÄUDE (L-FORM)', shape: 'FORMGEBÄUDE', hotel: '5-STERNE-HOTEL', waterpark: 'WASSERPARK', villa: 'VIP-VILLA', pool: 'RIESEN-POOL', restaurant: 'RESTAURANT' }[build] || m[2].replace(/[.!?]+$/, '').toUpperCase().slice(0, 22);
   return { letter, build, name };
 }
 
@@ -514,6 +517,165 @@ function drawPlotAerial(g, t, c, cheer) {
   drawManager(g, mx, my - (cheer ? Math.abs(Math.sin(t * 5)) * 8 : 0), 140 * ms, { pose: cheer ? 'open' : 'clip', mouth: 0, t });
 }
 
+// ------------------------------------------- Riesige Resort-Fläche ---
+// Boden in "Metern": X -2000…3080, Z 0 (Strand) … 3000 (vorne). Kamera hoch über der Fläche.
+function bproj(X, Zz) {
+  const s = 0.2 + (0.12 * Zz) / 3000;
+  return [540 + (X - 540) * s, 520 + Zz * 0.42 * (0.86 + (0.2 * Zz) / 3000), s];
+}
+const BIG = { x0: -1700, x1: 2780, z0: 140, z1: 2950 };
+const BIGC = new WeakMap();
+function buildBig(c, scale) {
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(VW * scale);
+  cv.height = Math.ceil(1920 * scale);
+  const q = cv.getContext('2d');
+  q.scale(scale, scale);
+  q.fillStyle = '#9fdcff';
+  q.fillRect(0, 0, VW, 330);
+  q.fillStyle = SEA;
+  q.fillRect(0, 330, VW, 170);
+  q.fillStyle = '#f4dca0';
+  q.fillRect(0, 490, VW, 40);
+  q.fillStyle = '#8cd06a';
+  q.fillRect(0, 525, VW, 1400);
+  const f = BIG;
+  const cs = [bproj(f.x0, f.z0), bproj(f.x1, f.z0), bproj(f.x1, f.z1), bproj(f.x0, f.z1)];
+  P(q, '#a6e07f', 0, poly(cs.map(([x, y]) => [x, y])));
+  // Rasterlinien (Bauplan) über die ganze Fläche
+  for (let X = f.x0; X <= f.x1; X += 400) line(q, [bproj(X, f.z0), bproj(X, f.z1)].map(([x, y]) => [x, y]), 1.5, 'rgba(255,255,255,0.45)');
+  for (let Zz = f.z0; Zz <= f.z1; Zz += 300) line(q, [bproj(f.x0, Zz), bproj(f.x1, Zz)].map(([x, y]) => [x, y]), 1.5, 'rgba(255,255,255,0.45)');
+  const edge = (a, b) => {
+    const n = Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) / 160);
+    const pts = [];
+    for (let i = 0; i <= n; i++) pts.push(bproj(lerp(a[0], b[0], i / n), lerp(a[1], b[1], i / n)));
+    line(q, pts.map(([x, y, s]) => [x, y - 90 * s]), 2.5, RED);
+    for (const [x, y, s] of pts) P(q, '#c8955c', 1.5, rr(x - 10 * s, y - 110 * s, 20 * s, 112 * s, 2));
+  };
+  edge([f.x0, f.z0], [f.x1, f.z0]);
+  edge([f.x0, f.z0], [f.x0, f.z1]);
+  edge([f.x1, f.z0], [f.x1, f.z1]);
+  // Palmenreihe am Strand
+  for (let i = 0; i < 16; i++) {
+    const [x, y, s] = bproj(-2100 + i * 360, 40);
+    palm(q, x, y, 600 * s, 0.5, i % 2 ? 1 : -1);
+  }
+  // Besucher (Follower) – winzig auf der riesigen Fläche
+  const n = c.kind === 'plot' || c.kind === 'option' ? 0 : Math.min(400, c.followers || 0);
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    const X = 200 + ((i * 7919) % 700);
+    const Zz = 1700 + ((i * 104729) % 900);
+    const o = Z.makeAlly(`Gast${i}`, i % 3 ? 'Koffer' : '');
+    items.push([Zz, () => { const [x, y, s] = bproj(X, Zz); Z.drawSurv(q, x, y, 230 * s, o, i * 0.4); }]);
+  }
+  items.sort((a, b) => a[0] - b[0]).forEach(([, fn]) => fn());
+  edge([f.x0, f.z1], [f.x1, f.z1]);
+  return cv;
+}
+function drawBig(g, t, c) {
+  const m = g.getTransform();
+  const scale = Math.min(2.2, Math.max(0.6, Math.round(Math.hypot(m.a, m.b) * 1.2 * 4) / 4));
+  let hit = BIGC.get(c);
+  if (!hit || hit.scale !== scale) BIGC.set(c, (hit = { scale, cv: buildBig(c, scale) }));
+  g.fillStyle = '#9fdcff';
+  g.fillRect(-900, -900, 2900, 1300);
+  g.fillStyle = '#8cd06a';
+  g.fillRect(-900, 400, 2900, 2600);
+  g.drawImage(hit.cv, 0, 0, VW, 1920);
+  for (let i = 0; i < 10; i++) {
+    const x = ((i * 130 + t * 40) % 1200) - 60;
+    line(g, [[x, 360 + (i % 3) * 45], [x + 50, 354 + (i % 3) * 45]], 4, '#bff4ff');
+  }
+}
+// Gebäude aus einem Grundriss hochziehen (Wände von hinten nach vorne, dann Dach)
+function extrude(g, foot, h, { wall = '#f4f1e6', roof = '#d9d4c7', glass = '#7ec8ff', floors = 0 } = {}) {
+  if (h <= 1) return;
+  const base = foot.map(([X, Zz]) => bproj(X, Zz));
+  const top = base.map(([x, y, s]) => [x, y - h * s * 1.6]);
+  // Schatten auf dem Boden
+  g.save();
+  g.globalAlpha = 0.18;
+  P(g, '#000', 0, poly(base.map(([x, y]) => [x + 14, y + 6])));
+  g.restore();
+  const walls = foot.map((p, i) => {
+    const j = (i + 1) % foot.length;
+    return { i, j, z: (foot[i][1] + foot[j][1]) / 2 };
+  });
+  walls.sort((a, b) => a.z - b.z);
+  const nf = floors || Math.max(2, Math.round(h / 90));
+  for (const { i, j } of walls) {
+    const dx = foot[j][0] - foot[i][0];
+    const dz = foot[j][1] - foot[i][1];
+    const lit = dz > 0 ? 0.84 : dx < 0 ? 0.92 : 1;
+    const q = [base[i], base[j], top[j], top[i]];
+    P(g, lit < 1 ? shadeK(wall, lit) : wall, 2.5, poly(q.map(([x, y]) => [x, y])));
+    // Fenster-Raster
+    const len = Math.hypot(dx, dz);
+    const nw = Math.max(1, Math.round(len / 140));
+    for (let f = 0; f < nf; f++) {
+      for (let w = 0; w < nw; w++) {
+        const u0 = (w + 0.25) / nw;
+        const u1 = (w + 0.75) / nw;
+        const v0 = (f + 0.3) / nf;
+        const v1 = (f + 0.75) / nf;
+        const pt = (u, v) => [lerp(lerp(base[i][0], base[j][0], u), lerp(top[i][0], top[j][0], u), v), lerp(lerp(base[i][1], base[j][1], u), lerp(top[i][1], top[j][1], u), v)];
+        P(g, glass, 0, poly([pt(u0, v0), pt(u1, v0), pt(u1, v1), pt(u0, v1)]));
+      }
+    }
+  }
+  P(g, roof, 3, poly(top));
+}
+function shadeK(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (v) => Math.max(0, Math.round(v * k));
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+function shade(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = (v) => Math.max(0, Math.round(v * 0.82));
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+const SHAPES = (() => {
+  const C = [540, 1500];
+  const circ = (rx, rz, n, a0 = 0) => Array.from({ length: n }, (_, i) => [C[0] + Math.cos(a0 + (i / n) * Math.PI * 2) * rx, C[1] + Math.sin(a0 + (i / n) * Math.PI * 2) * rz]);
+  const fishFull = [[C[0] + 640, C[1]], [C[0] + 420, C[1] - 260], [C[0] + 60, C[1] - 330], [C[0] - 320, C[1] - 260], [C[0] - 560, C[1] - 60], [C[0] - 900, C[1] - 330], [C[0] - 800, C[1]], [C[0] - 900, C[1] + 330], [C[0] - 560, C[1] + 60], [C[0] - 320, C[1] + 260], [C[0] + 60, C[1] + 330], [C[0] + 420, C[1] + 260]];
+  const U = [[C[0] - 700, C[1] - 500], [C[0] - 380, C[1] - 500], [C[0] - 380, C[1] + 150], [C[0] + 380, C[1] + 150], [C[0] + 380, C[1] - 500], [C[0] + 700, C[1] - 500], [C[0] + 700, C[1] + 480], [C[0] - 700, C[1] + 480]];
+  const star = Array.from({ length: 10 }, (_, i) => {
+    const r = i % 2 ? 300 : 700;
+    const a = -Math.PI / 2 + (i / 10) * Math.PI * 2;
+    return [C[0] + Math.cos(a) * r, C[1] + Math.sin(a) * r * 0.9];
+  });
+  const heart = Array.from({ length: 28 }, (_, i) => {
+    const a = (i / 28) * Math.PI * 2;
+    const x = 16 * Math.sin(a) ** 3;
+    const z = -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a));
+    return [C[0] + x * 42, C[1] + z * 40];
+  });
+  const wave = [];
+  for (let i = 0; i <= 12; i++) wave.push([C[0] - 900 + i * 150, C[1] - 160 + Math.sin(i * 0.9) * 260]);
+  for (let i = 12; i >= 0; i--) wave.push([C[0] - 900 + i * 150, C[1] + 160 + Math.sin(i * 0.9) * 260]);
+  return [['FISCH', fishFull], ['U-FORM', U], ['STERN', star], ['HERZ', heart], ['WELLE', wave], ['RING', circ(700, 560, 24)]];
+})();
+const TOWER_FOOT = [[220, 1250], [860, 1250], [860, 1750], [220, 1750]];
+const CORNER_FOOT = [[-500, 900], [1500, 900], [1500, 1400], [100, 1400], [100, 2300], [-500, 2300]];
+function drawHotelBuild(g, t, c) {
+  const b = c.option?.build;
+  const grow = easeOutBack(clamp((t - 0.3) / 0.9));
+  if (b === 'tower') extrude(g, TOWER_FOOT, 1250 * grow, { wall: '#e8eef5', roof: '#9aa7b8', floors: 16 });
+  else if (b === 'corner') extrude(g, CORNER_FOOT, 420 * grow, { wall: '#fff1d6', roof: '#e07a5f', floors: 5 });
+  else if (b === 'shape') {
+    const idx = Math.floor(Math.max(0, t - 0.3) / 0.9) % SHAPES.length;
+    const local = (Math.max(0, t - 0.3) % 0.9) / 0.9;
+    const pop = easeOutBack(clamp(local / 0.35));
+    const cols = ['#ffd6e0', '#d6f0ff', '#fff3c4', '#ffd6d6', '#d6ffe4', '#eadcff'];
+    extrude(g, SHAPES[idx][1], 300 * pop, { wall: cols[idx], roof: shade(cols[idx]), floors: 3 });
+  }
+}
+function shapeName(t) {
+  return SHAPES[Math.floor(Math.max(0, t - 0.3) / 0.9) % SHAPES.length][0];
+}
+
 // ----------------------------------------------------------- Szenen ---
 function drawScene(g, t, dur, c, mo) {
   const k = clamp(t / dur);
@@ -529,8 +691,12 @@ function drawScene(g, t, dur, c, mo) {
     }
     case 'plot': {
       // Grundstück von oben: Kamera fährt zurück und zeigt die ganze Fläche
-      cam(g, 540, lerp(1050, 960, smooth(k)), lerp(1.25, 0.92, smooth(k)));
-      drawPlotAerial(g, t, c, 0);
+      cam(g, 540, lerp(1050, 960, smooth(k)), lerp(1.6, 0.95, smooth(k)));
+      drawBig(g, t, c);
+      {
+        const [mx, my, ms] = bproj(540, 1500);
+        drawManager(g, mx, my, 330 * ms, { pose: 'open', mouth: 0, t });
+      }
       break;
     }
     case 'money': {
@@ -605,6 +771,13 @@ function drawScene(g, t, dur, c, mo) {
       break;
     }
     case 'option': {
+      if (['tower', 'corner', 'shape'].includes(c.option?.build)) {
+        // Hotel-Art wird auf der riesigen Fläche von oben gebaut
+        cam(g, 540, lerp(980, 940, k), lerp(1.05, 1.0, k));
+        drawBig(g, t, c);
+        drawHotelBuild(g, t, c);
+        break;
+      }
       cam(g, 540, 1250, 0.95);
       land(g, t, { sold: false });
       const a = easeOutBack(clamp((t - 0.2) / 0.5));
@@ -646,8 +819,12 @@ function drawScene(g, t, dur, c, mo) {
       break;
     }
     case 'final': {
-      cam(g, 540, lerp(980, 1040, k), lerp(0.95, 1.1, k));
-      drawPlotAerial(g, t, c, 1);
+      cam(g, 540, lerp(1000, 1200, k), lerp(0.95, 1.4, k));
+      drawBig(g, t, c);
+      {
+        const [mx, my, ms] = bproj(540, 1550);
+        drawManager(g, mx, my - Math.abs(Math.sin(t * 5)) * 6, 330 * ms, { pose: 'open', mouth: 0, t });
+      }
       break;
     }
     default: {
@@ -687,7 +864,7 @@ function overlays(g, t, dur, c) {
       simple('HERZLICH WILLKOMMEN!');
       break;
     case 'plot':
-      simple('UNSER GRUNDSTÜCK VON OBEN!', DARK, GOLD, 1580);
+      simple(/\d/.test(c.low) ? 'PLATZ FÜR 20.000 BESUCHER!' : 'UNSER RIESEN-GRUNDSTÜCK!', DARK, GOLD, 1580);
       break;
     case 'money': {
       const a = popIn(t, 0.1, end);
@@ -759,6 +936,13 @@ function overlays(g, t, dur, c) {
         label(g, o.name, 70, 4, Math.min(70, (70 * 680) / g.measureText(o.name).width), c.optIndex === 0 ? DARK : '#fff', { sw: 0 });
         g.restore();
       }
+      if (o?.build === 'shape' && t > 0.3) {
+        const nm = `${shapeName(t)}?`;
+        const b2 = easeOutBack(clamp(((t - 0.3) % 0.9) / 0.25));
+        card(g, VW / 2, 600, 520, 110, '#fff', b2, 0.03);
+        label(g, nm, 0, 2, 64, DARK, { sw: 0 });
+        g.restore();
+      }
       break;
     }
     case 'comment':
@@ -766,12 +950,14 @@ function overlays(g, t, dur, c) {
       const a = popIn(t, 0.1, end);
       if (a > 0) {
         card(g, VW / 2, 380, 920, 150, GOLD, a, -0.02);
-        label(g, c.kind === 'name' ? 'WIE HEISST UNSER RESORT?' : 'MEISTE LIKES ENTSCHEIDET!', 0, 4, 62, DARK, { sw: 0 });
+        label(g, c.kind === 'name' ? 'WIE HEISST UNSER RESORT?' : c.options.length >= 2 ? `SCHREIB ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}!` : 'MEISTE LIKES ENTSCHEIDET!', 0, 4, 62, DARK, { sw: 0 });
         g.restore();
       }
       const list = c.kind === 'name'
         ? [['Lena', 'Palm Paradise Resort!', '#3a86ff', '402'], ['Max', 'Golden Beach Club', '#43aa8b', '276'], ['Tobi', 'Resort de Luxe', '#9b5de5', '188']]
-        : [['Lena', 'Wasserpark zuerst!!', '#3a86ff', '356'], ['Max', 'Pool, ganz klar', '#43aa8b', '241'], ['Tobi', 'Das 5-Sterne-Hotel', '#9b5de5', '178']];
+        : c.options.some((o) => ['tower', 'corner', 'shape'].includes(o.build))
+          ? [['Lena', 'A!! Hochhaus bis in die Wolken', '#3a86ff', '356'], ['Max', 'C – als Fisch, bitte!', '#43aa8b', '241'], ['Tobi', 'B, die L-Form sieht edel aus', '#9b5de5', '178']]
+          : [['Lena', 'Wasserpark zuerst!!', '#3a86ff', '356'], ['Max', 'Pool, ganz klar', '#43aa8b', '241'], ['Tobi', 'Das 5-Sterne-Hotel', '#9b5de5', '178']];
       commentPanel(g, t, list);
       break;
     }
@@ -866,7 +1052,7 @@ function endCard(g, t, dur, c) {
   g.scale(s, s);
   label(g, 'WIR BAUEN EIN', 0, 300, 84, '#ffffff', { sw: 14 });
   label(g, 'LUXUS-RESORT', 0, 405, 110, GOLD, { sw: 16 });
-  const rows = [['KOMMENTIERE: WAS BAUEN WIR ZUERST?', GOLD], ['+ NAMEN FÜRS RESORT!', '#fff'], [`BESUCHER: ${c.followers}  ·  KASSE: ${fmtMoney(c.kasse)}`, '#7ddc4a']];
+  const rows = [[c.options.length >= 2 ? `KOMMENTIERE: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: WAS BAUEN WIR ZUERST?', GOLD], ['+ NAMEN FÜRS RESORT!', '#fff'], [`BESUCHER: ${c.followers}  ·  KASSE: ${fmtMoney(c.kasse)}`, '#7ddc4a']];
   rows.forEach(([x, col], i) => {
     P(g, '#000', 0, rr(-440, 520 + i * 135 + 10, 880, 108, 24));
     P(g, '#22203d', 6, rr(-440, 520 + i * 135, 880, 108, 24));
