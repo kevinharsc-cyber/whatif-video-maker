@@ -1,7 +1,7 @@
 // OMA vs ZOMBIES – Spielregeln: Omas, Zombies, Karten, Wellen
 
 // --------------------------------------------------------------- Omas ---
-// base = Werte auf Stufe 1, ups = 2 Upgrades (überschreiben Werte); unlock = Level auf Karte 1
+// base = Werte auf Stufe 1, ups = 2 Upgrades (überschreiben Werte); unlock = ab dieser Welle auf Karte 1 (auf Karte 2/3 sofort)
 export const OMA_DEF = {
   hilde: {
     cost: 100, unlock: 1, desc: 'wirft Stricknadeln',
@@ -39,8 +39,7 @@ export const ZOMBIE_DEF = {
   boss: { model: 'boss', hp: 200, speed: 0.6, reward: 120, lives: 8, size: 1.7, hpY: 1.9, boss: true },
 };
 export const LIVES = 30;
-export const LEVELS_PER_MAP = 60;
-export const UNLOCK_NEXT_MAP = 20; // nach so vielen Leveln wird die nächste Karte frei
+export const WAVES = 60; // jede Karte = 60 Wellen am Stück
 // Sterne: alle Leben = 3, mindestens 20 = 2, sonst 1
 export const starsFor = (lives) => (lives >= LIVES ? 3 : lives >= 20 ? 2 : 1);
 
@@ -79,8 +78,8 @@ export const MAPS = [
     id: 'winter', name: 'WINTERDORF', theme: 'snow',
     bounds: { x0: -8, x1: 8, z0: -15, z1: 16 },
     line: [
-      [-19, -13], [-2.5, -13], [-2.5, -9], [-7, -9], [-7, -4.5], [2.5, -4.5], [2.5, -9.5], [7, -9.5], [7, 1.5], [-1, 1.5],
-      [-1, 5.5], [-6.5, 5.5], [-6.5, 10.5], [5.5, 10.5], [5.5, 14.5], [5.5, 24],
+      [-19, -13], [-2.5, -13], [-2.5, -9], [-7, -9], [-7, -4.5], [2.5, -4.5], [2.5, -9.5], [7, -9.5], [7, 1.5], [3.5, 1.5],
+      [3.5, -1.5], [-6.5, -1.5], [-6.5, 5.5], [0, 5.5], [0, 9.5], [-6.5, 9.5], [-6.5, 13.5], [5.5, 13.5], [5.5, 24],
     ],
   },
 ];
@@ -113,33 +112,28 @@ function rng(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-// Schwierigkeit: Karte 2 fängt etwa wie Karte 1 bei Level 11 an, Karte 3 wie Level 21
-export const difficulty = (mapIdx, level) => level + mapIdx * 10;
-export function startCookies(mapIdx, level) { return 350 + Math.min(800, difficulty(mapIdx, level) * 16); }
+// Schwierigkeit einer Welle: Karte 2 fängt etwas schwerer an, Karte 3 noch mehr
+export const difficulty = (mapIdx, wave) => wave + mapIdx * 6 * Math.min(1, wave / 20); // Aufschlag kommt in den ersten 20 Wellen langsam dazu
+export const startCookies = (mapIdx) => 450 + mapIdx * 200;
 
 // ------------------------------------------------------------- Wellen ---
-// Level 1–10: nur normale · ab 11 ab und zu schnelle · ab 16 Schild · Level 20: erster Boss + dicke
-// Boss in Level 20, 30, 40, 50 – Level 60: das schwerste mit mehreren Bossen
-export function genWaves(mapIdx, level) {
-  const r = rng(mapIdx * 1000003 + level * 104729 + 7);
-  const d = difficulty(mapIdx, level) - 1;
-  const Dl = d + 1;
-  const count = Math.min(14, 4 + Math.floor(level / 6));
-  const allowed = [['gustav', 4, 1]];
-  if (Dl >= 11) allowed.push(['jogger', Dl < 16 ? 0.7 : 2.2, 1.1]);
-  if (Dl >= 16) allowed.push(['schild', Dl < 25 ? 0.8 : 1.8, 2]);
-  if (Dl >= 21) allowed.push(['dieter', Dl < 30 ? 0.6 : 1.4, 3.2]);
-  const totalW = allowed.reduce((s, a) => s + a[1], 0);
-  const bossLevel = level >= 20 && level % 10 === 0;
-  const bosses = level === 60 ? 2 + mapIdx : bossLevel ? 1 + (level >= 40 ? mapIdx : 0) : 0;
+// Welle 1–10: nur normale · ab 11 ab und zu schnelle · ab 16 Schild · Welle 20: erster Boss + dicke
+// Bosse in Welle 20, 30, 40, 50 – Welle 60: die schwerste mit mehreren Bossen
+export function genWaves(mapIdx) {
+  const r = rng(mapIdx * 1000003 + 7);
   const waves = [];
-  for (let w = 0; w < count; w++) {
-    const ramp = 0.4 + 0.6 * (w / Math.max(1, count - 1));
-    let budget = 3 + w * 1.6 + (d * 0.45 + Math.pow(d, 1.25) * 0.04) * ramp;
-    if (level === 60) budget *= 1.25;
-    const hp = 1 + d * 0.06 + Math.pow(d, 1.3) * 0.006 + w * 0.04;
-    const speed = 1 + Math.min(0.3, d * 0.004);
-    const gap = Math.max(0.35, 1.0 - Math.min(0.5, d * 0.007) - w * 0.02);
+  for (let w = 1; w <= WAVES; w++) {
+    const D = difficulty(mapIdx, w);
+    const allowed = [['gustav', 4, 1]];
+    if (D >= 11) allowed.push(['jogger', D < 16 ? 0.7 : 2.2, 1.1]);
+    if (D >= 16) allowed.push(['schild', D < 25 ? 0.8 : 1.8, 2]);
+    if (D >= 21) allowed.push(['dieter', D < 30 ? 0.6 : 1.4, 3.2]);
+    const totalW = allowed.reduce((sum, x) => sum + x[1], 0);
+    let budget = 4 + w * 0.55 + D * 0.3 + Math.pow(D, 1.4) * 0.05;
+    if (w === WAVES) budget *= 1.4;
+    const hp = 1 + D * 0.12 + Math.pow(D, 1.75) * 0.006;
+    const speed = 1 + Math.min(0.3, D * 0.004);
+    const gap = Math.max(0.3, 1.0 - Math.min(0.55, D * 0.008));
     const list = [];
     while (budget > 0) {
       let pick = r() * totalW;
@@ -148,10 +142,10 @@ export function genWaves(mapIdx, level) {
       budget -= a[2];
       list.push({ type: a[0], hp, speed, gap: a[0] === 'jogger' ? gap * 0.6 : a[0] === 'dieter' ? gap * 1.4 : gap });
     }
-    // Boss-Level: in der letzten Welle Boss(e) + ein paar dicke langsame
-    if (bosses && w === count - 1) {
+    const bosses = w === WAVES ? 2 + mapIdx : w >= 20 && w % 10 === 0 ? 1 + (w >= 40 ? mapIdx : 0) : 0;
+    if (bosses) {
       for (let k = 0; k < 2 + mapIdx; k++) list.push({ type: 'dieter', hp, speed, gap: gap * 1.4 });
-      for (let b = 0; b < bosses; b++) list.push({ type: 'boss', hp: 1 + d * 0.06, speed: 1, gap: 3 });
+      for (let b = 0; b < bosses; b++) list.push({ type: 'boss', hp: 1 + D * 0.05, speed: 1, gap: 3 });
     }
     waves.push(list);
   }

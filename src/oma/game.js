@@ -1,6 +1,7 @@
 // OMA vs ZOMBIES – Tower-Defense mit Omas gegen Zombies (Three.js, läuft im Browser auf dem iPhone)
 import { THREE, figure, M, mesh, cookie, tree, house, fence, bench, flowerBed, gnome, pond, OMAS, RoundedBoxGeometry, setSeed, rand, bake } from './models.js';
-import { OMA_DEF, ZOMBIE_DEF, MAPS, mapPoints, genWaves, startCookies, starsFor, LIVES, LEVELS_PER_MAP, UNLOCK_NEXT_MAP } from './rules.js';
+import { OMA_DEF, ZOMBIE_DEF, MAPS, mapPoints, genWaves, startCookies, starsFor, LIVES, WAVES, difficulty } from './rules.js';
+import { SONGS, createBus, scheduleStep, stepSeconds } from './music.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Math.floor(n).toLocaleString('de-DE');
@@ -8,13 +9,13 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* privat */ } },
 };
-// Fortschritt je Karte: freigeschaltetes Level + Sterne
-const progress = store.get('ovz-progress', null) || { maps: {} };
-for (const m of MAPS) progress.maps[m.id] ||= { unlocked: 1, stars: {} };
-const settings = { sfx: true, auto: true, ...store.get('ovz-settings', {}) };
-const saveProgress = () => store.set('ovz-progress', progress);
+// Fortschritt je Karte: beste erreichte Welle, Sterne, geschafft
+const progress = store.get('ovz-progress2', null) || { maps: {} };
+for (const m of MAPS) progress.maps[m.id] ||= { best: 0, stars: 0, done: false };
+const settings = { sfx: true, music: true, auto: true, ...store.get('ovz-settings', {}) };
+const saveProgress = () => store.set('ovz-progress2', progress);
 const saveSettings = () => store.set('ovz-settings', settings);
-const mapUnlocked = (i) => i === 0 || progress.maps[MAPS[i - 1].id].unlocked > UNLOCK_NEXT_MAP;
+const mapUnlocked = (i) => i === 0 || progress.maps[MAPS[i - 1].id].done;
 
 // ------------------------------------------------------------------ Renderer ---
 const canvas = $('view');
@@ -358,6 +359,48 @@ const SND = {
   tick: () => tone(800, 800, 0.04, 'square', 0.03),
 };
 
+// ------------------------------------------------------------------ Musik ---
+// Menü-Song im Titel, jede Karte hat ihren eigenen Song; wird bei laufender Welle etwas treibender
+const MUS = { song: null, id: '', bus: null, step: 0, next: 0, timer: null };
+function stopSong() {
+  if (!MUS.bus || !ac) return;
+  const g = MUS.bus.master.gain;
+  g.cancelScheduledValues(ac.currentTime);
+  g.setValueAtTime(Math.max(0.0001, g.value), ac.currentTime);
+  g.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.6);
+  const old = MUS.bus;
+  setTimeout(() => old.master.disconnect(), 800);
+  MUS.bus = null;
+  MUS.id = '';
+  clearInterval(MUS.timer);
+}
+function playSong(id, force = false) {
+  if (!settings.music) { stopSong(); return; }
+  const a = audio();
+  if (!a || (MUS.id === id && !force && MUS.bus)) return;
+  stopSong();
+  MUS.song = SONGS[id];
+  MUS.id = id;
+  MUS.bus = createBus(a, a.destination);
+  MUS.bus.master.gain.exponentialRampToValueAtTime(1.3, a.currentTime + 1.2);
+  MUS.step = 0;
+  MUS.next = a.currentTime + 0.1;
+  MUS.timer = setInterval(musicTick, 50);
+}
+function musicTick() {
+  const a = ac;
+  if (!a || !MUS.bus) return;
+  const intense = G.mode === 'play' && G.waveActive ? (G.zombies.some((z) => z.def.boss && !z.dead) ? 1 : 0.5) : 0;
+  if (MUS.next < a.currentTime - 0.3) MUS.next = a.currentTime + 0.05;
+  while (MUS.next < a.currentTime + 0.25) {
+    scheduleStep(MUS.song, a, MUS.bus, MUS.step, MUS.next, intense);
+    MUS.next += stepSeconds(MUS.song, MUS.step, intense);
+    MUS.step++;
+  }
+}
+// Browser erlauben Ton erst nach dem ersten Antippen
+window.addEventListener('pointerdown', () => { if (!MUS.bus) playSong(G.mode === 'title' ? 'menu' : MAPS[G.map].id); }, { once: false });
+
 // -------------------------------------------------------------- Spielzustand ---
 const G = {
   mode: 'title', // title | play | won | lost | paused
@@ -393,14 +436,13 @@ function hpBar(width) {
   return g;
 }
 
-function startLevel(mapIdx, n) {
+function startMap(mapIdx) {
   audio();
   G.map = mapIdx;
-  G.level = n;
   buildWorld(mapIdx);
-  G.waves = genWaves(mapIdx, n);
+  G.waves = genWaves(mapIdx);
   G.wave = 0;
-  G.cookies = startCookies(mapIdx, n);
+  G.cookies = startCookies(mapIdx);
   G.lives = LIVES;
   G.zombies = []; G.omas = []; G.shots = []; G.fx = [];
   G.spawnQ = []; G.waveActive = false; G.drag = null; G.selected = null;
@@ -413,17 +455,24 @@ function startLevel(mapIdx, n) {
   $('speed').classList.toggle('on', false);
   updateAuto();
   updateHud();
-  banner(`LEVEL ${mapIdx + 1}-${n}`, n % 10 === 0 && n >= 20 ? 'Achtung: Am Ende kommt ein BOSS!' : 'Zieh deine Omas aus der Leiste aufs Feld!');
+  playSong(MAPS[mapIdx].id);
+  banner(MAPS[mapIdx].name, `60 Wellen – zieh deine Omas aus der Leiste aufs Feld!`);
 }
+// Welle starten – auch während eine Welle läuft (dann kommt die nächste gleich hinterher)
 function startWave() {
-  if (G.waveActive || G.wave >= G.waves.length || G.mode !== 'play') return;
-  G.spawnQ = G.waves[G.wave].map((s) => ({ ...s }));
-  G.spawnT = 0.3;
+  if (G.wave >= G.waves.length || G.mode !== 'play') return;
+  const early = G.waveActive && (G.spawnQ.length || G.zombies.some((z) => !z.dead));
+  const list = G.waves[G.wave].map((s) => ({ ...s }));
+  if (early) G.spawnQ.push(...list);
+  else { G.spawnQ = list; G.spawnT = 0.3; }
   G.wave++;
   G.waveActive = true;
   G.nextWaveT = null;
   SND.wave();
-  if (G.spawnQ.some((s) => s.type === 'boss')) setTimeout(() => { if (G.mode === 'play') { banner('BOSS!', 'Zombie-Boss Bruno kommt!'); SND.boss(); } }, 2500);
+  if (early) { const b = 5 + G.wave; G.cookies += b; hint(`Welle ${G.wave} vorgezogen: +${b} Kekse`); }
+  if (list.some((s) => s.type === 'boss')) setTimeout(() => { if (G.mode === 'play') { banner('BOSS!', 'Zombie-Boss Bruno kommt!'); SND.boss(); } }, 2500);
+  // neue Omas auf Karte 1 freischalten
+  if (G.map === 0) for (const [id, def] of Object.entries(OMA_DEF)) if (def.unlock === G.wave && G.wave > 1) { banner('NEUE OMA!', `${OMAS[id].name} ist jetzt dabei`); renderSidebar(); }
   updateHud();
 }
 function spawnZombie(s) {
@@ -459,7 +508,7 @@ function kill(z) {
   z.dead = true;
   z.deadT = 0;
   z.bar.visible = false;
-  const rew = Math.round(z.def.reward * (1 + (G.map * 20 + G.level - 1) * 0.03));
+  const rew = Math.round(z.def.reward * 0.7 * (1 + difficulty(G.map, Math.max(1, G.wave)) * 0.008));
   G.cookies += rew;
   SND.coin();
   floatText(z.obj.position, `+${rew}`);
@@ -470,7 +519,7 @@ function omaUnlocked(id) {
   const def = OMA_DEF[id];
   if (!def) return false;
   if (G.map > 0) return true;
-  return def.unlock <= Math.max(G.level, progress.maps[MAPS[0].id].unlocked);
+  return def.unlock <= Math.max(1, G.wave);
 }
 function canPlace(x, z) {
   if (!onMap(x, z, -0.3)) return false;
@@ -697,8 +746,10 @@ function update(dt) {
   // Welle vorbei?
   if (G.waveActive && !G.spawnQ.length && !G.zombies.some((z) => !z.dead)) {
     G.waveActive = false;
-    const bonus = 25 + G.wave * 5;
+    const bonus = 10 + G.wave;
     G.cookies += bonus;
+    const p = progress.maps[MAPS[G.map].id];
+    if (G.wave > p.best) { p.best = G.wave; saveProgress(); }
     if (G.wave >= G.waves.length) { win(); return; }
     banner(`WELLE ${G.wave} GESCHAFFT!`, `+${bonus} Kekse Bonus`);
     G.nextWaveT = settings.auto ? 4 : null;
@@ -711,20 +762,23 @@ function win() {
   G.mode = 'won';
   const stars = starsFor(G.lives);
   const p = progress.maps[MAPS[G.map].id];
-  p.stars[G.level] = Math.max(p.stars[G.level] || 0, stars);
-  p.unlocked = Math.max(p.unlocked, Math.min(LEVELS_PER_MAP + 1, G.level + 1));
+  const first = !p.done;
+  p.stars = Math.max(p.stars, stars);
+  p.done = true;
+  p.best = WAVES;
   saveProgress();
   SND.win();
   $('wonStars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-  $('wonText').textContent = `Level ${G.map + 1}-${G.level} geschafft! ${G.lives} von ${LIVES} Leben übrig.`;
-  const newMap = G.level === UNLOCK_NEXT_MAP && MAPS[G.map + 1] ? `Neue Karte freigeschaltet: ${MAPS[G.map + 1].name}!` : '';
-  $('wonExtra').textContent = newMap;
+  $('wonText').textContent = `${MAPS[G.map].name} geschafft! Alle ${WAVES} Wellen überstanden – ${G.lives} von ${LIVES} Leben übrig.`;
+  $('wonExtra').textContent = first && MAPS[G.map + 1] ? `Neue Karte freigeschaltet: ${MAPS[G.map + 1].name}!` : '';
+  $('next').textContent = MAPS[G.map + 1] ? 'NÄCHSTE KARTE ▶' : 'MENÜ';
   showScreen('won');
 }
 function lose() {
   G.mode = 'lost';
   SND.lose();
-  $('lostText').textContent = `Welle ${G.wave} von ${G.waves.length} – die Zombies haben die Kekse geklaut!`;
+  const p = progress.maps[MAPS[G.map].id];
+  $('lostText').textContent = `Du hast Welle ${G.wave} von ${WAVES} erreicht. Rekord: Welle ${Math.max(p.best, G.wave - 1)}.`;
   showScreen('lost');
 }
 
@@ -742,11 +796,14 @@ function updateHud(light = false) {
   c.classList.toggle('active', G.coffee > 0);
   c.classList.toggle('cool', G.coffee <= 0 && G.coffeeCd > 0);
   $('coffeeCd').textContent = G.coffee > 0 ? `${Math.ceil(G.coffee)}s` : G.coffeeCd > 0 ? `${Math.ceil(G.coffeeCd)}s` : '';
-  // Start-Knopf: nur zwischen den Wellen
+  // Wellen-Knopf: zwischen den Wellen = starten, während einer Welle = nächste schon vorziehen
   const sw = $('startWave');
-  const idle = !G.waveActive && G.wave < G.waves.length;
-  sw.classList.toggle('hidden', !idle);
-  if (idle) sw.innerHTML = G.nextWaveT !== null ? `WELLE ${G.wave + 1} IN ${Math.max(1, Math.ceil(G.nextWaveT))}<small>JETZT STARTEN</small>` : `WELLE ${G.wave + 1}<small>STARTEN</small>`;
+  const more = G.wave < G.waves.length;
+  sw.classList.toggle('hidden', !more);
+  sw.classList.toggle('early', G.waveActive);
+  if (!more) sw.innerHTML = '';
+  else if (G.waveActive) sw.innerHTML = `WELLE ${G.wave + 1} ▶▶<small>SCHON STARTEN</small>`;
+  else sw.innerHTML = G.nextWaveT !== null ? `WELLE ${G.wave + 1} IN ${Math.max(1, Math.ceil(G.nextWaveT))}<small>JETZT STARTEN</small>` : `WELLE ${G.wave + 1}<small>STARTEN</small>`;
   document.querySelectorAll('.ocard[data-id]').forEach((el) => el.classList.toggle('poor', G.cookies < OMA_DEF[el.dataset.id].cost));
   if (G.selected) renderInfo();
 }
@@ -939,51 +996,30 @@ function showScreen(id) {
   for (const s of ['title', 'hud', 'won', 'lost', 'paused']) $(s).classList.toggle('hidden', !(s === id || (s === 'hud' && ['won', 'lost', 'paused'].includes(id))));
 }
 // ------------------------------------------------------------ Titel-Menü ---
-const sel = { map: 0, level: 1 };
+const sel = { map: 0 };
 function bestMap() { let m = 0; MAPS.forEach((_, i) => { if (mapUnlocked(i)) m = i; }); return m; }
-function clampSel() {
-  const p = progress.maps[MAPS[sel.map].id];
-  sel.level = Math.max(1, Math.min(Math.min(p.unlocked, LEVELS_PER_MAP), sel.level));
-}
 function renderTitle() {
-  clampSel();
   const m = MAPS[sel.map];
   const p = progress.maps[m.id];
   $('tMap').textContent = m.name;
   $('tMapNo').textContent = `KARTE ${sel.map + 1} / ${MAPS.length}`;
-  $('tLevel').textContent = `${sel.map + 1} - ${sel.level}`;
-  const st = p.stars[sel.level] || 0;
-  $('tStars').textContent = '★'.repeat(st) + '☆'.repeat(3 - st);
+  $('tBest').textContent = p.done ? 'GESCHAFFT!' : `WELLE ${p.best} / ${WAVES}`;
+  $('tStars').textContent = '★'.repeat(p.stars) + '☆'.repeat(3 - p.stars);
   $('mapPrev').disabled = sel.map === 0;
-  const nextOk = sel.map < MAPS.length - 1 && mapUnlocked(sel.map + 1);
-  $('mapNext').disabled = !nextOk;
-  $('mapLock').textContent = sel.map < MAPS.length - 1 && !mapUnlocked(sel.map + 1) ? `Karte ${sel.map + 2} ab Level ${sel.map + 1}-${UNLOCK_NEXT_MAP}` : '';
-  $('lvPrev').disabled = sel.level <= 1;
-  $('lvNext').disabled = sel.level >= Math.min(p.unlocked, LEVELS_PER_MAP);
+  $('mapNext').disabled = sel.map >= MAPS.length - 1;
+  const locked = !mapUnlocked(sel.map);
+  $('tStart').disabled = locked;
+  $('tStart').textContent = locked ? 'GESPERRT' : 'START';
+  $('mapLock').textContent = locked ? `Schaffe zuerst ${MAPS[sel.map - 1].name} (alle ${WAVES} Wellen)` : '';
 }
-$('mapPrev').addEventListener('click', () => { if (sel.map > 0) { sel.map--; sel.level = progress.maps[MAPS[sel.map].id].unlocked; renderTitle(); tone(500, 600, 0.06, 'triangle', 0.05); } });
-$('mapNext').addEventListener('click', () => { if (sel.map < MAPS.length - 1 && mapUnlocked(sel.map + 1)) { sel.map++; sel.level = progress.maps[MAPS[sel.map].id].unlocked; renderTitle(); tone(500, 600, 0.06, 'triangle', 0.05); } });
-$('lvPrev').addEventListener('click', () => { sel.level--; renderTitle(); tone(450, 500, 0.05, 'triangle', 0.04); });
-$('lvNext').addEventListener('click', () => { sel.level++; renderTitle(); tone(500, 550, 0.05, 'triangle', 0.04); });
-$('tStart').addEventListener('click', () => startLevel(sel.map, sel.level));
-$('tLevelBox').addEventListener('click', () => openGrid());
-function openGrid() {
-  const p = progress.maps[MAPS[sel.map].id];
-  let html = '';
-  for (let n = 1; n <= LEVELS_PER_MAP; n++) {
-    const st = p.stars[n] || 0;
-    const open = n <= p.unlocked;
-    html += `<button class="lvl${open ? '' : ' locked'}${n >= 20 && n % 10 === 0 ? ' boss' : ''}" data-n="${n}" ${open ? '' : 'disabled'}><b>${n}</b><small>${open ? '★'.repeat(st) + '☆'.repeat(3 - st) : ''}</small></button>`;
-  }
-  $('gridTitle').textContent = MAPS[sel.map].name;
-  $('lvlGrid').innerHTML = html;
-  document.querySelectorAll('#lvlGrid .lvl[data-n]').forEach((b) => b.addEventListener('click', () => { sel.level = Number(b.dataset.n); $('grid').classList.add('hidden'); renderTitle(); }));
-  $('grid').classList.remove('hidden');
-}
-$('gridClose').addEventListener('click', () => $('grid').classList.add('hidden'));
-$('tGear').addEventListener('click', () => { $('setSfx').textContent = settings.sfx ? 'AN' : 'AUS'; $('setAuto').textContent = settings.auto ? 'AN' : 'AUS'; $('settings').classList.remove('hidden'); });
-$('setSfx').addEventListener('click', () => { settings.sfx = !settings.sfx; saveSettings(); $('setSfx').textContent = settings.sfx ? 'AN' : 'AUS'; });
-$('setAuto').addEventListener('click', () => { settings.auto = !settings.auto; saveSettings(); $('setAuto').textContent = settings.auto ? 'AN' : 'AUS'; });
+$('mapPrev').addEventListener('click', () => { if (sel.map > 0) { sel.map--; renderTitle(); tone(500, 600, 0.06, 'triangle', 0.05); } });
+$('mapNext').addEventListener('click', () => { if (sel.map < MAPS.length - 1) { sel.map++; renderTitle(); tone(500, 600, 0.06, 'triangle', 0.05); } });
+$('tStart').addEventListener('click', () => { if (mapUnlocked(sel.map)) startMap(sel.map); });
+const setLbl = () => { $('setSfx').textContent = settings.sfx ? 'AN' : 'AUS'; $('setMusic').textContent = settings.music ? 'AN' : 'AUS'; $('setAuto').textContent = settings.auto ? 'AN' : 'AUS'; };
+$('tGear').addEventListener('click', () => { setLbl(); $('settings').classList.remove('hidden'); });
+$('setSfx').addEventListener('click', () => { settings.sfx = !settings.sfx; saveSettings(); setLbl(); });
+$('setMusic').addEventListener('click', () => { settings.music = !settings.music; saveSettings(); setLbl(); if (settings.music) playSong(G.mode === 'title' ? 'menu' : MAPS[G.map].id, true); else stopSong(); });
+$('setAuto').addEventListener('click', () => { settings.auto = !settings.auto; saveSettings(); setLbl(); updateAuto(); });
 $('setClose').addEventListener('click', () => $('settings').classList.add('hidden'));
 $('tInfo').addEventListener('click', () => $('help').classList.remove('hidden'));
 $('helpClose').addEventListener('click', () => $('help').classList.add('hidden'));
@@ -991,9 +1027,9 @@ function toTitle() {
   G.mode = 'title';
   cancelDrag();
   sel.map = G.map;
-  sel.level = Math.min(LEVELS_PER_MAP, progress.maps[MAPS[G.map].id].unlocked);
   renderTitle();
   showScreen('title');
+  playSong('menu');
 }
 $('startWave').addEventListener('click', (e) => { e.stopPropagation(); startWave(); });
 $('speed').addEventListener('click', (e) => { e.stopPropagation(); G.speed = G.speed === 1 ? 2 : 1; $('speed').classList.toggle('on', G.speed === 2); });
@@ -1009,13 +1045,9 @@ $('coffee').addEventListener('click', (e) => {
 $('pause').addEventListener('click', (e) => { e.stopPropagation(); if (G.mode === 'play') { G.mode = 'paused'; showScreen('paused'); } });
 $('resume').addEventListener('click', () => { G.mode = 'play'; showScreen('hud'); });
 $('quit').addEventListener('click', toTitle);
-$('next').addEventListener('click', () => {
-  if (G.level < LEVELS_PER_MAP) startLevel(G.map, G.level + 1);
-  else if (MAPS[G.map + 1]) startLevel(G.map + 1, 1);
-  else toTitle();
-});
+$('next').addEventListener('click', () => { if (MAPS[G.map + 1]) startMap(G.map + 1); else toTitle(); });
 $('wonMenu').addEventListener('click', toTitle);
-$('retry').addEventListener('click', () => startLevel(G.map, G.level));
+$('retry').addEventListener('click', () => startMap(G.map));
 $('lostMenu').addEventListener('click', toTitle);
 
 // -------------------------------------------------------------- Steuerung ---
@@ -1078,7 +1110,10 @@ function tap(cx, cy) {
   if (hit) selectOma(hit);
   else { closeInfo(); setSidebar(false); }
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden && G.mode === 'play') { G.mode = 'paused'; showScreen('paused'); } });
+document.addEventListener('visibilitychange', () => {
+  if (ac) document.hidden ? ac.suspend() : ac.resume();
+  if (document.hidden && G.mode === 'play') { G.mode = 'paused'; showScreen('paused'); }
+});
 
 // ------------------------------------------------------------------ Schleife ---
 let last = performance.now();
@@ -1108,7 +1143,6 @@ function frame(now) {
   renderPortraits();
   buildTitle();
   sel.map = bestMap();
-  sel.level = Math.min(LEVELS_PER_MAP, progress.maps[MAPS[sel.map].id].unlocked);
   renderTitle();
   $('loading').classList.add('hidden');
   showScreen('title');
@@ -1116,4 +1150,4 @@ function frame(now) {
 })();
 
 // zum Testen
-window.__oma = { G, W, renderer, sim: (sec) => { for (let i = 0; i < sec * 30 && G.mode === 'play'; i++) update(1 / 30); }, startLevel, startWave, placeOma, canPlace, view, OMA_DEF, progress, MAPS, placeCamera, project: (x, z) => { const v = new THREE.Vector3(x, 0, z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight }; } };
+window.__oma = { G, W, renderer, sim: (sec) => { for (let i = 0; i < sec * 30 && G.mode === 'play'; i++) update(1 / 30); }, startMap, startWave, placeOma, canPlace, view, OMA_DEF, progress, MAPS, placeCamera, project: (x, z) => { const v = new THREE.Vector3(x, 0, z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight }; } };
