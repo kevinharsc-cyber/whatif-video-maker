@@ -104,10 +104,13 @@
       .lvl b { color: #7ddc4a; font-weight: normal; font-size: 30px; }
       #lockerTop { margin-bottom: 10px; text-align: center; }
       #lockerTop small { font-size: 13px; opacity: 0.8; }
-      .wheelWrap { position: relative; width: 260px; height: 260px; margin: 6px auto 12px; }
-      #wheelCanvas { width: 260px; height: 260px; transition: transform 4s cubic-bezier(0.15, 0.8, 0.2, 1); }
-      .pointer { position: absolute; left: 50%; top: -10px; transform: translateX(-50%); width: 0; height: 0; border-left: 16px solid transparent; border-right: 16px solid transparent; border-top: 30px solid #fff; filter: drop-shadow(0 3px 0 #0b2233); z-index: 2; }
-      .hub { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff3a6, #ffd23f 55%, #e8a400); border: 4px solid #0b2233; display: flex; align-items: center; justify-content: center; color: #c98a00; font-size: 22px; }
+      .wheelWrap { position: relative; width: 280px; height: 280px; margin: 14px auto 14px; filter: drop-shadow(0 8px 0 #0b2233); }
+      #wheelCanvas { width: 280px; height: 280px; transition: transform 4s cubic-bezier(0.15, 0.8, 0.2, 1); }
+      .pointer { position: absolute; left: 50%; top: -16px; transform: translateX(-50%); width: 34px; height: 46px; z-index: 2; background: linear-gradient(#fff3a6, #ffbf1f 60%, #e8a400); clip-path: polygon(0 0, 100% 0, 100% 45%, 50% 100%, 0 45%); filter: drop-shadow(0 0 0 #0b2233); }
+      .pointer::after { content: ''; position: absolute; left: 50%; top: 9px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: #e5383b; }
+      .wheelWrap .pointer { outline: none; }
+      .pointerBorder { position: absolute; left: 50%; top: -20px; transform: translateX(-50%); width: 42px; height: 54px; z-index: 1; background: #0b2233; clip-path: polygon(0 0, 100% 0, 100% 45%, 50% 100%, 0 45%); }
+      .hub { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff3a6, #ffd23f 55%, #e8a400); border: 5px solid #0b2233; display: flex; align-items: center; justify-content: center; color: #c98a00; font-size: 28px; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.15); }
       #spinBtn { display: block; margin: 0 auto; font-size: 24px; padding: 10px 30px; }
       #spinBtn:disabled { background: #4b5170; font-size: 16px; }
       #wheelWin { text-align: center; color: #7ddc4a; font-size: 22px; min-height: 28px; margin-top: 8px; }
@@ -188,7 +191,7 @@
         <p class="sub">🗄️ SAMMLUNG</p><div id="lockerGrid" class="lockgrid"></div>
         <p class="hint">Jeder Lauf und jede Aufgabe gibt Erfahrung (XP). Jedes Level braucht etwas mehr XP als das davor.</p></div></div>
       <div id="p-wheel" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>GLÜCKSRAD</h2>
-        <div class="wheelWrap"><div class="pointer"></div><canvas id="wheelCanvas" width="520" height="520"></canvas><div class="hub">C</div></div>
+        <div class="wheelWrap"><div class="pointerBorder"></div><div class="pointer"></div><canvas id="wheelCanvas" width="520" height="520"></canvas><div class="hub">C</div></div>
         <button id="spinBtn" class="btn">DREHEN!</button><div id="wheelWin"></div><p class="hint">Einmal alle 24 Stunden: 100 bis 1.000 Münzen.</p></div></div>
       <div id="p-friends" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>FREUNDE</h2>
         <small class="hint">Dein Name</small><input id="nameInput" class="field" maxlength="16" placeholder="z. B. Kevin" autocomplete="off" />

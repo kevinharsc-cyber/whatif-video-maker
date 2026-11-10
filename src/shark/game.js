@@ -890,7 +890,7 @@ scene.add(rideDolphin);
 const RIDE_Y = 3.6;
 
 // kleine Fischschwärme im Hintergrund (eine einzige InstancedMesh = günstig)
-const FISH = 36;
+const FISH = 15;
 // richtiger kleiner Fisch: Körper, Schwanzflosse, Rückenflosse, Augen (Kopf zeigt nach -z)
 function fishGeometry() {
   const paint = (g, c) => {
@@ -926,11 +926,11 @@ const fishData = [];
 const fishM = new THREE.Matrix4();
 const fishCols = [0xffb347, 0xffe066, 0x7fe0ff, 0xff7b9c];
 for (let i = 0; i < FISH; i++) {
-  const school = Math.floor(i / 9);
+  const school = Math.floor(i / 5);
   fishData.push({ school, ox: (Math.random() - 0.5) * 2.2, oy: (Math.random() - 0.5) * 1.2, oz: (Math.random() - 0.5) * 2.5, ph: Math.random() * 6 });
   fishes.setColorAt(i, new THREE.Color(fishCols[school % 4]));
 }
-const schools = [0, 1, 2, 3].map((i) => ({ x: (i % 2 ? 1 : -1) * (6 + Math.random() * 3), y: 2 + Math.random() * 4, z: -16 - i * 10, dir: i % 2 ? -1 : 1 }));
+const schools = [0, 1, 2].map((i) => ({ x: (i % 2 ? 1 : -1) * (6 + Math.random() * 3), y: 2 + Math.random() * 4, z: -16 - i * 10, dir: i % 2 ? -1 : 1 }));
 scene.add(fishes);
 
 // ------------------------------------------------------------------ Ton ---
@@ -1839,38 +1839,129 @@ const WHEEL_W = [24, 9, 20, 3, 16, 10, 12, 6];
 const WHEEL_COL = ['#3fb6ff', '#ff9800', '#7ddc4a', '#e5383b', '#b06bff', '#ffd23f', '#2ec4f0', '#ff6b8b'];
 let wheelAngle = 0;
 let spinning = false;
+// Glücksrad im Spielshow-Stil: goldener Rand mit blinkenden Lampen, glänzende Felder, Münz-Symbole
+let wheelPhase = 0;
+let wheelWinIdx = -1;
 function drawWheel() {
   const c = $('wheelCanvas');
   const g = c.getContext('2d');
   const R = c.width / 2;
-  g.clearRect(0, 0, c.width, c.height);
   const seg = (Math.PI * 2) / WHEEL.length;
+  const rimW = 34;
+  const inner = R - rimW;
+  g.clearRect(0, 0, c.width, c.height);
+  // goldener Rand
+  const rim = g.createRadialGradient(R, R, inner - 4, R, R, R);
+  rim.addColorStop(0, '#a86b00');
+  rim.addColorStop(0.35, '#ffe27a');
+  rim.addColorStop(0.7, '#ffbf1f');
+  rim.addColorStop(1, '#a86b00');
+  g.beginPath();
+  g.arc(R, R, R - 3, 0, Math.PI * 2);
+  g.fillStyle = rim;
+  g.fill();
+  g.lineWidth = 6;
+  g.strokeStyle = '#0b2233';
+  g.stroke();
+  // Felder
   WHEEL.forEach((v, i) => {
+    const a0 = i * seg - Math.PI / 2 - seg / 2;
+    const a1 = a0 + seg;
+    const grd = g.createRadialGradient(R, R, inner * 0.15, R, R, inner);
+    grd.addColorStop(0, '#ffffff');
+    grd.addColorStop(0.25, WHEEL_COL[i]);
+    grd.addColorStop(1, WHEEL_COL[i]);
     g.beginPath();
     g.moveTo(R, R);
-    g.arc(R, R, R - 6, i * seg - Math.PI / 2 - seg / 2, (i + 1) * seg - Math.PI / 2 - seg / 2);
+    g.arc(R, R, inner, a0, a1);
     g.closePath();
-    g.fillStyle = WHEEL_COL[i];
+    g.fillStyle = grd;
     g.fill();
-    g.lineWidth = 4;
+    // Gewinnfeld leuchtet
+    if (i === wheelWinIdx) {
+      g.fillStyle = `rgba(255,255,255,${0.25 + 0.25 * Math.sin(wheelPhase * 2)})`;
+      g.fill();
+    }
+    // Glanz auf der oberen Hälfte jedes Feldes
+    g.beginPath();
+    g.moveTo(R, R);
+    g.arc(R, R, inner * 0.97, a0 + seg * 0.08, a0 + seg * 0.5);
+    g.closePath();
+    g.fillStyle = 'rgba(255,255,255,0.12)';
+    g.fill();
+    // Trennlinien: dunkel + weißer Strich
+    g.beginPath();
+    g.moveTo(R, R);
+    g.lineTo(R + Math.cos(a0) * inner, R + Math.sin(a0) * inner);
+    g.lineWidth = 7;
     g.strokeStyle = '#0b2233';
     g.stroke();
+    g.lineWidth = 2.5;
+    g.strokeStyle = 'rgba(255,255,255,0.8)';
+    g.stroke();
+    // Zahl + kleine Münze
     g.save();
     g.translate(R, R);
     g.rotate(i * seg);
-    g.font = '26px "Lilita One", "Arial Black", sans-serif';
     g.textAlign = 'center';
-    g.lineWidth = 5;
-    g.strokeText(v, 0, -R * 0.62);
-    g.fillStyle = '#fff';
-    g.fillText(v, 0, -R * 0.62);
+    g.textBaseline = 'middle';
+    g.font = `${v >= 1000 ? 30 : 34}px "Lilita One", "Arial Black", sans-serif`;
+    g.lineJoin = 'round';
+    g.lineWidth = 8;
+    g.strokeStyle = '#0b2233';
+    g.strokeText(v, 0, -inner * 0.66);
+    g.fillStyle = v >= 750 ? '#fff6a8' : '#ffffff';
+    g.fillText(v, 0, -inner * 0.66);
+    const cy = -inner * 0.4;
+    const cg = g.createRadialGradient(-4, cy - 4, 2, 0, cy, 15);
+    cg.addColorStop(0, '#fff3a6');
+    cg.addColorStop(0.6, '#ffd23f');
+    cg.addColorStop(1, '#e8a400');
+    g.beginPath();
+    g.arc(0, cy, 14, 0, Math.PI * 2);
+    g.fillStyle = cg;
+    g.fill();
+    g.lineWidth = 3.5;
+    g.strokeStyle = '#0b2233';
+    g.stroke();
+    g.fillStyle = '#c98a00';
+    g.font = '18px "Lilita One", "Arial Black", sans-serif';
+    g.fillText('C', 0, cy + 1);
     g.restore();
   });
   g.beginPath();
-  g.arc(R, R, R - 4, 0, Math.PI * 2);
-  g.lineWidth = 8;
+  g.arc(R, R, inner, 0, Math.PI * 2);
+  g.lineWidth = 6;
+  g.strokeStyle = '#0b2233';
   g.stroke();
+  // Lampen im Rand (blinken abwechselnd)
+  const N = 24;
+  const on = Math.floor(wheelPhase * 3) % 2;
+  for (let k = 0; k < N; k++) {
+    const a = (k / N) * Math.PI * 2;
+    const x = R + Math.cos(a) * (R - rimW / 2 - 2);
+    const y = R + Math.sin(a) * (R - rimW / 2 - 2);
+    const lit = spinning ? (k + Math.floor(wheelPhase * 12)) % 3 === 0 : k % 2 === on;
+    g.beginPath();
+    g.arc(x, y, 7, 0, Math.PI * 2);
+    if (lit) {
+      g.shadowColor = '#fff6a8';
+      g.shadowBlur = 14;
+    }
+    g.fillStyle = lit ? '#fffbe0' : '#b07a10';
+    g.fill();
+    g.shadowBlur = 0;
+    g.lineWidth = 2.5;
+    g.strokeStyle = '#5a3a00';
+    g.stroke();
+  }
 }
+// Lampen-Animation, solange das Rad offen ist
+setInterval(() => {
+  if ($('p-wheel').classList.contains('hidden')) return;
+  wheelPhase += 0.12;
+  drawWheel();
+}, 90);
 function wheelInfo() {
   const left = WHEEL_COOLDOWN - (Date.now() - profile.wheelAt);
   const btn = $('spinBtn');
@@ -1899,6 +1990,7 @@ $('spinBtn').addEventListener('click', () => {
   $('spinBtn').disabled = true;
   $('spinBtn').textContent = '...';
   $('wheelWin').textContent = '';
+  wheelWinIdx = -1;
   const tick = setInterval(() => tone(900, 700, 0.03, 'square', 0.03), 120);
   setTimeout(() => {
     clearInterval(tick);
@@ -1906,6 +1998,7 @@ $('spinBtn').addEventListener('click', () => {
     bank += WHEEL[idx];
     store.set('shark-coins', bank);
     $('wheelWin').textContent = `GEWONNEN: +${WHEEL[idx]} MÜNZEN!`;
+    wheelWinIdx = idx;
     sfx.power();
     wheelInfo();
     updateMenu();
