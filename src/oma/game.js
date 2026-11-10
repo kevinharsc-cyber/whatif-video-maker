@@ -1551,3 +1551,23 @@ function frame(now) {
 
 // zum Testen
 window.__oma = { G, W, renderer, selectOma, showResult, sim: (sec) => { for (let i = 0; i < sec * 30 && G.mode === 'play'; i++) update(1 / 30); }, startMap, startWave, placeOma, spawnMeteor, renderTitle, sel, canPlace, view, OMA_DEF, progress, MAPS, placeCamera, project: (x, z) => { const v = new THREE.Vector3(x, 0, z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight }; } };
+
+// ---------------------------------------------------------- Auto-Update ---
+// Als App auf dem Home-Bildschirm hält iOS die alte Version im Speicher.
+// Beim Öffnen (und beim Zurückkehren in die App) prüfen wir, ob es eine neue Version gibt,
+// und laden im Menü automatisch neu – mitten im Spiel nie.
+const myBuild = (document.querySelector('script[type="module"]')?.getAttribute('src') || '').split('/').pop();
+let updChecked = 0;
+async function checkUpdate() {
+  if (Date.now() - updChecked < 20000) return;
+  updChecked = Date.now();
+  try {
+    const html = await (await fetch(location.pathname + '?v=' + Date.now(), { cache: 'no-store' })).text();
+    const m = html.match(/<script[^>]*type="module"[^>]*src="([^"]+)"/);
+    const latest = m ? m[1].split('/').pop() : '';
+    if (latest && myBuild && latest !== myBuild && G.mode === 'title') location.reload();
+  } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+window.addEventListener('pageshow', () => checkUpdate());
+setTimeout(checkUpdate, 1500);
