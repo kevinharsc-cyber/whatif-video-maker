@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Oma Defense" />
+    <meta name="theme-color" content="#7c4dff" />
+    <link rel="apple-touch-icon" href="./oma-icon-180.png" />
+    <title>OMA DEFENSE</title>
+    <style>
+      @font-face { font-family: 'Lilita One'; src: url('./fonts/lilita-one-latin-400-normal.woff2') format('woff2'); }
+      html, body { margin: 0; height: 100%; background: #6cbf4a; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; font-family: 'Lilita One', 'Arial Black', sans-serif; color: #fff; }
+      #view { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; }
+      .hidden { display: none !important; }
+      .ui { position: fixed; inset: 0; pointer-events: none; }
+      .ui button, .ui .panel { pointer-events: auto; }
+      button { font-family: inherit; color: #fff; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      .st { -webkit-text-stroke: 5px #24192e; paint-order: stroke fill; }
+      .ck { display: inline-block; width: 0.9em; height: 0.9em; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #5a3216 8%, transparent 9%), radial-gradient(circle at 65% 40%, #5a3216 8%, transparent 9%), radial-gradient(circle at 45% 70%, #5a3216 8%, transparent 9%), #e0a458; border: 2px solid #24192e; vertical-align: -0.12em; margin-right: 4px; box-sizing: border-box; }
+      #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #7c4dff; font-size: 26px; z-index: 50; }
+      /* Menü */
+      .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: calc(env(safe-area-inset-top) + 20px) 20px calc(env(safe-area-inset-bottom) + 20px); box-sizing: border-box; background: rgba(36, 25, 46, 0.35); }
+      .logo { display: flex; flex-direction: column; align-items: center; line-height: 0.9; transform: rotate(-4deg); margin-bottom: 20px; }
+      .logo span { font-size: 78px; -webkit-text-stroke: 4px #24192e; paint-order: stroke fill; filter: drop-shadow(0 6px 0 #24192e); }
+      .logo .a { color: #ff8fc7; }
+      .logo .b { color: #8fe36a; font-size: 72px; }
+      .sub { font-size: 20px; color: #fff3d6; -webkit-text-stroke: 4px #24192e; paint-order: stroke fill; }
+      .big { font-size: 40px; padding: 14px 54px; border-radius: 36px; background: linear-gradient(#ffd24a, #ff9800); border: 4px solid #24192e; box-shadow: 0 7px 0 #24192e; -webkit-text-stroke: 2px #24192e; paint-order: stroke fill; }
+      .mid { font-size: 22px; padding: 10px 28px; border-radius: 22px; background: linear-gradient(#a07bff, #7c4dff); border: 4px solid #24192e; box-shadow: 0 5px 0 #24192e; }
+      .big:active, .mid:active { transform: translateY(4px); box-shadow: 0 2px 0 #24192e; }
+      #menuLevel { font-size: 18px; color: #fff3d6; margin-top: -8px; }
+      #sfxBtn { position: absolute; top: calc(env(safe-area-inset-top) + 14px); right: 14px; width: 54px; height: 54px; border-radius: 16px; background: rgba(36, 25, 46, 0.6); border: 3px solid #24192e; font-size: 24px; }
+      /* Levelauswahl */
+      #levels { justify-content: flex-start; background: rgba(36, 25, 46, 0.75); }
+      #levels h2 { margin: 6px 0; font-weight: normal; font-size: 36px; color: #ffd23f; -webkit-text-stroke: 4px #24192e; paint-order: stroke fill; }
+      #lvlGrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; width: 100%; max-width: 420px; overflow-y: auto; padding: 6px; box-sizing: border-box; flex: 1; align-content: start; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+      .lvl { aspect-ratio: 1; border-radius: 16px; background: linear-gradient(#5ccf3a, #3a9e22); border: 3px solid #24192e; box-shadow: 0 4px 0 #24192e; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0; }
+      .lvl b { font-weight: normal; font-size: 24px; }
+      .lvl small { font-size: 11px; color: #ffd23f; letter-spacing: -1px; }
+      .lvl.boss { background: linear-gradient(#ff6b6b, #c0392b); }
+      .lvl.locked { background: #5b5470; color: #9a93b0; box-shadow: none; }
+      /* HUD */
+      #top { position: absolute; top: calc(env(safe-area-inset-top) + 10px); left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+      .pill { background: rgba(255, 248, 230, 0.95); border: 4px solid #24192e; border-radius: 30px; padding: 4px 14px; font-size: 26px; display: flex; align-items: center; gap: 6px; }
+      .pill.c { color: #b86a1a; }
+      .pill.l { color: #d62839; }
+      .heart { color: #ff4f6e; -webkit-text-stroke: 2px #24192e; }
+      #waveBox { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+      #hWave { background: #7c4dff; border: 4px solid #24192e; border-radius: 30px; padding: 4px 16px; font-size: 22px; white-space: nowrap; }
+      .wbar { width: 130px; height: 12px; background: rgba(0, 0, 0, 0.35); border: 3px solid #24192e; border-radius: 8px; overflow: hidden; }
+      #hWaveBar { height: 100%; background: #ffd23f; width: 0; }
+      #pause { position: absolute; top: calc(env(safe-area-inset-top) + 70px); right: 10px; width: 46px; height: 46px; border-radius: 14px; background: rgba(36, 25, 46, 0.6); border: 3px solid #24192e; font-size: 20px; }
+      /* Leiste rechts */
+      #sidebar { position: absolute; right: 0; top: calc(env(safe-area-inset-top) + 130px); bottom: calc(env(safe-area-inset-bottom) + 120px); width: 214px; transform: translateX(214px); transition: transform 0.25s ease-out; display: flex; }
+      #sidebar.open { transform: translateX(0); }
+      #tab { position: absolute; left: -54px; top: 50%; margin-top: -70px; width: 56px; height: 140px; border-radius: 22px 0 0 22px; background: linear-gradient(#ffa25a, #ff8c42); border: 4px solid #24192e; border-right: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 26px; padding: 0; }
+      #tab small { font-size: 14px; writing-mode: vertical-rl; transform: rotate(180deg); }
+      #sidebar.open #tab .arr::before { content: '▶'; }
+      #tab .arr::before { content: '◀'; }
+      #cards { flex: 1; background: #fff1d9; border: 4px solid #24192e; border-right: 0; border-radius: 22px 0 0 22px; padding: 10px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; overflow-y: auto; align-content: start; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+      .ocard { position: relative; border-radius: 16px; background: var(--c, #ef6f9c); border: 3px solid #24192e; padding: 5px 4px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 14px; color: #fff; }
+      .ocard img { width: 100%; aspect-ratio: 1; border-radius: 11px; border: 3px solid #24192e; box-sizing: border-box; display: block; }
+      .ocard b { font-weight: normal; -webkit-text-stroke: 3px #24192e; paint-order: stroke fill; font-size: 15px; }
+      .ocard small { font-size: 14px; -webkit-text-stroke: 3px #24192e; paint-order: stroke fill; color: #fff3d6; }
+      .ocard.sel { outline: 5px solid #ffd23f; }
+      .ocard.poor img { filter: grayscale(0.7) brightness(0.8); }
+      .ocard.poor small { color: #ff8a8a; }
+      .ocard.locked, .ocard.soon { background: #8a83a0; }
+      .ocard.locked img, .ocard.soon img { filter: brightness(0.35) grayscale(1); }
+      .ocard .lock { position: absolute; top: 26px; left: 50%; margin-left: -14px; width: 28px; height: 22px; background: #fff; border: 3px solid #24192e; border-radius: 6px; }
+      .ocard .lock::before { content: ''; position: absolute; left: 3px; top: -16px; width: 16px; height: 16px; border: 4px solid #fff; border-bottom: 0; border-radius: 12px 12px 0 0; }
+      .shake { animation: shake 0.35s; }
+      @keyframes shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+      /* unten */
+      #bottom { position: absolute; left: 10px; right: 10px; bottom: calc(env(safe-area-inset-bottom) + 12px); display: flex; align-items: flex-end; gap: 10px; }
+      #speed { width: 70px; height: 70px; border-radius: 22px; background: linear-gradient(#5fc8ff, #3fb6ff); border: 4px solid #24192e; box-shadow: 0 5px 0 #24192e; font-size: 26px; }
+      #speed.on { background: linear-gradient(#ffd24a, #ff9800); }
+      #coffee { height: 70px; padding: 0 14px; border-radius: 22px; background: linear-gradient(#a07bff, #7c4dff); border: 4px solid #24192e; box-shadow: 0 5px 0 #24192e; font-size: 15px; line-height: 1.1; position: relative; }
+      #coffee.active { background: linear-gradient(#ffd24a, #ff9800); }
+      #coffee.cool { filter: grayscale(0.8) brightness(0.8); }
+      #coffeeCd { position: absolute; top: -12px; right: -8px; background: #24192e; border-radius: 10px; padding: 1px 6px; font-size: 14px; }
+      #coffeeCd:empty { display: none; }
+      #startWave { margin-left: auto; font-size: 24px; padding: 14px 20px; border-radius: 26px; background: linear-gradient(#8ee04a, #4caf2a); border: 4px solid #24192e; box-shadow: 0 6px 0 #24192e; -webkit-text-stroke: 2px #24192e; paint-order: stroke fill; animation: pulse 1.2s infinite; }
+      @keyframes pulse { 50% { transform: scale(1.05); } }
+      #hint { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 100px); background: rgba(36, 25, 46, 0.85); border: 3px solid #24192e; border-radius: 16px; padding: 8px 14px; font-size: 16px; width: max-content; max-width: 80vw; text-align: center; }
+      /* Info-Blase */
+      #info { position: absolute; background: rgba(255, 248, 230, 0.97); border: 4px solid #24192e; border-radius: 22px; padding: 10px 12px; color: #24192e; min-width: 230px; box-shadow: 0 6px 0 rgba(36, 25, 46, 0.5); }
+      #iName { font-size: 24px; color: #d62e7a; text-align: center; }
+      #iLvl { font-size: 14px; text-align: center; margin: 2px 0 8px; color: #5b5470; }
+      .ibtns { display: flex; gap: 8px; }
+      .ibtns button { flex: 1; font-size: 15px; padding: 8px 6px; border-radius: 16px; border: 3px solid #24192e; box-shadow: 0 4px 0 #24192e; line-height: 1.15; }
+      #iUp { background: linear-gradient(#8ee04a, #4caf2a); }
+      #iUp:disabled { filter: grayscale(0.8); opacity: 0.7; }
+      #iSell { background: linear-gradient(#ff7a7a, #e5383b); }
+      /* Banner */
+      #banner { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); text-align: center; animation: pop 0.35s ease-out; }
+      #bTitle { font-size: 50px; color: #ffd23f; -webkit-text-stroke: 5px #24192e; paint-order: stroke fill; white-space: nowrap; }
+      #bSub { font-size: 20px; -webkit-text-stroke: 4px #24192e; paint-order: stroke fill; }
+      @keyframes pop { from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+      .float { position: absolute; left: 0; top: 0; font-size: 22px; color: #ffd23f; -webkit-text-stroke: 4px #24192e; paint-order: stroke fill; }
+      /* Ergebnis */
+      .card { background: rgba(255, 248, 230, 0.97); border: 5px solid #24192e; border-radius: 28px; padding: 22px; text-align: center; color: #24192e; max-width: 320px; }
+      .card h2 { margin: 0 0 6px; font-weight: normal; font-size: 40px; color: #7c4dff; -webkit-text-stroke: 0; }
+      .stars { font-size: 54px; color: #ffc21a; -webkit-text-stroke: 3px #24192e; paint-order: stroke fill; letter-spacing: 4px; }
+      .card p { font-size: 18px; margin: 8px 0 16px; }
+      .card .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="loading">Lade Oma Defense…</div>
+    <div class="ui">
+      <div id="menu" class="screen hidden">
+        <button id="sfxBtn" class="panel">🔊</button>
+        <div class="logo"><span class="a">OMA</span><span class="b">DEFENSE</span></div>
+        <div class="sub">Die Zombies wollen unsere Kekse!</div>
+        <button id="play" class="big">SPIELEN ▶</button>
+        <div id="menuLevel">LEVEL 1</div>
+        <button id="toLevels" class="mid">LEVEL WÄHLEN</button>
+      </div>
+      <div id="levels" class="screen hidden"><h2>LEVEL</h2><div id="lvlGrid" class="panel"></div><button id="levelsBack" class="mid">ZURÜCK</button></div>
+
+      <div id="hud" class="hidden">
+        <div id="top">
+          <div class="pill c"><span class="ck"></span><span id="hCookies">0</span></div>
+          <div id="waveBox"><div id="hWave">WELLE 1 / 5</div><div class="wbar"><div id="hWaveBar"></div></div></div>
+          <div class="pill l"><span class="heart">♥</span><span id="hLives">20</span></div>
+        </div>
+        <button id="pause">II</button>
+        <div id="sidebar" class="panel">
+          <button id="tab"><span class="arr"></span><small>OMAS</small></button>
+          <div id="cards"></div>
+        </div>
+        <div id="hint" class="hidden"></div>
+        <div id="bottom">
+          <button id="speed">▶▶</button>
+          <button id="coffee">☕ KAFFEE-<br />KRÄNZCHEN<span id="coffeeCd"></span></button>
+          <button id="startWave">WELLE STARTEN</button>
+        </div>
+        <div id="info" class="panel hidden">
+          <div id="iName">Oma</div>
+          <div id="iLvl"></div>
+          <div class="ibtns"><button id="iUp">UPGRADE</button><button id="iSell">VERKAUFEN</button></div>
+        </div>
+        <div id="banner" class="hidden"><div id="bTitle"></div><div id="bSub"></div></div>
+        <div id="floats"></div>
+      </div>
+
+      <div id="paused" class="screen hidden"><div class="card panel"><h2>PAUSE</h2><div class="row"><button id="resume" class="big">WEITER</button><button id="quit" class="mid">MENÜ</button></div></div></div>
+      <div id="won" class="screen hidden"><div class="card panel"><h2>GESCHAFFT!</h2><div id="wonStars" class="stars">★★★</div><p id="wonText"></p><div class="row"><button id="next" class="big">WEITER ▶</button><button id="wonMenu" class="mid">MENÜ</button></div></div></div>
+      <div id="lost" class="screen hidden"><div class="card panel"><h2>OH NEIN!</h2><p id="lostText"></p><div class="row"><button id="retry" class="big">NOCHMAL</button><button id="lostMenu" class="mid">MENÜ</button></div></div></div>
+    </div>
+    <script type="module" src="./src/oma/game.js"></script>
+  </body>
+</html>
