@@ -379,6 +379,40 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
     }
     P(g, '#ffd23f', 1, poly(st));
   }
+  if (!sil && o.hat === 'chef') {
+    // Kochmütze
+    P(g, '#ffffff', lw, rr(-14, -112, 28, 18, 4));
+    P(g, '#ffffff', lw, ell(-9, -114, 9, 8));
+    P(g, '#ffffff', lw, ell(0, -118, 10, 9));
+    P(g, '#ffffff', lw, ell(9, -114, 9, 8));
+    P(g, '#ffffff', 0, rr(-13, -106, 26, 10, 2));
+    for (const by of [-48, -40, -32]) P(g, '#c9ccd1', 0, ell(-5, by, 1.4, 1.4));
+    for (const by of [-48, -40, -32]) P(g, '#c9ccd1', 0, ell(5, by, 1.4, 1.4));
+  }
+  if (!sil && o.hat === 'waiter') {
+    // Weste + Fliege
+    P(g, '#1d1f26', 1, poly([[-16, -54], [-5, -54], [-1, -24], [-16, -22]]));
+    P(g, '#1d1f26', 1, poly([[16, -54], [5, -54], [1, -24], [16, -22]]));
+    P(g, '#e5383b', 1, poly([[-6, -56], [0, -53], [6, -56], [6, -50], [0, -53], [-6, -50]]));
+  }
+  if (!sil && o.hat === 'medic') {
+    // rotes Kreuz auf dem Kittel
+    P(g, '#e5383b', 0, rr(-3, -46, 6, 16, 1));
+    P(g, '#e5383b', 0, rr(-8, -41, 16, 6, 1));
+  }
+  if (!sil && o.hat === 'security') {
+    // Sonnenbrille + Ohrstöpsel + Aufschrift
+    P(g, '#111', 1, rr(-15, -80, 13, 8, 3));
+    P(g, '#111', 1, rr(2, -80, 13, 8, 3));
+    line(g, [[-2, -77], [2, -77]], 1.4);
+    line(g, [[20, -72], [22, -60], [16, -52]], 0.8, '#bbb');
+    g.save();
+    g.font = '7px "Lilita One", sans-serif';
+    g.textAlign = 'center';
+    g.fillStyle = '#ffd23f';
+    g.fillText('SECURITY', 0, -38);
+    g.restore();
+  }
   if (!sil && o.hat === 'smith') {
     // Lederschürze
     P(g, '#7a4b2a', lw, rr(-12, -50, 24, 28, 4));
@@ -467,6 +501,25 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
       q.closePath();
     });
     g.restore();
+  } else if (w === 'tray') {
+    // Tablett mit Gläsern
+    P(g, '#c0c6cc', lw, ell(26, -40, 14, 3.5));
+    P(g, '#ffd23f', 1, rr(19, -50, 5, 9, 1));
+    P(g, '#e5383b', 1, rr(27, -49, 5, 8, 1));
+  } else if (w === 'kit') {
+    P(g, '#ffffff', lw, rr(16, -32, 20, 16, 3));
+    P(g, '#e5383b', 0, rr(24.5, -29, 3, 10, 0.5));
+    P(g, '#e5383b', 0, rr(21, -25.5, 10, 3, 0.5));
+    line(g, [[22, -32], [22, -36], [30, -36], [30, -32]], 1.5);
+  } else if (w === 'ladle') {
+    g.save();
+    g.translate(20, -36);
+    g.rotate(-1.3);
+    P(g, '#b0b6bd', lw, rr(-2, -1.5, 28, 3, 1.5));
+    P(g, '#b0b6bd', lw, ell(30, 0, 6, 5));
+    g.restore();
+  } else if (w === 'none') {
+    // Arme verschränkt wirkt hier schon durch die Pose
   } else if (w === 'suitcase') {
     // Rollkoffer neben der Hand
     P(g, '#3a86ff', lw, rr(18, -30, 16, 22, 3));
@@ -560,6 +613,10 @@ const Z_poly = (pts) => (q) => {
 // Waffe aus dem Kommentar → gezeichnete Waffe
 export function weaponKind(text = '') {
   const w = String(text).toLowerCase();
+  if (/kellner|bedienung/.test(w)) return 'tray';
+  if (/sanitäter|sanität|arzt|ärztin|erste hilfe/.test(w)) return 'kit';
+  if (/security|türsteher|sicherheit|bodyguard/.test(w)) return 'none';
+  if (/koch|chef/.test(w)) return 'ladle';
   if (/koffer|gepäck|urlaub|tourist/.test(w)) return 'suitcase';
   if (/sniper|scharfschütze|zielfernrohr/.test(w)) return 'sniper';
   if (/sheriff|holster/.test(w)) return 'holster';
@@ -590,7 +647,7 @@ const SHIRTS = ['#3a86ff', '#43aa8b', '#9b5de5', '#f15bb5', '#00bbf9', '#fee440'
 export function makeAlly(name, weapon = '') {
   const r = rnd(hashName(name) || 1);
   const pick = (a) => a[Math.floor(r() * a.length) % a.length];
-  return {
+  const o = {
     name: String(name).toUpperCase().slice(0, 14),
     hair: pick(HAIRS),
     hairC: pick(HAIRC),
@@ -600,8 +657,14 @@ export function makeAlly(name, weapon = '') {
     weapon: weaponKind(weapon),
     weaponText: String(weapon || '').trim(),
     broken: /kaputt|schrott|rostig|alt/i.test(String(weapon || '')),
-    hat: /sheriff/i.test(String(weapon || '')) ? 'sheriff' : /schmied/i.test(String(weapon || '')) ? 'smith' : null,
+    hat: /sheriff/i.test(String(weapon || '')) ? 'sheriff' : /schmied/i.test(String(weapon || '')) ? 'smith' : /koch|chef/i.test(String(weapon || '')) ? 'chef' : /kellner|bedienung/i.test(String(weapon || '')) ? 'waiter' : /sanitäter|sanität|arzt/i.test(String(weapon || '')) ? 'medic' : /security|türsteher|sicherheit|bodyguard/i.test(String(weapon || '')) ? 'security' : null,
   };
+  const role = { chef: '#ffffff', waiter: '#ffffff', medic: '#ffffff', security: '#1d1f26' }[o.hat];
+  if (role) {
+    o.shirt = role;
+    o.pants = o.hat === 'security' || o.hat === 'waiter' ? '#1d1f26' : o.pants;
+  }
+  return o;
 }
 export function nameTag(g, x, y, name, s = 1) {
   g.save();

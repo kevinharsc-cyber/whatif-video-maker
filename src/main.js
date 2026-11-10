@@ -224,7 +224,7 @@ function vereinNames() {
 }
 
 function buildAnimVisuals(sc, visualMode) {
-  if (visualMode === 'resort') return createResortVisuals(sc.scenes, { followers: settings.resortGuests, perFollower: settings.resortPerFollower, kasse: settings.resortKasse });
+  if (visualMode === 'resort') return createResortVisuals(sc.scenes, { followers: settings.resortGuests, perFollower: settings.resortPerFollower, kasse: settings.resortKasse, staff: settings.resortStaff });
   if (visualMode === 'zombie') return createZombieVisuals(sc.scenes, { followers: settings.zombieFollowers, allies: settings.zombieAllies, zombies: settings.zombieCount, goal: settings.zombieGoal, camp: settings.zombieCamp });
   if (visualMode === 'verein') return createVereinVisuals(sc.scenes, { fans: settings.vereinFans, names: vereinNames(), nets: !!settings.vereinNets, kasse: settings.vereinKasse, signed: settings.vereinSigned, staff: settings.vereinStaff });
   const n = sc.scenes.length;
@@ -845,6 +845,7 @@ function openSettings() {
   $('rGuests').value = String(settings.resortGuests || 0);
   $('rPer').value = String(settings.resortPerFollower ?? 10000);
   $('rKasse').value = settings.resortKasse ? String(settings.resortKasse) : '';
+  $('rStaff').value = settings.resortStaff || '';
   $('sQuality').value = settings.quality;
   $('sMusic').checked = settings.music;
   $('sMood').value = settings.musicMood;
@@ -880,6 +881,7 @@ function readSettingsForm() {
     zombieCamp: $('zCamp').value.trim(),
     resortGuests: Math.max(0, parseInt(String($('rGuests').value).replace(/\D/g, ''), 10) || 0),
     resortPerFollower: Math.max(0, parseInt(String($('rPer').value).replace(/\D/g, ''), 10) || 0),
+    resortStaff: $('rStaff').value.trim(),
     resortKasse: Math.max(0, parseInt(String($('rKasse').value).replace(/\D/g, ''), 10) || 0),
     zombieGoal: Math.max(1, parseInt(String($('zGoal').value).replace(/\D/g, ''), 10) || 11),
     quality: $('sQuality').value,

@@ -21,6 +21,7 @@ export const DEFAULTS = {
   resortGuests: 0,
   resortPerFollower: 10000,
   resortKasse: 0,
+  resortStaff: '',
   followEnabled: true,
   followName: '',
   followImage: '',

@@ -26,12 +26,14 @@ const BUILD_WORDS = [
 export function pickResortShot(text, i, n) {
   const low = String(text || '').toLowerCase();
   if (i === n - 1) return 'final';
+  if (/abgestimmt|hat gewonnen|gewinnt/.test(low) && /hotel|hochhaus|pool|restaurant|villa|wasserpark|eck|form/.test(low)) return 'voteresult';
+  if (/restaurant/.test(low) && /daneben|eröffne|neben|bauen|namens|„|"/.test(low)) return 'restaurant';
   if (i === 0 && /kasse|euro|€/.test(low) && /\d/.test(low)) return 'money';
   if (i === 0) return 'intro';
   if (OPTION_RE.test(text)) return 'option';
   if (/gar nichts|keine gebäude|nicht mal/.test(low)) return 'nothing';
   if (/ihr entscheidet|entscheidet über alles/.test(low)) return 'decide';
-  if (/mitarbeiter|chefkoch|animateur|sicherheitschef|stellvertretend/.test(low)) return 'jobs';
+  if (/mitarbeiter gesucht|suchen noch mitarbeiter|animateur|sicherheitschef|stellvertretend/.test(low)) return 'jobs';
   if (/name/.test(low) && /resort|kommentar/.test(low)) return 'name';
   if (/kommentar|likes|stimmt ab|abstimm/.test(low)) return 'comment';
   if (/kasse|euro|€/.test(low) && /\d/.test(low)) return 'money';
@@ -42,6 +44,7 @@ export function pickResortShot(text, i, n) {
   if (/weiß nicht|womit|anfangen|welches/.test(low)) return 'confused';
   if (/problem/.test(low)) return 'problem';
   if (/grundstück/.test(low) && /gekauft|riesig/.test(low)) return 'plot';
+  if (/hier ist es|steht jetzt|schaut euch an|von oben/.test(low)) return 'overview';
   if (/ich sage euch|luxuriöseste|machen/.test(low)) return 'promise';
   if (/entscheidet|folgt|folge/.test(low)) return 'decide';
   if (i === 0 || /willkommen|damen und herren/.test(low)) return 'intro';
@@ -58,6 +61,29 @@ function optionOf(text) {
   return { letter, build, name };
 }
 
+// "1,22 Millionen Euro" / "100.000 €" / "880k" → Zahl
+function euroIn(text) {
+  const m = String(text || '').match(/(\d[\d.,]*)\s*(millionen|million|mio\.?|k|tausend)?\s*(?:euro|€)/i);
+  if (!m) return null;
+  let v = Number(m[1].replace(/\.(?=\d{3})/g, '').replace(',', '.'));
+  const u = (m[2] || '').toLowerCase();
+  if (/^mi/.test(u)) v *= 1e6;
+  else if (u === 'k' || u === 'tausend') v *= 1000;
+  return Math.round(v);
+}
+// "cursedlostamb1tient: Chefkoch, Noyan: Sanitäter" → Team
+function parseStaff(text) {
+  return String(text || '')
+    .split(/[,;\n]+/)
+    .map((p) => p.trim().replace(/^@/, ''))
+    .filter((p) => p.includes(':'))
+    .map((p) => {
+      const [n, ...r] = p.split(':');
+      const role = r.join(':').trim();
+      const o = Z.makeAlly(n.trim(), role);
+      return { ...o, name: n.trim(), role };
+    });
+}
 export function createResortVisuals(scenes, opts = {}) {
   const followers = Math.max(0, Math.floor(Number(opts.followers) || 0));
   const options = scenes.map((s) => optionOf(s.text)).filter(Boolean);
@@ -68,14 +94,27 @@ export function createResortVisuals(scenes, opts = {}) {
     if (!a) return Number(opts.perFollower) || 0;
     return Number(a[1].replace(/\./g, '')) * (a[2] ? 1000 : 1);
   })();
-  const kasse = Number(opts.kasse) || followers * per;
+  const amounts = scenes.map((s) => euroIn(s.text));
+  const lastAmount = [...amounts].reverse().find((v) => v != null);
+  const kasse = Number(opts.kasse) || lastAmount || followers * per;
+  const staff = parseStaff(opts.staff);
+  const restM = all.match(/[Rr]estaurant\s+(?:namens\s+)?[„"]?([A-ZÄÖÜ][\wÄÖÜäöüß-]+)/);
+  const restName = restM ? restM[1].toUpperCase() : null;
+  const kinds = scenes.map((s, j) => pickResortShot(s.text, j, scenes.length));
+  const hotelAt = kinds.indexOf('voteresult');
+  const restAt = kinds.indexOf('restaurant');
+  const towerWon = /hochhaus/i.test(all);
   const hud = { folge: m ? Number(m[1]) : 1, visitors: followers, kasse };
   const seen = {};
   return scenes.map((sc, i) => {
     const text = sc.text || '';
-    const kind = pickResortShot(text, i, scenes.length);
+    let kind = kinds[i];
+    // genannte Teammitglieder → eigene Vorstell-Szene
+    const lowT = text.toLowerCase();
+    const members = staff.filter((p) => lowT.includes(p.name.toLowerCase()));
+    if (members.length && !['final', 'voteresult', 'option', 'comment', 'money'].includes(kind)) kind = 'staff';
     const k = (seen[kind] = (seen[kind] || 0) + 1) - 1;
-    const c = { kind, k, i, text, low: text.toLowerCase(), n: scenes.length, followers, per, kasse, options, option: kind === 'option' ? optionOf(text) : null, optIndex: options.indexOf(options.find((o) => o === optionOf(text))) };
+    const c = { kind, k, i, text, low: text.toLowerCase(), n: scenes.length, followers, per, kasse, options, members, restName, tower: towerWon && hotelAt >= 0 && i >= hotelAt ? (i === hotelAt ? 'build' : 'done') : null, rest: restAt >= 0 && i >= restAt ? (i === restAt ? 'build' : 'done') : null, amount: amounts[i], prevAmount: [...amounts.slice(0, i)].reverse().find((v) => v != null) ?? null, option: kind === 'option' ? optionOf(text) : null, optIndex: options.indexOf(options.find((o) => o === optionOf(text))) };
     if (c.option) c.optIndex = options.findIndex((o) => o.letter === c.option.letter);
     return {
       isAnim: true,
@@ -99,8 +138,10 @@ export function createResortVisuals(scenes, opts = {}) {
         overlays(g, t, Math.max(0.5, dur), c);
         g.restore();
       },
-      drawTitle(g, W, H, t) {
-        drawResortTitle(g, W, t, hud, kind === 'final');
+      drawTitle(g, W, H, t, title) {
+        const fm = String(title || '').match(/folge\s*(\d+)/i);
+        const sub2 = String(title || '').replace(/^.*?folge\s*\d+\s*[–—:-]?\s*/i, '').replace(/[?？]+\s*$/, '').trim().toUpperCase();
+        drawResortTitle(g, W, t, fm ? { ...hud, folge: Number(fm[1]), sub: sub2 } : hud, kind === 'final');
       },
     };
   });
@@ -345,7 +386,7 @@ function land(g, t, { stakes = true, sold = true } = {}) {
   }
 }
 // Gebäude-Vorschau (die 5 Bau-Optionen)
-function building(g, kind, x, y, s, t) {
+function building(g, kind, x, y, s, t, name = null) {
   g.save();
   g.translate(x, y);
   g.scale(s, s);
@@ -401,7 +442,7 @@ function building(g, kind, x, y, s, t) {
     P(g, '#7ec8ff', 4, rr(-170, -170, 140, 100, 6));
     P(g, '#7a4b2a', 4, rr(30, -170, 90, 170, 6));
     P(g, DARK, 5, rr(-110, -350, 220, 64, 14));
-    label(g, 'RESTAURANT', 0, -318, 36, GOLD, { sw: 0 });
+    label(g, name ? `„${name}“` : 'RESTAURANT', 0, -318, name ? 44 : 36, GOLD, { sw: 0 });
   }
   g.restore();
 }
@@ -678,6 +719,49 @@ function shapeName(t) {
   return SHAPES[Math.floor(Math.max(0, t - 0.3) / 0.9) % SHAPES.length][0];
 }
 
+const TOWER_C = [-1150, 650];
+const REST_C = [-520, 760];
+const TOWER_CORNER = [[-1450, 450], [-850, 450], [-850, 900], [-1450, 900]];
+const REST_FOOT = [[-700, 620], [-320, 620], [-320, 900], [-700, 900]];
+function drawResortBuildings(g, t, c) {
+  if (c.tower) {
+    const gk = c.tower === 'build' ? easeOutBack(clamp((t - 0.4) / 1.4)) : 1;
+    extrude(g, TOWER_CORNER, 1400 * gk, { wall: '#e8eef5', roof: '#9aa7b8', floors: 16 });
+  }
+  if (c.rest) {
+    const rk = c.rest === 'build' ? easeOutBack(clamp((t - 0.4) / 1.0)) : 1;
+    extrude(g, REST_FOOT, 160 * rk, { wall: '#ffe8c2', roof: '#e5383b', floors: 1 });
+    if (rk > 0.8 && c.restName) {
+      const [x, y, s] = bproj(-510, 760);
+      g.save();
+      g.translate(x, y - 160 * s * 1.6 - 18);
+      P(g, DARK, 3, rr(-60, -16, 120, 30, 8));
+      g.font = '22px "Lilita One", sans-serif';
+      label(g, c.restName, 0, 0, Math.min(22, (22 * 110) / g.measureText(c.restName).width), GOLD, { sw: 0 });
+      g.restore();
+    }
+  }
+  // Security vor dem Hotel-Eingang (winzig von oben)
+  if (c.tower === 'done') {
+    const [x, y, s] = bproj(-1150, 960);
+    Z.drawSurv(g, x, y, 260 * s, Z.makeAlly('Security', 'Security'), t);
+  }
+}
+function longTag(g, x, y, name, s = 1) {
+  g.save();
+  g.translate(x, y);
+  g.scale(s, s);
+  g.font = '44px "Lilita One", sans-serif';
+  const fit = Math.min(1, 440 / g.measureText(name).width);
+  const fs = 44 * fit;
+  g.font = `${fs}px "Lilita One", sans-serif`;
+  const w = g.measureText(name).width + 50;
+  P(g, '#000', 0, rr(-w / 2, -30 + 7, w, 60, 30));
+  P(g, GOLD, 5, rr(-w / 2, -30, w, 60, 30));
+  label(g, name, 0, 1, fs, DARK, { sw: 0 });
+  g.restore();
+}
+
 // ----------------------------------------------------------- Szenen ---
 function drawScene(g, t, dur, c, mo) {
   const k = clamp(t / dur);
@@ -699,6 +783,37 @@ function drawScene(g, t, dur, c, mo) {
         const [mx, my, ms] = bproj(540, 1500);
         drawManager(g, mx, my, 330 * ms, { pose: 'open', mouth: 0, t });
       }
+      break;
+    }
+    case 'voteresult':
+    case 'overview':
+    case 'restaurant': {
+      // riesige Fläche von oben, Hochhaus in der Ecke, Restaurant daneben
+      const target = c.kind === 'restaurant' ? REST_C : TOWER_C;
+      const [tx, ty] = bproj(target[0], target[1]);
+      if (c.kind === 'overview') cam(g, 540, lerp(900, 960, k), lerp(1.15, 0.95, smooth(k)));
+      else cam(g, lerp(540, tx + 120, smooth(clamp(k * 1.5))), lerp(960, ty - 120, smooth(clamp(k * 1.5))), lerp(0.95, 1.6, smooth(clamp(k * 1.5))));
+      drawBig(g, t, c);
+      drawResortBuildings(g, t, c);
+      break;
+    }
+    case 'staff': {
+      cam(g, 540, 1250, lerp(1.05, 1.12, k));
+      land(g, t, { stakes: false, sold: false });
+      building(g, 'hotel', 220, 1400, 0.95, t);
+      building(g, 'restaurant', 800, 1440, 0.7, t, c.restName);
+      const ms = c.members.slice(0, 2);
+      ms.forEach((p, j) => {
+        const a = easeOutBack(clamp((t - 0.15 - j * 0.35) / 0.35));
+        if (a <= 0) return;
+        const x = ms.length === 1 ? 540 : 360 + j * 360;
+        Z.drawSurv(g, x, 1760, 560 * a, p, t + j);
+      });
+      ms.forEach((p, j) => {
+        const x = ms.length === 1 ? 540 : 360 + j * 360;
+        const a = clamp((t - 0.5 - j * 0.35) / 0.3);
+        if (a > 0) longTag(g, x, 1760 - 640, p.name, easeOutBack(a) * (ms.length === 1 ? 1 : 0.8));
+      });
       break;
     }
     case 'money': {
@@ -823,6 +938,7 @@ function drawScene(g, t, dur, c, mo) {
     case 'final': {
       cam(g, 540, lerp(1000, 1200, k), lerp(0.95, 1.4, k));
       drawBig(g, t, c);
+      drawResortBuildings(g, t, c);
       {
         const [mx, my, ms] = bproj(540, 1550);
         drawManager(g, mx, my - Math.abs(Math.sin(t * 5)) * 6, 330 * ms, { pose: 'open', mouth: 0, t });
@@ -865,20 +981,58 @@ function overlays(g, t, dur, c) {
     case 'intro':
       simple(/urlaub/.test(c.low) ? 'DU DARFST HIER URLAUB MACHEN!' : 'HERZLICH WILLKOMMEN!');
       break;
+    case 'voteresult': {
+      const a = popIn(t, 0.2, end);
+      if (a > 0) {
+        card(g, VW / 2, 420, 920, 220, DARK, a, -0.02);
+        label(g, 'IHR HABT ABGESTIMMT:', 0, -50, 54, '#ffffff', { sw: 0 });
+        label(g, /hochhaus/.test(c.low) ? 'HOCHHAUS-HOTEL!' : 'GEWONNEN!', 0, 40, 84, GOLD, { sw: 0 });
+        g.restore();
+      }
+      break;
+    }
+    case 'overview':
+      simple('UNSER RESORT VON OBEN!', DARK, GOLD, 1580);
+      break;
+    case 'restaurant': {
+      const a = popIn(t, 0.2, end);
+      if (a > 0) {
+        card(g, VW / 2, 420, 920, 220, '#e5383b', a, -0.02);
+        label(g, 'NEU: RESTAURANT', 0, -50, 58, '#ffffff', { sw: 0 });
+        label(g, c.restName ? `„${c.restName}“` : 'ERÖFFNET!', 0, 40, 90, GOLD, { sw: 0 });
+        g.restore();
+      }
+      break;
+    }
+    case 'staff': {
+      const a = popIn(t, 0.2, end);
+      if (a > 0 && c.members.length) {
+        const roles = [...new Set(c.members.map((p) => p.role.toUpperCase()))].join(' & ');
+        card(g, VW / 2, 400, 920, 170, DARK, a, -0.02);
+        g.font = '74px "Lilita One", sans-serif';
+        const tx = `NEU IM TEAM: ${roles}`;
+        label(g, tx, 0, 4, Math.min(74, (74 * 840) / g.measureText(tx).width), GOLD, { sw: 0 });
+        g.restore();
+      }
+      break;
+    }
     case 'plot':
       simple(/\d/.test(c.low) ? 'PLATZ FÜR 20.000 BESUCHER!' : 'UNSER RIESEN-GRUNDSTÜCK!', DARK, GOLD, 1580);
       break;
     case 'money': {
       const a = popIn(t, 0.1, end);
       if (a > 0) {
-        const n = Math.round(c.kasse * smooth(clamp((t - 0.3) / Math.max(0.8, end - 1.2))));
+        const down = /übrig|nur noch|ausgegeben|gekostet|teuer/.test(c.low) && c.prevAmount && c.amount != null && c.amount < c.prevAmount;
+        const target = c.amount ?? c.kasse;
+        const kk = smooth(clamp((t - 0.3) / Math.max(0.8, end - 1.2)));
+        const n = Math.round(down ? lerp(c.prevAmount, target, kk) : target * kk);
         card(g, VW / 2, 440, 940, 260, DARK, a, -0.02);
-        label(g, 'TEAMKASSE:', 0, -70, 56, '#ffffff', { sw: 0 });
-        label(g, `${n.toLocaleString('de-DE')} €`, 0, 20, 110, GOLD, { sw: 0 });
+        label(g, down ? 'NACH DEM BAUEN NOCH:' : 'TEAMKASSE:', 0, -70, 56, '#ffffff', { sw: 0 });
+        label(g, `${n.toLocaleString('de-DE')} €`, 0, 20, 110, down ? '#ff6b6b' : GOLD, { sw: 0 });
         g.restore();
       }
       const b = popIn(t, 1.0, end);
-      if (b > 0 && c.per) {
+      if (b > 0 && c.per && !/übrig|nur noch|teuer/.test(c.low)) {
         card(g, VW / 2, 650, 820, 110, '#3d9a50', b, 0.02);
         label(g, `${c.per.toLocaleString('de-DE')} € PRO FOLLOWER`, 0, 2, 54, '#fff', { sw: 0 });
         g.restore();
@@ -959,7 +1113,7 @@ function overlays(g, t, dur, c) {
         ? [['Lena', 'Palm Paradise Resort!', '#3a86ff', '402'], ['Max', 'Golden Beach Club', '#43aa8b', '276'], ['Tobi', 'Resort de Luxe', '#9b5de5', '188']]
         : c.options.some((o) => ['tower', 'corner', 'shape'].includes(o.build))
           ? [['Lena', 'A!! Hochhaus bis in die Wolken', '#3a86ff', '356'], ['Max', 'C – als Fisch, bitte!', '#43aa8b', '241'], ['Tobi', 'B, die L-Form sieht edel aus', '#9b5de5', '178']]
-          : [['Lena', 'Wasserpark zuerst!!', '#3a86ff', '356'], ['Max', 'Pool, ganz klar', '#43aa8b', '241'], ['Tobi', 'Das 5-Sterne-Hotel', '#9b5de5', '178']];
+          : [['Lena', 'Wasserpark zuerst!!', '#3a86ff', '356'], ['Max', 'Pool, ganz klar', '#43aa8b', '241'], ['Tobi', c.tower ? 'Eine Strandbar!!' : 'Das 5-Sterne-Hotel', '#9b5de5', '178']];
       commentPanel(g, t, list);
       break;
     }
@@ -1054,7 +1208,7 @@ function endCard(g, t, dur, c) {
   g.scale(s, s);
   label(g, 'WIR ERÖFFNEN EIN', 0, 300, 84, '#ffffff', { sw: 14 });
   label(g, 'LUXUS-RESORT', 0, 405, 110, GOLD, { sw: 16 });
-  const rows = [[c.options.length >= 2 ? `STIMM AB: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : 'KOMMENTIERE: WAS BAUEN WIR ZUERST?', GOLD], ['+ NAMEN FÜRS RESORT!', '#fff'], [`GÄSTE: ${c.followers}  ·  KASSE: ${fmtMoney(c.kasse)}`, '#7ddc4a']];
+  const rows = [[c.options.length >= 2 ? `STIMM AB: ${c.options.map((o) => o.letter).join(', ').replace(/, ([^,]*)$/, ' ODER $1')}` : c.tower ? 'STIMM AB: WAS BAUEN WIR ALS NÄCHSTES?' : 'KOMMENTIERE: WAS BAUEN WIR ZUERST?', GOLD], [c.tower ? '+ WERDE TEIL DES TEAMS!' : '+ NAMEN FÜRS RESORT!', '#fff'], [`GÄSTE: ${c.followers}  ·  KASSE: ${fmtMoney(c.kasse)}`, '#7ddc4a']];
   rows.forEach(([x, col], i) => {
     P(g, '#000', 0, rr(-440, 520 + i * 135 + 10, 880, 108, 24));
     P(g, '#22203d', 6, rr(-440, 520 + i * 135, 880, 108, 24));
@@ -1091,9 +1245,15 @@ function drawResortTitle(g, W, t, hud, hide) {
       label(g, `FOLGE ${hud.folge}`, 0, 0, 150, GOLD, { sw: 24 });
       g.restore();
       card(g, VW / 2, 590, 960, 290, DARK, a, 0.02);
-      label(g, 'WIR ERÖFFNEN EIN', 0, -80, 76, '#ffffff', { sw: 0 });
-      label(g, 'LUXUS-RESORT!', 0, 12, 92, GOLD, { sw: 0 });
-      label(g, '…UND DU MACHST HIER URLAUB!', 0, 96, 50, '#7ddc4a', { sw: 0 });
+      if (hud.folge > 1 && hud.sub) {
+        label(g, 'LUXUS-RESORT', 0, -70, 70, GOLD, { sw: 0 });
+        g.font = '80px "Lilita One", sans-serif';
+        label(g, hud.sub, 0, 40, Math.min(80, (80 * 880) / g.measureText(hud.sub).width), '#ffffff', { sw: 0 });
+      } else {
+        label(g, 'WIR ERÖFFNEN EIN', 0, -80, 76, '#ffffff', { sw: 0 });
+        label(g, 'LUXUS-RESORT!', 0, 12, 92, GOLD, { sw: 0 });
+        label(g, '…UND DU MACHST HIER URLAUB!', 0, 96, 50, '#7ddc4a', { sw: 0 });
+      }
       g.restore();
     }
   } else if (!hide) {
@@ -1141,6 +1301,16 @@ function sfxFor(c) {
       break;
     case 'promise':
       add(0.2, 'chirp');
+      break;
+    case 'voteresult':
+    case 'restaurant':
+      add(0.3, 'whoosh');
+      add(0.6, 'hammer');
+      add(1.4, 'cheer');
+      break;
+    case 'staff':
+      add(0.2, 'pop');
+      add(0.6, 'ding');
       break;
     case 'money':
       for (let i = 0; i < 6; i++) add(0.3 + i * 0.25, 'ding');
