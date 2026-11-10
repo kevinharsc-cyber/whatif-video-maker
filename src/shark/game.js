@@ -653,6 +653,91 @@ for (let i = 0; i < 72; i++) {
 }
 
 // --------------------------------------------- Zweite Ebene: Wracks + Riffe ---
+// Holz-Texturen (einmal gezeichnet): Planken, Maserung, Nägel, Algen
+function woodCanvas(kind) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const base = kind === 'deck' ? ['#a0703f', '#946538', '#ab7a47'] : ['#6e4527', '#63401f', '#7a4d2c'];
+  const n = 8;
+  for (let i = 0; i < n; i++) {
+    g.fillStyle = base[i % 3];
+    if (kind === 'deck') g.fillRect(i * 32, 0, 32, 256);
+    else g.fillRect(0, i * 32, 256, 32);
+  }
+  // Maserung
+  g.strokeStyle = 'rgba(40,20,5,0.25)';
+  g.lineWidth = 1.5;
+  for (let i = 0; i < 40; i++) {
+    g.beginPath();
+    const o = Math.random() * 256;
+    for (let t = 0; t <= 256; t += 16) {
+      const w = Math.sin(t * 0.05 + i) * 3;
+      if (kind === 'deck') g.lineTo(o + w, t);
+      else g.lineTo(t, o + w);
+    }
+    g.stroke();
+  }
+  // Fugen
+  g.fillStyle = '#2a1708';
+  for (let i = 0; i <= n; i++) {
+    if (kind === 'deck') g.fillRect(i * 32 - 2, 0, 4, 256);
+    else g.fillRect(0, i * 32 - 2, 256, 4);
+  }
+  // Stoßfugen + Nägel
+  for (let i = 0; i < n; i++) {
+    const off = (i * 97) % 256;
+    g.fillStyle = '#2a1708';
+    if (kind === 'deck') g.fillRect(i * 32, off, 32, 3);
+    else g.fillRect(off, i * 32, 3, 32);
+    g.fillStyle = '#c9b48a';
+    for (const d of [8, 24]) {
+      g.beginPath();
+      if (kind === 'deck') g.arc(i * 32 + d, off + 7, 2, 0, Math.PI * 2);
+      else g.arc(off + 7, i * 32 + d, 2, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  if (kind === 'hull') {
+    // grüne Algen unten am Rumpf
+    const grd = g.createLinearGradient(0, 150, 0, 256);
+    grd.addColorStop(0, 'rgba(70,140,60,0)');
+    grd.addColorStop(1, 'rgba(70,140,60,0.75)');
+    g.fillStyle = grd;
+    g.fillRect(0, 150, 256, 106);
+    for (let i = 0; i < 30; i++) {
+      g.fillStyle = `rgba(${60 + Math.random() * 40},${130 + Math.random() * 50},60,0.6)`;
+      g.beginPath();
+      g.ellipse(Math.random() * 256, 190 + Math.random() * 66, 6 + Math.random() * 10, 3 + Math.random() * 6, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  return c;
+}
+const woodCanvases = {};
+function woodTex(kind, rx, ry) {
+  woodCanvases[kind] ||= woodCanvas(kind);
+  const t = new THREE.CanvasTexture(woodCanvases[kind]);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(rx, ry);
+  return t;
+}
+const WOOD = {
+  // Box-Seiten: u entlang z, v entlang y
+  hull: (L) => new THREE.MeshToonMaterial({ map: woodTex('hull', L / 4, 1), gradientMap: grad }),
+  deck: (L) => new THREE.MeshToonMaterial({ map: woodTex('deck', 1, L / 4), gradientMap: grad }),
+  ramp: (L) => new THREE.MeshToonMaterial({ map: woodTex('deck', 0.8, L / 4), gradientMap: grad }),
+};
+function texPart(geo, mat, outline = true) {
+  const m = new THREE.Mesh(geo, mat);
+  if (outline) {
+    const o = new THREE.Mesh(geo, OUTLINE);
+    o.scale.setScalar(1.02);
+    m.add(o);
+  }
+  return m;
+}
 // Ursprung = vordere Kante unten Mitte; die Plattform reicht nach hinten (-z)
 const PLAT = {
   wreck: {
@@ -661,44 +746,116 @@ const PLAT = {
     make() {
       const g = new THREE.Group();
       const L = 22 - 6;
-      const hull = part(new THREE.BoxGeometry(1.9, PLAT_H, L), 0x6b4426, { w: 0.02 });
-      hull.position.set(0, PLAT_H / 2, -6 - L / 2);
+      const zc = -6 - L / 2;
+      // Rumpf aus Holzplanken (mit Algen unten)
+      const hull = texPart(new THREE.BoxGeometry(1.9, PLAT_H, L), WOOD.hull(L));
+      hull.position.set(0, PLAT_H / 2, zc);
       g.add(hull);
-      const deck = part(new THREE.BoxGeometry(2.0, 0.16, L), 0x9a6a3c, { outline: false });
-      deck.position.set(0, PLAT_H, -6 - L / 2);
+      // Kiel unten (dunkler, etwas schmaler) – lässt es wie ein Schiffsrumpf wirken
+      const keel = part(new THREE.BoxGeometry(1.4, 0.35, L + 0.3), 0x3b2412, { w: 0.03 });
+      keel.position.set(0, 0.12, zc);
+      g.add(keel);
+      // Deck mit Längsbrettern, leicht überstehend
+      const deck = texPart(new THREE.BoxGeometry(2.06, 0.16, L + 0.1), WOOD.deck(L), false);
+      deck.position.set(0, PLAT_H, zc);
       g.add(deck);
-      for (let i = 0; i < 5; i++) {
-        const plank = new THREE.Mesh(new THREE.BoxGeometry(1.92, 0.06, 0.08), toon(0x5a3a1e));
-        plank.position.set(0, PLAT_H * (0.3 + (i % 3) * 0.2), -8 - i * 3);
-        g.add(plank);
-        for (const sx of [-1, 1]) {
-          const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 12), toon(0x1d3b4f));
-          hole.rotation.z = Math.PI / 2;
-          hole.position.set(sx * 0.97, PLAT_H * 0.62, -8.5 - i * 3);
-          g.add(hole);
+      // Bordwand-Kante oben
+      for (const sx of [-1, 1]) {
+        const rail = part(new THREE.BoxGeometry(0.14, 0.14, L + 0.1), 0x4a2e16, { w: 0.06 });
+        rail.position.set(sx * 1.0, PLAT_H + 0.12, zc);
+        g.add(rail);
+      }
+      for (const sx of [-1, 1]) {
+        // Messing-Bullaugen
+        for (let i = 0; i < 4; i++) {
+          const z = -8 - i * 3.6 + (sx > 0 ? 1.2 : 0);
+          const ring = part(new THREE.TorusGeometry(0.22, 0.06, 6, 14), 0xd9a400, { w: 0.1, extra: { emissive: 0x2a1a00 } });
+          ring.rotation.y = Math.PI / 2;
+          ring.position.set(sx * 0.97, PLAT_H * 0.66, z);
+          g.add(ring);
+          const glass = new THREE.Mesh(new THREE.CircleGeometry(0.18, 14), new THREE.MeshBasicMaterial({ color: 0x2f7fa0 }));
+          glass.rotation.y = sx * Math.PI / 2;
+          glass.position.set(sx * 0.965, PLAT_H * 0.66, z);
+          g.add(glass);
+        }
+        // großes Loch im Rumpf mit abgebrochenen Brettern
+        const hz = sx > 0 ? -16 : -11;
+        const hole = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.95), new THREE.MeshBasicMaterial({ color: 0x140c06 }));
+        hole.rotation.y = sx * Math.PI / 2;
+        hole.position.set(sx * 0.962, PLAT_H * 0.32, hz);
+        g.add(hole);
+        for (let k = 0; k < 4; k++) {
+          const shard = part(new THREE.BoxGeometry(0.06, 0.12, 0.55 + (k % 2) * 0.25), 0x7a4b2a, { w: 0.1 });
+          shard.position.set(sx * 1.0, PLAT_H * 0.32 + (k < 2 ? 0.5 : -0.5), hz - 0.4 + k * 0.3);
+          shard.rotation.set(0, 0, (k % 2 ? 0.5 : -0.4) * sx);
+          shard.rotation.x = (k - 1.5) * 0.35;
+          g.add(shard);
+        }
+        // Muscheln/Seepocken unten am Rumpf
+        for (let k = 0; k < 7; k++) {
+          const b = part(new THREE.SphereGeometry(0.07 + (k % 3) * 0.03, 6, 5), 0xd9d4c7, { w: 0.15 });
+          b.position.set(sx * 0.96, 0.45 + (k % 3) * 0.18, -7.5 - k * 2.1 - (sx > 0 ? 0.7 : 0));
+          g.add(b);
+        }
+        // Seetang hängt über die Bordwand
+        for (let k = 0; k < 3; k++) {
+          const weed = new THREE.Group();
+          weed.position.set(sx * 1.03, PLAT_H + 0.05, -9 - k * 4.5 - (sx > 0 ? 2 : 0));
+          const strand = part(new THREE.BoxGeometry(0.05, 1.3 + k * 0.3, 0.16), 0x3fa34d, { w: 0.12 });
+          strand.position.y = -(1.3 + k * 0.3) / 2;
+          weed.add(strand);
+          weed.userData.ph = k * 1.7 + sx;
+          g.add(weed);
+          (g.userData.sway ||= []).push(weed);
         }
       }
-      // kaputte Reling an den Seiten (verdeckt nicht die Sicht)
+      // kaputte Reling (nur an den Seiten)
       for (let i = 0; i < 6; i++) {
         for (const sx of [-1, 1]) {
           if ((i + (sx > 0 ? 1 : 0)) % 3 === 0) continue;
-          const post = part(new THREE.BoxGeometry(0.1, 0.45 + (i % 2) * 0.2, 0.1), 0x5a3a1e, { w: 0.08 });
-          post.position.set(sx * 0.92, PLAT_H + 0.25, -7 - i * 2.6);
+          const post = part(new THREE.BoxGeometry(0.1, 0.45 + (i % 2) * 0.25, 0.1), 0x4a2e16, { w: 0.08 });
+          post.position.set(sx * 0.95, PLAT_H + 0.35, -7 - i * 2.6);
           post.rotation.z = sx * (0.1 + (i % 3) * 0.12);
           g.add(post);
         }
       }
+      // hinten: abgebrochenes Heck (seitliche Spanten ragen hoch)
+      for (const sx of [-1, 1]) {
+        const rib = part(new THREE.TorusGeometry(0.7, 0.07, 6, 10, Math.PI / 2), 0x4a2e16, { w: 0.08 });
+        rib.position.set(sx * 0.3, PLAT_H + 0.1, -21.6);
+        rib.rotation.set(0, 0, sx > 0 ? 0 : Math.PI / 2);
+        g.add(rib);
+      }
+      // Anker vorne an der Seite
+      const anchor = new THREE.Group();
+      anchor.position.set(-1.05, PLAT_H * 0.75, -6.4);
+      const shaft = part(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 6), 0x5b6670, { w: 0.12 });
+      anchor.add(shaft);
+      const arm = part(new THREE.TorusGeometry(0.28, 0.05, 6, 12, Math.PI), 0x5b6670, { w: 0.12 });
+      arm.rotation.z = Math.PI;
+      arm.position.y = -0.3;
+      anchor.add(arm);
+      const eye = part(new THREE.TorusGeometry(0.09, 0.03, 6, 10), 0x5b6670, { w: 0.15 });
+      eye.position.y = 0.5;
+      anchor.add(eye);
+      anchor.rotation.y = Math.PI / 2;
+      g.add(anchor);
+      // Rampe: kaputte Planke mit Querbrettern
       const RL = Math.hypot(6, PLAT_H);
-      const ramp = part(new THREE.BoxGeometry(1.7, 0.18, RL), 0x8a5a30, { w: 0.03 });
+      const ramp = texPart(new THREE.BoxGeometry(1.7, 0.18, RL), WOOD.ramp(RL));
       ramp.position.set(0, PLAT_H / 2, -3);
       ramp.rotation.x = Math.atan2(PLAT_H, 6);
       g.add(ramp);
-      for (let i = 0; i < 4; i++) {
-        const rib = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.05, 0.1), toon(0x5a3a1e));
-        rib.position.set(0, PLAT_H * ((i + 0.6) / 4.6) + 0.11, -0.6 - i * 1.3);
-        rib.rotation.x = Math.atan2(PLAT_H, 6);
-        g.add(rib);
+      for (let i = 0; i < 5; i++) {
+        const cross = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.06, 0.12), toon(0x4a2e16));
+        cross.position.set(0, PLAT_H * ((i + 0.55) / 5.6) + 0.11, -0.5 - i * 1.05);
+        cross.rotation.x = Math.atan2(PLAT_H, 6);
+        g.add(cross);
       }
+      // Stützbalken unter der Rampe
+      const prop = part(new THREE.BoxGeometry(0.16, PLAT_H * 0.5, 0.16), 0x4a2e16, { w: 0.06 });
+      prop.position.set(0, PLAT_H * 0.25, -4);
+      g.add(prop);
       return g;
     },
   },
@@ -1514,6 +1671,7 @@ function update(dt) {
       const p = G.plats[i];
       p.z += dz;
       p.obj.position.z = p.z;
+      if (p.obj.userData.sway) for (const w of p.obj.userData.sway) w.rotation.x = Math.sin(t * 2 + w.userData.ph) * 0.25;
       // vorne gegen ein Riff (ohne Rampe) geschwommen
       if (!p.hit && !riding && p.z >= 0 && p.z - dz < 0.6 && Math.abs(LANES[p.lane] - G.x) < 1.0 && G.y - HALF_H < FLOOR_Y + (p.ramp ? 0 : PLAT_H) - 0.3) {
         p.hit = true;
