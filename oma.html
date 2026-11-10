@@ -43,6 +43,8 @@
       .arrow { width: 54px; height: 54px; border: 0; background: none; font-size: 34px; color: #fff3d6; -webkit-text-stroke: 3px #2e1a0c; paint-order: stroke fill; padding: 0; }
       .arrow:disabled { opacity: 0.25; }
       #tLevelBox { border: 0; color: inherit; font-family: inherit; background: rgba(46, 26, 12, 0.35); border-radius: 10px; padding: 2px 16px; display: inline-block; }
+      .signs .wood.locked { filter: grayscale(1) brightness(0.75); }
+      .signs .wood.special { box-shadow: 0 0 18px 4px rgba(255, 120, 20, 0.75); }
       #mapLock { font-size: 13px; color: #ffd9a0; -webkit-text-stroke: 3px #2e1a0c; paint-order: stroke fill; min-height: 14px; text-align: center; }
       #tStart { font-size: 44px; padding: 6px 0 10px; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.08) 0 3px, transparent 3px 11px), linear-gradient(#ff5a4a, #d62828 55%, #a81c1c); -webkit-text-stroke: 6px #3a0f0f; paint-order: stroke fill; letter-spacing: 2px; }
       #tStart:active, .round:active { transform: translateY(4px); box-shadow: 0 2px 0 #2e1a0c; }
@@ -212,7 +214,7 @@
         <div class="signs">
           <div class="wood selr panel">
             <button id="mapPrev" class="arrow">◀</button>
-            <div class="mid"><div class="k" id="tMapNo">KARTE 1 / 3</div><div class="v" id="tMap">SCHREBERGARTEN</div></div>
+            <div class="mid"><div class="k" id="tMapNo">KARTE 1 / 6</div><div class="v" id="tMap">SCHREBERGARTEN</div></div>
             <button id="mapNext" class="arrow">▶</button>
           </div>
           <div id="mapLock"></div>
@@ -279,7 +281,7 @@
           <p>▶▶ <b>SCHON STARTEN</b>: Während einer Welle kannst du die nächste(n) schon vorziehen – gibt Bonus-Kekse.</p>
           <p>☕ <b>Kaffeekränzchen</b>: 10 Sekunden lang werfen alle Omas doppelt so schnell.</p>
           <p>⭐ Alle 30 Leben behalten = 3 Sterne · ab 20 = 2 Sterne · sonst 1 Stern.</p>
-          <p>🗺️ Jede Karte hat 60 Wellen am Stück. Ab Welle 20 kommen Bosse, Welle 60 ist die schwerste. Schaffst du alle 60, ist die Karte geschafft und die nächste wird frei.</p>
+          <p>🗺️ Jede Karte hat 60 Wellen am Stück. Ab Welle 20 kommen Bosse, Welle 60 ist die schwerste. 5 Karten kannst du sofort spielen. Hol dir überall 3 Sterne (15 ★), dann wird die 6. Spezial-Karte VULKAN frei – mit Meteoren und Goldzombies!</p>
           <p>☝️ Mit einem Finger schieben, mit zwei Fingern zoomen.</p>
         </div></div></div>
     </div>

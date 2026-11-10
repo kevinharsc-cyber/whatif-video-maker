@@ -1,10 +1,10 @@
-// OMA vs ZOMBIES – Musik: 4 selbst komponierte Songs (Menü + je Karte), nur WebAudio
+// OMA vs ZOMBIES – Musik: 7 selbst komponierte Songs (Menü + je Karte), nur WebAudio
 // Jeder Song: 16 Takte à 16 Schritte, dann Schleife. Melodie: [Schritt, MIDI-Note, Länge in Schritten]
 
 const CH = {
   C: [36, [60, 64, 67]], Dm: [38, [62, 65, 69]], Em: [40, [64, 67, 71]], F: [41, [60, 65, 69]], G: [43, [62, 67, 71]],
   Am: [45, [60, 64, 69]], E: [40, [64, 68, 71]], Bb: [46, [62, 65, 70]], Gm: [43, [62, 67, 70]], A: [45, [61, 64, 69]],
-  D: [38, [62, 66, 69]], Bm: [47, [62, 66, 71]], Fsm: [42, [61, 66, 69]],
+  D: [38, [62, 66, 69]], Bm: [47, [62, 66, 71]], Fsm: [42, [61, 66, 69]], B: [47, [63, 66, 71]],
 };
 
 export const SONGS = {
@@ -96,6 +96,72 @@ export const SONGS = {
       ['D', [[0, 85, 2], [2, 86, 2], [4, 81, 8]]],
     ],
   },
+  // Strand: Calypso in F-Dur, Steel-Drum + Offbeat-Gitarre
+  strand: {
+    bpm: 112, swing: 0.08, style: 'beach',
+    bars: [
+      ['F', [[0, 72, 2], [3, 77, 1], [4, 81, 2], [6, 79, 2], [8, 77, 2], [11, 76, 1], [12, 77, 4]]],
+      ['Bb', [[0, 74, 2], [3, 77, 1], [4, 82, 2], [6, 81, 2], [8, 79, 4], [12, 77, 4]]],
+      ['C', [[0, 76, 2], [3, 79, 1], [4, 84, 2], [6, 82, 2], [8, 81, 2], [10, 79, 2], [12, 76, 4]]],
+      ['F', [[0, 77, 3], [3, 81, 3], [6, 79, 2], [8, 77, 6], [14, 72, 2]]],
+      ['Dm', [[0, 74, 2], [3, 77, 1], [4, 81, 3], [7, 79, 1], [8, 77, 2], [10, 76, 2], [12, 74, 4]]],
+      ['Gm', [[0, 74, 2], [2, 79, 2], [4, 82, 4], [8, 81, 2], [10, 79, 2], [12, 77, 4]]],
+      ['C', [[0, 79, 3], [3, 79, 3], [6, 81, 2], [8, 82, 2], [10, 84, 2], [12, 79, 4]]],
+      ['C', [[0, 76, 2], [2, 77, 2], [4, 79, 4], [8, 72, 4], [12, 76, 4]]],
+      ['F', [[0, 84, 2], [3, 81, 1], [4, 77, 2], [6, 81, 2], [8, 84, 4], [12, 86, 4]]],
+      ['Bb', [[0, 86, 2], [3, 82, 1], [4, 77, 2], [6, 82, 2], [8, 86, 4], [12, 84, 4]]],
+      ['F', [[0, 81, 3], [3, 77, 3], [6, 79, 2], [8, 81, 2], [10, 79, 2], [12, 77, 4]]],
+      ['Dm', [[0, 74, 3], [3, 77, 3], [6, 81, 2], [8, 79, 8]]],
+      ['Gm', [[0, 79, 2], [2, 82, 2], [4, 86, 2], [6, 84, 2], [8, 82, 2], [10, 81, 2], [12, 79, 4]]],
+      ['C', [[0, 76, 2], [2, 79, 2], [4, 84, 4], [8, 82, 2], [10, 79, 2], [12, 76, 4]]],
+      ['F', [[0, 77, 3], [3, 81, 3], [6, 84, 2], [8, 81, 2], [10, 79, 2], [12, 77, 4]]],
+      ['C', [[0, 79, 4], [4, 76, 4], [8, 72, 4], [12, 76, 4]]],
+    ],
+  },
+  // Herbstwald: Volkslied in e-Moll, Flöte + gezupfte Gitarre
+  herbst: {
+    bpm: 100, swing: 0.12, style: 'autumn',
+    bars: [
+      ['Em', [[0, 71, 4], [4, 74, 2], [6, 76, 2], [8, 79, 4], [12, 76, 4]]],
+      ['D', [[0, 74, 4], [4, 78, 2], [6, 74, 2], [8, 71, 4], [12, 69, 4]]],
+      ['C', [[0, 72, 4], [4, 76, 2], [6, 79, 2], [8, 76, 2], [10, 74, 2], [12, 72, 4]]],
+      ['B', [[0, 71, 6], [6, 75, 2], [8, 78, 4], [12, 71, 4]]],
+      ['Em', [[0, 76, 2], [2, 79, 2], [4, 83, 4], [8, 81, 2], [10, 79, 2], [12, 76, 4]]],
+      ['Am', [[0, 72, 2], [2, 76, 2], [4, 81, 4], [8, 79, 2], [10, 76, 2], [12, 72, 4]]],
+      ['D', [[0, 74, 2], [2, 78, 2], [4, 81, 2], [6, 78, 2], [8, 74, 4], [12, 78, 4]]],
+      ['G', [[0, 79, 8], [8, 78, 2], [10, 76, 2], [12, 74, 4]]],
+      ['C', [[0, 76, 4], [4, 79, 4], [8, 84, 4], [12, 83, 2], [14, 81, 2]]],
+      ['G', [[0, 79, 4], [4, 74, 4], [8, 71, 4], [12, 74, 4]]],
+      ['Am', [[0, 72, 2], [2, 74, 2], [4, 76, 4], [8, 81, 4], [12, 79, 4]]],
+      ['B', [[0, 78, 4], [4, 75, 4], [8, 71, 4], [12, 75, 4]]],
+      ['Em', [[0, 76, 2], [2, 78, 2], [4, 79, 2], [6, 81, 2], [8, 83, 4], [12, 79, 4]]],
+      ['C', [[0, 84, 4], [4, 83, 2], [6, 81, 2], [8, 79, 4], [12, 76, 4]]],
+      ['B', [[0, 78, 2], [2, 75, 2], [4, 71, 4], [8, 75, 2], [10, 78, 2], [12, 81, 4]]],
+      ['Em', [[0, 79, 4], [4, 78, 4], [8, 76, 8]]],
+    ],
+  },
+  // Vulkan (Spezial): episch in d-Moll, Blechbläser + treibender Bass
+  vulkan: {
+    bpm: 140, swing: 0, style: 'epic',
+    bars: [
+      ['Dm', [[0, 74, 6], [6, 77, 2], [8, 81, 6], [14, 79, 2]]],
+      ['Dm', [[0, 77, 2], [2, 76, 2], [4, 74, 4], [8, 69, 8]]],
+      ['Bb', [[0, 70, 6], [6, 74, 2], [8, 77, 6], [14, 79, 2]]],
+      ['C', [[0, 81, 4], [4, 79, 4], [8, 76, 8]]],
+      ['Dm', [[0, 74, 2], [2, 74, 2], [4, 81, 4], [8, 79, 2], [10, 77, 2], [12, 76, 2], [14, 77, 2]]],
+      ['Bb', [[0, 74, 2], [2, 74, 2], [4, 82, 4], [8, 81, 2], [10, 79, 2], [12, 77, 4]]],
+      ['Gm', [[0, 79, 2], [2, 82, 2], [4, 86, 4], [8, 84, 2], [10, 82, 2], [12, 81, 4]]],
+      ['A', [[0, 81, 8], [8, 76, 4], [12, 73, 4]]],
+      ['Dm', [[0, 86, 4], [4, 84, 2], [6, 81, 2], [8, 86, 4], [12, 89, 4]]],
+      ['C', [[0, 88, 4], [4, 84, 2], [6, 79, 2], [8, 84, 4], [12, 88, 4]]],
+      ['Bb', [[0, 86, 4], [4, 82, 2], [6, 77, 2], [8, 82, 4], [12, 86, 4]]],
+      ['A', [[0, 85, 8], [8, 81, 4], [12, 76, 4]]],
+      ['Gm', [[0, 79, 2], [2, 82, 2], [4, 86, 2], [6, 82, 2], [8, 79, 2], [10, 82, 2], [12, 86, 4]]],
+      ['F', [[0, 84, 2], [2, 81, 2], [4, 77, 2], [6, 81, 2], [8, 84, 4], [12, 89, 4]]],
+      ['A', [[0, 88, 2], [2, 85, 2], [4, 81, 2], [6, 76, 2], [8, 73, 2], [10, 76, 2], [12, 81, 4]]],
+      ['A', [[0, 85, 4], [4, 81, 4], [8, 76, 4], [12, 73, 4]]],
+    ],
+  },
 };
 
 const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -178,6 +244,23 @@ export function scheduleStep(song, a, bus, step, at, intense = 0) {
       osc(a, bus.lead, 'sine', hz(n), at, Math.min(1.2, len * 1.6), 0.09, 0.003);
       osc(a, bus.lead, 'sine', hz(n) * 2.01, at, 0.4, 0.035, 0.002);
       osc(a, bus.lead, 'sine', hz(n) * 3.02, at, 0.2, 0.015, 0.002);
+    } else if (st === 'beach') {
+      // Steel-Drum: Sinus + leicht verstimmte Obertöne, kurzes Abklingen
+      osc(a, bus.lead, 'sine', hz(n), at, Math.min(0.7, len * 1.3), 0.1, 0.003);
+      osc(a, bus.lead, 'sine', hz(n) * 2.005, at, 0.25, 0.04, 0.002);
+      osc(a, bus.lead, 'triangle', hz(n) * 0.997, at, Math.min(0.5, len), 0.03, 0.003);
+    } else if (st === 'autumn') {
+      // Flöte: weicher Einsatz + Vibrato
+      const o1 = osc(a, bus.lead, 'sine', hz(n), at, len, 0.09, 0.04);
+      osc(a, bus.lead, 'triangle', hz(n) * 2, at, len * 0.9, 0.012, 0.05);
+      const lfo = a.createOscillator(), lg = a.createGain();
+      lfo.frequency.value = 5; lg.gain.setValueAtTime(0, at); lg.gain.linearRampToValueAtTime(hz(n) * 0.01, at + Math.min(0.3, len));
+      lfo.connect(lg).connect(o1.frequency); lfo.start(at); lfo.stop(at + len);
+    } else if (st === 'epic') {
+      // Blechbläser: zwei leicht verstimmte Sägezähne
+      osc(a, bus.lead, 'sawtooth', hz(n) * 1.003, at, len, 0.035, 0.02);
+      osc(a, bus.lead, 'sawtooth', hz(n) * 0.997, at, len, 0.035, 0.02);
+      osc(a, bus.lead, 'square', hz(n) * 0.5, at, len * 0.8, 0.018, 0.02);
     } else if (st === 'spooky') {
       // Cembalo: kurz und spitz
       osc(a, bus.lead, 'sawtooth', hz(n), at, Math.min(0.5, len), 0.04, 0.002);
@@ -207,6 +290,24 @@ export function scheduleStep(song, a, bus, step, at, intense = 0) {
     if (k === 0 || k === 3) kick(a, bus.band, at, k === 0 ? 0.28 : 0.18); // Herzschlag
     if (intense > 0.3 && k % 2 === 0) hit(a, bus.band, at, { vol: 0.015, len: 0.04 });
     if (k === 8) hit(a, bus.band, at, { type: 'bandpass', freq: 900, len: 0.25, vol: 0.03, q: 3 });
+  } else if (st === 'beach') {
+    if (k === 0 || k === 6 || k === 8) osc(a, bus.band, 'triangle', hz(root + (k === 6 ? 7 : 0)), at, sl * 2, 0.22, 0.004);
+    if (k % 4 === 2) for (const v of voices) osc(a, bus.band, 'square', hz(v), at, sl * 0.8, 0.016, 0.002); // Offbeat-Gitarre
+    if (k === 0 || k === 3 || k === 6 || k === 10 || k === 12) hit(a, bus.band, at, { type: 'bandpass', freq: 2500, len: 0.04, vol: 0.05, q: 4 }); // Clave
+    hit(a, bus.band, at, { freq: 9000, vol: k % 2 ? 0.01 : 0.018, len: 0.05 }); // Shaker
+    if (k === 0 || k === 8) kick(a, bus.band, at, 0.2 + intense * 0.08);
+  } else if (st === 'autumn') {
+    if (k === 0 || k === 8) osc(a, bus.band, 'triangle', hz(root), at, sl * 6, 0.2, 0.01);
+    if (k % 2 === 0) { const v = voices[[0, 1, 2, 1][(k / 2) % 4]]; osc(a, bus.band, 'triangle', hz(v), at, sl * 3, 0.03, 0.003); } // Zupfen
+    if (k === 0) kick(a, bus.band, at, 0.18 + intense * 0.08);
+    if (k === 8) hit(a, bus.band, at, { type: 'bandpass', freq: 3500, len: 0.12, vol: 0.03, q: 1 });
+    if (intense > 0.3 && k % 4 === 2) hit(a, bus.band, at, { vol: 0.012, len: 0.04 });
+  } else if (st === 'epic') {
+    if (k % 2 === 0) osc(a, bus.band, 'sawtooth', hz(root + (k % 4 === 2 ? 12 : 0)), at, sl * 1.6, 0.06, 0.004); // treibender Bass
+    if (k === 0 || k === 6 || k === 12) { osc(a, bus.band, 'sawtooth', hz(root + 24), at, sl * 3, 0.03, 0.005); osc(a, bus.band, 'sawtooth', hz(root + 31), at, sl * 3, 0.025, 0.005); }
+    if (k % 4 === 0) kick(a, bus.band, at, 0.26 + intense * 0.08);
+    if (k === 4 || k === 12) hit(a, bus.band, at, { type: 'bandpass', freq: 1600, len: 0.15, vol: 0.07, q: 0.7 });
+    if (k % 2 === 1) hit(a, bus.band, at, { vol: 0.016, len: 0.03 });
   } else if (st === 'winter') {
     if (k % 4 === 0) osc(a, bus.band, 'sine', hz(root), at, sl * 3.5, 0.22, 0.01);
     if (k % 4 === 2) for (const v of voices) osc(a, bus.band, 'triangle', hz(v), at, sl * 1.5, 0.022, 0.004);
