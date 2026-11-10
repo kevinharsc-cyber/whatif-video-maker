@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as Q from './progress.js';
+import { createBus, scheduleStep, stepSeconds } from './music.js';
 import { savePlayer, topPlayers, searchPlayers, getPlayers, newId, newSecret, isId, NAME_RE } from './online.js';
 
 // ------------------------------------------------------------ Einstellungen ---
@@ -900,68 +901,28 @@ const sfx = {
 };
 
 // ----------------------------------------------------------------- Musik ---
-// leichte, fröhliche Unterwasser-Melodie (Marimba + Bass + Shaker), wird mit dem Hai spannender
-const music = { on: false, gain: null, next: 0, step: 0, timer: null };
-const CHORDS = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]]; // Am F C G
-const MELODY = [76, 0, 72, 74, 76, 0, 79, 76, 74, 0, 72, 0, 69, 72, 74, 0];
-const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
-function note(a, out, f, at, len, type, vol) {
-  const o = a.createOscillator();
-  const gn = a.createGain();
-  o.type = type;
-  o.frequency.setValueAtTime(f, at);
-  gn.gain.setValueAtTime(0.0001, at);
-  gn.gain.exponentialRampToValueAtTime(vol, at + 0.01);
-  gn.gain.exponentialRampToValueAtTime(0.0001, at + len);
-  o.connect(gn).connect(out);
-  o.start(at);
-  o.stop(at + len + 0.05);
-}
-let noiseBuf = null;
-function shaker(a, out, at, vol) {
-  if (!noiseBuf) {
-    noiseBuf = a.createBuffer(1, a.sampleRate * 0.1, a.sampleRate);
-    const d = noiseBuf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  }
-  const s = a.createBufferSource();
-  s.buffer = noiseBuf;
-  const hp = a.createBiquadFilter();
-  hp.type = 'highpass';
-  hp.frequency.value = 6000;
-  const gn = a.createGain();
-  gn.gain.setValueAtTime(vol, at);
-  gn.gain.exponentialRampToValueAtTime(0.0001, at + 0.06);
-  s.connect(hp).connect(gn).connect(out);
-  s.start(at);
-  s.stop(at + 0.08);
-}
+// eigene Titelmelodie „SHARK ATTACK“ (siehe music.js): im Menü sanft, im Spiel mit Schlagzeug,
+// wenn der Hai nah ist etwas schneller und treibender
+const music = { on: false, bus: null, next: 0, step: 0, timer: null };
 function musicTick() {
   const a = ac;
   if (!a || !music.on) return;
-  const tense = G.mode === 'play' ? G.danger : 0;
-  const stepLen = 60 / (100 + tense * 30) / 4;
-  while (music.next < a.currentTime + 0.15) {
-    const s = music.step % 64;
-    const bar = Math.floor(s / 16);
-    const k = s % 16;
-    const ch = CHORDS[bar];
-    const at = music.next;
-    if (k % 2 === 0) note(a, music.gain, hz(ch[(k / 2) % 3] + 12), at, 0.25, 'triangle', 0.11);
-    if (k % 4 === 0) note(a, music.gain, hz(ch[0] - 24), at, 0.35, 'sine', 0.22);
-    if (MELODY[k] && bar % 2 === 1) note(a, music.gain, hz(MELODY[k]), at, 0.3, 'sine', 0.08);
-    if (G.mode === 'play') shaker(a, music.gain, at, k % 4 === 2 ? 0.06 : 0.025);
-    if (tense > 0.5 && k % 2 === 0) note(a, music.gain, hz(ch[0] - 12), at, 0.12, 'square', 0.03 * tense);
-    music.next += stepLen;
+  const tense = G.mode === 'play' ? Math.max(0, (G.danger - 0.3) / 0.7) : 0;
+  const mode = G.mode === 'play' || G.mode === 'caught' ? 'play' : 'menu';
+  if (music.next < a.currentTime - 0.2) music.next = a.currentTime + 0.05; // nach Pause/Hintergrund nicht nachholen
+  while (music.next < a.currentTime + 0.2) {
+    scheduleStep(a, music.bus, music.step, music.next, mode, tense);
+    music.next += stepSeconds(tense);
     music.step++;
   }
 }
 function startMusic() {
   const a = audio();
   if (!a || music.on || !settings.music) return;
-  music.gain = music.gain || a.createGain();
-  music.gain.gain.value = 0.55;
-  music.gain.connect(a.destination);
+  if (!music.bus) music.bus = createBus(a, a.destination);
+  music.bus.master.gain.cancelScheduledValues(a.currentTime);
+  music.bus.master.gain.setValueAtTime(0.0001, a.currentTime);
+  music.bus.master.gain.exponentialRampToValueAtTime(0.9, a.currentTime + 0.6);
   music.on = true;
   music.next = a.currentTime + 0.05;
   music.timer = setInterval(musicTick, 50);
@@ -969,7 +930,10 @@ function startMusic() {
 function stopMusic() {
   music.on = false;
   clearInterval(music.timer);
-  if (music.gain) music.gain.disconnect();
+  if (music.bus && ac) {
+    music.bus.master.gain.cancelScheduledValues(ac.currentTime);
+    music.bus.master.gain.setValueAtTime(0.0001, ac.currentTime + 0.05);
+  }
 }
 
 // ----------------------------------------------------------------- Spiel ---
@@ -1016,6 +980,7 @@ function startRun() {
   clearWorld();
   Object.assign(G, { mode: 'play', t: 0, speed: START_SPEED, dist: 0, coins: 0, danger: 0.85, slow: 0, shake: 0, nextRow: 26, lane: 1, x: 0, y: SWIM_Y, vMode: 'swim', vT: 0, vFrom: SWIM_Y, baseY: SWIM_Y, caughtT: 0, dodged: 0, treasureMsg: '' });
   G.runStart = performance.now();
+  if (music.on) music.step = 0; // jeder Lauf startet mit dem Hook
   G.vx = 0;
   G.vy = 0;
   G.camX = 0;
@@ -2123,6 +2088,8 @@ $('resume').addEventListener('click', () => {
 });
 $('quit').addEventListener('click', menu);
 document.addEventListener('visibilitychange', () => {
+  // im Hintergrund keine Musik
+  if (ac) document.hidden ? ac.suspend() : ac.resume();
   if (document.hidden && G.mode === 'play') {
     G.mode = 'paused';
     showOnly('paused');
