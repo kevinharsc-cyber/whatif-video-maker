@@ -1,6 +1,7 @@
 // SHARK ATTACK – 3D-Endlos-Läufer unter Wasser (Three.js, läuft im Browser auf dem iPhone)
 // Erste spielbare Version: 3 Bahnen, Wischen, Hai-Verfolgung, Hindernisse, Münzen, Game Over, Menü.
 import * as THREE from 'three';
+import { savePlayer, topPlayers, searchPlayers, getPlayers, newId, newSecret, isId, NAME_RE } from './online.js';
 
 // ------------------------------------------------------------ Einstellungen ---
 const LANES = [-2.2, 0, 2.2];
@@ -53,6 +54,12 @@ const SHARKS = [
 ];
 const profile = { name: '', skin: 'standard', shark: 'white', skins: ['standard'], sharks: ['white'], xp: 0, wheelAt: 0, friends: [], ...store.get('shark-profile', {}) };
 const saveProfile = () => store.set('shark-profile', profile);
+// eigene Online-ID + Geheimnis (bleibt nur auf diesem Handy)
+if (!isId(profile.id) || !profile.secret) {
+  profile.id = newId();
+  profile.secret = newSecret();
+  saveProfile();
+}
 // Level: jedes Level braucht etwas mehr XP
 const levelOf = (xp) => {
   let lvl = 1;
@@ -1106,6 +1113,7 @@ function finish() {
   store.set('shark-daily', daily);
   top = [...top, { score, dist: Math.floor(G.dist), coins: G.coins, day: today }].sort((a, b) => b.score - a.score).slice(0, 10);
   store.set('shark-top', top);
+  syncOnline();
   $('oScore').textContent = score;
   $('oDist').textContent = Math.floor(G.dist);
   $('oCoins').textContent = G.coins;
@@ -1417,7 +1425,12 @@ function menu() {
   G.x = 0;
   updateMenu();
   showOnly('menu');
+  if (Date.now() - lastRefresh > 60000) {
+    lastRefresh = Date.now();
+    refreshFriends();
+  }
 }
+let lastRefresh = 0;
 const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const fmt = (n) => Number(n).toLocaleString('de-DE');
 const PANELS = ['ranking', 'skins', 'sharks', 'locker', 'missions', 'wheel', 'friends', 'settings'];
@@ -1600,37 +1613,72 @@ $('spinBtn').addEventListener('click', () => {
   }, 4200);
 });
 
-// ---- Freunde (über Link) ----
+// ---- Freunde (online über Supabase + weiterhin per Link) ----
 function myCode() {
-  const data = { n: profile.name || 'Taucher', b: best, s: profile.skin, h: profile.shark, l: levelOf(profile.xp).lvl };
+  const data = { i: profile.id, n: profile.name || 'Taucher', b: best, s: profile.skin, h: profile.shark, l: levelOf(profile.xp).lvl };
   return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
 }
 function shareLink() {
   return `${location.origin}${location.pathname}#f=${myCode()}`;
+}
+// Spieler aus der Datenbank / aus einem Link → Freund-Eintrag (alles geprüft, weil es von außen kommt)
+function toFriend(d) {
+  return {
+    i: isId(d.i ?? d.id) ? d.i ?? d.id : undefined,
+    n: String(d.n ?? d.name ?? '').slice(0, 16),
+    b: Math.max(0, Math.floor(Number(d.b ?? d.best) || 0)),
+    s: DIVER_SKINS.some((x) => x.id === (d.s ?? d.skin)) ? d.s ?? d.skin : 'standard',
+    h: SHARKS.some((x) => x.id === (d.h ?? d.shark)) ? d.h ?? d.shark : 'white',
+    l: Math.max(1, Math.floor(Number(d.l ?? d.level) || 1)),
+  };
 }
 function readFriendFromHash() {
   const m = location.hash.match(/f=([A-Za-z0-9+/=]+)/);
   if (!m) return null;
   try {
     const d = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
-    if (!d || typeof d.n !== 'string') return null;
-    return {
-      n: d.n.slice(0, 16),
-      b: Math.max(0, Math.floor(Number(d.b) || 0)),
-      s: DIVER_SKINS.some((x) => x.id === d.s) ? d.s : 'standard',
-      h: SHARKS.some((x) => x.id === d.h) ? d.h : 'white',
-      l: Math.max(1, Math.floor(Number(d.l) || 1)),
-    };
+    if (!d || typeof d.n !== 'string' || (d.i && d.i === profile.id)) return null;
+    return toFriend(d);
   } catch {
     return null;
   }
 }
 function addFriend(f) {
-  const i = profile.friends.findIndex((x) => x.n === f.n);
+  const i = profile.friends.findIndex((x) => (f.i && x.i === f.i) || x.n === f.n);
   if (i >= 0) profile.friends[i] = f;
   else profile.friends.push(f);
   if (!profile.showFriend) profile.showFriend = f.n;
   saveProfile();
+}
+// Eigenen Eintrag online speichern (nur mit Namen). Ergebnis: 'ok' | 'taken' | 'offline' | ...
+let lastSync = '';
+async function syncOnline() {
+  if (!profile.name || !NAME_RE.test(profile.name)) return 'noname';
+  try {
+    lastSync = await savePlayer({ id: profile.id, secret: profile.secret, name: profile.name, best, skin: profile.skin, shark: profile.shark, level: levelOf(profile.xp).lvl });
+  } catch {
+    lastSync = 'offline';
+  }
+  return lastSync;
+}
+// Rekorde/Skins der Freunde vom Server holen
+async function refreshFriends() {
+  const ids = profile.friends.map((f) => f.i).filter(Boolean);
+  if (!ids.length) return;
+  try {
+    const rows = await getPlayers(ids);
+    for (const r of rows) {
+      const f = profile.friends.find((x) => x.i === r.id);
+      if (!f) continue;
+      if (profile.showFriend === f.n) profile.showFriend = r.name;
+      Object.assign(f, toFriend(r));
+    }
+    saveProfile();
+    if (!$('p-friends').classList.contains('hidden')) renderFriends();
+    updateMenu();
+  } catch {
+    /* offline – alte Werte bleiben */
+  }
 }
 let friendShark = null;
 let friendSharkId = '';
@@ -1646,42 +1694,98 @@ function updateFriendShark() {
   friendShark.scale.setScalar(friendShark.userData.size);
   scene.add(friendShark);
 }
+const friendRow = (f, btn, on) => {
+  const sk = DIVER_SKINS.find((x) => x.id === f.s);
+  const sv = SHARKS.find((x) => x.id === f.h);
+  return `<div class="skin${on ? ' on' : ''}">${thumbImg(`s-${f.h}`)}<div>${esc(f.n)} <small>Level ${f.l} · Rekord ${fmt(f.b)}<br>Skin: ${sk.name} · ${sv.name}</small></div>${btn}</div>`;
+};
+let found = [];
+let searchSeq = 0;
 function renderFriends() {
   const q = $('friendSearch').value.trim().toLowerCase();
   const list = profile.friends.filter((f) => f.n.toLowerCase().includes(q)).sort((a, b) => b.b - a.b);
-  $('friendList').innerHTML = list.length
-    ? list
-        .map((f) => {
-          const sk = DIVER_SKINS.find((x) => x.id === f.s);
-          const sv = SHARKS.find((x) => x.id === f.h);
-          const on = profile.showFriend === f.n;
-          return `<div class="skin${on ? ' on' : ''}">${thumbImg(`s-${f.h}`)}<div>${esc(f.n)} <small>Level ${f.l} · Rekord ${fmt(f.b)}<br>Skin: ${sk.name} · ${sv.name}</small></div><button class="claim" data-show="${esc(f.n)}">${on ? 'IM MENÜ ✓' : 'ZEIGEN'}</button></div>`;
-        })
-        .join('')
-    : `<p class="hint">${profile.friends.length ? 'Kein Freund mit diesem Namen.' : 'Noch keine Freunde. Teile deinen Link – wer ihn öffnet, kann dich hinzufügen, und du ihn mit seinem Link.'}</p>`;
+  let html = list.length
+    ? list.map((f) => friendRow(f, `<button class="claim" data-show="${esc(f.n)}">${profile.showFriend === f.n ? 'IM MENÜ ✓' : 'ZEIGEN'}</button>`, profile.showFriend === f.n)).join('')
+    : q
+      ? ''
+      : '<p class="hint">Noch keine Freunde. Such oben nach einem Namen oder teile deinen Link.</p>';
+  const extra = found.filter((p) => p.i !== profile.id && !profile.friends.some((f) => f.i === p.i));
+  if (q.length >= 2) {
+    html += `<p class="sub">🌍 ONLINE GEFUNDEN</p>`;
+    html += extra.length ? extra.map((p, k) => friendRow(p, `<button class="claim buy" data-add="${k}">+ ADD</button>`)).join('') : `<p class="hint">${found.searching ? 'Suche…' : found.offline ? 'Keine Verbindung zum Server.' : 'Niemand gefunden.'}</p>`;
+  }
+  $('friendList').innerHTML = html;
   $('friendList').querySelectorAll('[data-show]').forEach((b) => b.addEventListener('click', () => {
     profile.showFriend = profile.showFriend === b.dataset.show ? '' : b.dataset.show;
     saveProfile();
     renderFriends();
     updateMenu();
   }));
+  $('friendList').querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => {
+    const p = extra[Number(b.dataset.add)];
+    if (!p) return;
+    addFriend(p);
+    sfx.power();
+    renderFriends();
+    updateMenu();
+  }));
 }
-$('friendSearch').addEventListener('input', renderFriends);
-$('nameInput').addEventListener('change', () => {
-  profile.name = $('nameInput').value.trim().slice(0, 16);
-  saveProfile();
+let searchTimer = 0;
+$('friendSearch').addEventListener('input', () => {
+  const q = $('friendSearch').value.trim();
+  clearTimeout(searchTimer);
+  found = [];
+  if (q.length >= 2) {
+    found.searching = true;
+    const seq = ++searchSeq;
+    searchTimer = setTimeout(async () => {
+      let res = [];
+      let offline = false;
+      try {
+        res = (await searchPlayers(q)).map(toFriend);
+      } catch {
+        offline = true;
+      }
+      if (seq !== searchSeq) return;
+      found = res;
+      found.offline = offline;
+      renderFriends();
+    }, 350);
+  }
+  renderFriends();
 });
-$('shareBtn').addEventListener('click', async () => {
-  profile.name = $('nameInput').value.trim().slice(0, 16);
+async function saveName() {
+  const name = $('nameInput').value.trim().slice(0, 16);
+  if (!name) return false;
+  if (!NAME_RE.test(name)) {
+    $('shareMsg').textContent = 'Nur Buchstaben, Zahlen, Leerzeichen, - _ . (2–16 Zeichen)';
+    return false;
+  }
+  const old = profile.name;
+  profile.name = name;
+  $('shareMsg').textContent = 'Speichere…';
+  const r = await syncOnline();
+  if (r === 'taken') {
+    profile.name = old;
+    $('shareMsg').textContent = `„${name}“ ist schon vergeben – nimm einen anderen Namen.`;
+    saveProfile();
+    return false;
+  }
   saveProfile();
-  if (!profile.name) {
+  $('shareMsg').textContent = r === 'ok' ? '✓ Online gespeichert – andere können dich jetzt finden!' : 'Gespeichert (gerade offline – wird später hochgeladen).';
+  return true;
+}
+$('nameInput').addEventListener('change', saveName);
+$('shareBtn').addEventListener('click', async () => {
+  if (!$('nameInput').value.trim()) {
     $('nameInput').focus();
     $('shareMsg').textContent = 'Gib zuerst deinen Namen ein.';
     return;
   }
+  if ($('nameInput').value.trim() !== profile.name && !(await saveName())) return;
   const url = shareLink();
   try {
-    if (navigator.share) await navigator.share({ title: 'SHARK ATTACK', text: `Schaffst du meinen Rekord von ${fmt(best)}? 🦈`, url });
+    if (navigator.share) await navigator.share({ title: 'SHARK ATTACK', text: `Schaffst du meinen Rekord von ${fmt(best)}? 🦈 Such mich unter „${profile.name}“!`, url });
     else {
       await navigator.clipboard.writeText(url);
       $('shareMsg').textContent = 'Link kopiert!';
@@ -1716,13 +1820,38 @@ function renderLocker() {
   $('lockerGrid').innerHTML = all.map((x) => `<div class="locker${x.has ? '' : ' off'}">${thumbImg(x.key, !x.has)}<small>${x.name}</small><em>${x.has ? '✓' : `🔒 ${fmt(x.price)} C`}</em></div>`).join('');
 }
 
-function openPanel(id) {
-  makeThumbs();
-  if (id === 'ranking') {
+// ---- Rangliste: eigene Läufe oder weltweit ----
+let rankTab = 'world';
+let worldSeq = 0;
+async function renderRanking() {
+  document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === rankTab));
+  if (rankTab === 'me') {
     $('rankList').innerHTML = top.length
       ? top.map((r, i) => `<div class="rank${i === 0 ? ' gold' : ''}"><span>${i + 1}.</span><b>${r.score}</b><small>${r.dist} m · ${r.coins} C</small></div>`).join('')
       : '<p class="hint">Noch keine Läufe – schwimm los!</p>';
+    return;
   }
+  const seq = ++worldSeq;
+  $('rankList').innerHTML = '<p class="hint">Lade Weltrangliste…</p>';
+  try {
+    const rows = (await topPlayers(50)).map(toFriend);
+    if (seq !== worldSeq || rankTab !== 'world') return;
+    const friendIds = new Set(profile.friends.map((f) => f.i));
+    $('rankList').innerHTML =
+      (rows.length
+        ? rows.map((r, i) => `<div class="rank${i === 0 ? ' gold' : ''}${r.i === profile.id ? ' me' : ''}"><span>${i + 1}.</span><b>${fmt(r.b)}</b><small>${esc(r.n)}${r.i === profile.id ? ' (du)' : friendIds.has(r.i) ? ' 👥' : ''} · Lv ${r.l}</small></div>`).join('')
+        : '<p class="hint">Noch niemand online – sei der Erste!</p>') + (profile.name ? '' : '<p class="hint">Gib unter FREUNDE deinen Namen ein, dann erscheinst du hier auch.</p>');
+  } catch {
+    if (seq === worldSeq) $('rankList').innerHTML = '<p class="hint">Keine Verbindung zum Server. Versuch es gleich nochmal.</p>';
+  }
+}
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  rankTab = b.dataset.tab;
+  renderRanking();
+}));
+function openPanel(id) {
+  makeThumbs();
+  if (id === 'ranking') renderRanking();
   if (id === 'missions') {
     $('missionList').innerHTML = MISSIONS.map((m) => {
       const v = Math.min(m.goal, m.val());
@@ -1753,8 +1882,9 @@ function openPanel(id) {
   }
   if (id === 'friends') {
     $('nameInput').value = profile.name;
-    $('shareMsg').textContent = '';
+    $('shareMsg').textContent = profile.name ? (lastSync === 'ok' ? '✓ Online – andere können dich finden.' : '') : 'Gib einen Namen ein, damit Freunde dich finden.';
     renderFriends();
+    refreshFriends();
   }
   if (id === 'locker') renderLocker();
   for (const p of PANELS) $(`p-${p}`).classList.toggle('hidden', p !== id);
@@ -1825,6 +1955,7 @@ function frame(now) {
   renderer.render(scene, camera);
 }
 menu();
+syncOnline(); // Rekord hochladen, falls zwischendurch offline gespielt
 requestAnimationFrame(frame);
 document.fonts?.load('80px "Lilita One"').then(drawCoinFace).catch(() => {});
 window.addEventListener('pointerdown', () => startMusic(), { once: true });
