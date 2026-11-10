@@ -148,7 +148,7 @@ export function createBus(a, dest) {
   master.connect(dest);
   const lead = a.createGain();
   const tone = a.createBiquadFilter();
-  tone.type = 'lowpass'; tone.frequency.value = 3400;
+  tone.type = 'lowpass'; tone.frequency.value = 2300; // dunkler, retro
   lead.connect(tone).connect(master);
   const delay = a.createDelay(1);
   delay.delayTime.value = 0.3;
@@ -183,8 +183,9 @@ export function scheduleStep(song, a, bus, step, at, intense = 0) {
       osc(a, bus.lead, 'sawtooth', hz(n), at, Math.min(0.5, len), 0.04, 0.002);
       osc(a, bus.lead, 'square', hz(n) * 0.5, at, Math.min(0.4, len), 0.02, 0.002);
     } else {
-      const o1 = osc(a, bus.lead, 'square', hz(n), at, len, st === 'polka' ? 0.035 : 0.03, 0.01);
-      osc(a, bus.lead, 'triangle', hz(n) * 1.004, at, len, 0.065, 0.01);
+      // 8-Bit: zwei Rechteckwellen (eine eine Oktave tiefer) – klingt nach alter Spielkonsole
+      const o1 = osc(a, bus.lead, 'square', hz(n), at, len, 0.05, 0.004);
+      osc(a, bus.lead, 'square', hz(n) * 0.5, at, len * 0.8, 0.02, 0.004);
       if (l >= 4) {
         const lfo = a.createOscillator(), lg = a.createGain();
         lfo.frequency.value = 5.5; lg.gain.setValueAtTime(0, at); lg.gain.linearRampToValueAtTime(hz(n) * 0.012, at + len * 0.6);

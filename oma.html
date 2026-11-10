@@ -140,6 +140,58 @@
       #bSub { font-size: 19px; -webkit-text-stroke: 4px #24192e; paint-order: stroke fill; }
       @keyframes pop { from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
       .float { position: absolute; left: 0; top: 0; font-size: 22px; color: #ffd23f; -webkit-text-stroke: 4px #24192e; paint-order: stroke fill; }
+      .float.crit { color: #ff4f4f; font-size: 26px; }
+      .float.up { color: #7ddc4a; font-size: 26px; }
+      /* Info-Blase */
+      #iStats { display: flex; gap: 6px; justify-content: center; font-size: 13px; margin-bottom: 4px; }
+      #iStats span { background: rgba(0, 0, 0, 0.07); border-radius: 8px; padding: 2px 6px; }
+      #iKills { font-size: 13px; text-align: center; color: #5b5470; margin-bottom: 6px; }
+      #iKills b { color: #24192e; font-weight: normal; }
+      #iTarget { display: block; margin: 0 auto 6px; font-size: 14px; padding: 5px 12px; border-radius: 12px; border: 3px solid #24192e; background: linear-gradient(#5fc8ff, #3fb6ff); }
+      #iTarget b { font-weight: normal; color: #ffe27a; }
+      #iCompare { background: rgba(125, 220, 74, 0.15); border: 2px dashed #4caf2a; border-radius: 12px; padding: 5px 8px; font-size: 13px; margin-bottom: 8px; }
+      #iCompare .ct { color: #2e8b2e; font-size: 14px; }
+      #iCompare b { font-weight: normal; color: #2e8b2e; }
+      #iCompare i { font-style: normal; color: #2e8b2e; font-size: 12px; }
+      /* Ergebnis */
+      .rcard { max-width: 360px; }
+      #rTitle { font-size: 40px; -webkit-text-stroke: 5px #24192e; paint-order: stroke fill; }
+      #rTitle.win { color: #ffd23f; }
+      #rTitle.lose { color: #ff6b6b; }
+      #rMap { font-size: 18px; color: #7c4dff; margin-top: -4px; }
+      .rstars { display: flex; justify-content: center; gap: 6px; margin: 4px 0; }
+      .rstars i { font-style: normal; font-size: 58px; color: #d8d0e8; -webkit-text-stroke: 3px #24192e; paint-order: stroke fill; transform: scale(0.7); transition: transform 0.35s cubic-bezier(0.3, 1.8, 0.5, 1), color 0.2s; }
+      .rstars i.on { color: #ffc21a; transform: scale(1.15) rotate(-6deg); filter: drop-shadow(0 0 10px #ffd23f); }
+      #rRibbon { display: inline-block; margin: 2px 0 8px; padding: 4px 14px; border-radius: 10px; background: #8a83a0; color: #fff; font-size: 15px; }
+      #rRibbon.gold { background: linear-gradient(#ffd24a, #ff9800); -webkit-text-stroke: 2px #6a3a00; paint-order: stroke fill; }
+      .mvp { display: flex; gap: 10px; align-items: center; background: rgba(124, 77, 255, 0.12); border: 3px solid #7c4dff; border-radius: 16px; padding: 6px; margin-bottom: 8px; text-align: left; }
+      .mvp img { width: 64px; height: 64px; border-radius: 12px; border: 3px solid #24192e; }
+      .mvp small { display: block; font-size: 11px; color: #7c4dff; }
+      .mvp b { display: block; font-weight: normal; font-size: 19px; }
+      .mvp span { font-size: 12px; color: #5b5470; }
+      .rs { display: flex; align-items: baseline; gap: 6px; padding: 4px 6px; border-bottom: 2px dotted rgba(36, 25, 46, 0.15); font-size: 15px; }
+      .rs span { flex: 1; text-align: left; }
+      .rs b { font-weight: normal; font-size: 20px; color: #7c4dff; }
+      .rs em { font-style: normal; font-size: 13px; color: #8a83a0; width: 34px; text-align: left; }
+      #confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+      #confetti i { position: absolute; top: -20px; width: 10px; height: 16px; border-radius: 3px; animation: fall linear infinite; }
+      @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+      /* Lexikon */
+      .ctabs { display: flex; gap: 8px; justify-content: center; margin-bottom: 8px; }
+      .ctabs .tog { background: #8a83a0; }
+      .ctabs .tog.on { background: linear-gradient(#a07bff, #7c4dff); }
+      .cx { display: flex; gap: 10px; text-align: left; background: rgba(0, 0, 0, 0.05); border-radius: 14px; padding: 8px; margin: 8px 0; }
+      .cx img { width: 72px; height: 72px; border-radius: 12px; border: 3px solid #24192e; flex: none; }
+      .cx b { font-weight: normal; font-size: 19px; color: #d62e7a; }
+      .cx.z b { color: #2e8b2e; }
+      .cx small { display: block; font-size: 12px; color: #5b5470; }
+      .cx p { margin: 4px 0 0; font-size: 13px; line-height: 1.3; }
+      .cx p.up { color: #2e8b2e; font-size: 12px; }
+      .cx.soon { opacity: 0.6; }
+      .cx.soon img { filter: grayscale(1); }
+      .cxs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+      .cxs span { background: #fff; border: 2px solid rgba(36, 25, 46, 0.2); border-radius: 8px; padding: 1px 5px; font-size: 12px; }
+      .note { font-size: 13px; color: #5b5470; }
     </style>
   </head>
   <body>
@@ -166,7 +218,7 @@
           </div>
           <button id="tStart" class="wood panel">START</button>
         </div>
-        <div class="rounds"><button id="tGear" class="round">⚙</button><button id="tInfo" class="round">i</button></div>
+        <div class="rounds"><button id="tGear" class="round">⚙</button><button id="tInfo" class="round">i</button><button id="tCodex" class="round">📖</button></div>
       </div>
 
       <!-- Spiel -->
@@ -191,6 +243,10 @@
         <div id="info" class="panel hidden">
           <div id="iName">Oma</div>
           <div id="iLvl"></div>
+          <div id="iStats"></div>
+          <div id="iKills"></div>
+          <button id="iTarget">ZIEL: ERSTER ⟳</button>
+          <div id="iCompare" class="hidden"></div>
           <div class="ibtns"><button id="iUp">UPGRADE</button><button id="iSell">VERKAUFEN</button></div>
         </div>
         <div id="banner" class="hidden"><div id="bTitle"></div><div id="bSub"></div></div>
@@ -198,8 +254,18 @@
       </div>
 
       <div id="paused" class="modal hidden"><div class="card panel"><h2>PAUSE</h2><div class="row"><button id="resume" class="big">WEITER</button><button id="quit" class="mid2">MENÜ</button></div></div></div>
-      <div id="won" class="modal hidden"><div class="card panel"><h2>GESCHAFFT!</h2><div id="wonStars" class="stars2">★★★</div><p id="wonText"></p><p id="wonExtra" style="color:#2e8b2e"></p><div class="row"><button id="next" class="big">WEITER ▶</button><button id="wonMenu" class="mid2">MENÜ</button></div></div></div>
-      <div id="lost" class="modal hidden"><div class="card panel"><h2>OH NEIN!</h2><p id="lostText"></p><div class="row"><button id="retry" class="big">NOCHMAL</button><button id="lostMenu" class="mid2">MENÜ</button></div></div></div>
+      <div id="result" class="modal hidden"><div id="confetti"></div><div class="card rcard panel">
+        <div id="rTitle">GESCHAFFT!</div><div id="rMap"></div>
+        <div id="rStars" class="rstars"></div>
+        <div id="rRibbon"></div>
+        <div id="rMvp" class="mvp hidden"></div>
+        <div id="rStats"></div>
+        <div class="row"><button id="rNext" class="big">NÄCHSTE KARTE ▶</button></div>
+        <div class="row"><button id="rRetry" class="mid2">NOCHMAL</button><button id="rMenu" class="mid2">MENÜ</button></div>
+      </div></div>
+      <div id="codex" class="modal hidden"><div class="card panel"><button id="codexClose" class="x">✕</button><h2>LEXIKON</h2>
+        <div class="ctabs"><button class="tog" data-ctab="omas">👵 OMAS</button><button class="tog" data-ctab="zombies">🧟 ZOMBIES</button></div>
+        <div id="codexList"></div></div></div>
       <div id="settings" class="modal hidden"><div class="card panel"><button id="setClose" class="x">✕</button><h2>EINSTELLUNGEN</h2>
         <div class="setrow"><span>🎵 Musik</span><button id="setMusic" class="tog">AN</button></div>
         <div class="setrow"><span>🔊 Sounds</span><button id="setSfx" class="tog">AN</button></div>
