@@ -15,7 +15,8 @@ for (const m of MAPS) progress.maps[m.id] ||= { best: 0, stars: 0, done: false }
 const settings = { sfx: true, music: true, auto: true, ...store.get('ovz-settings', {}) };
 const saveProgress = () => store.set('ovz-progress2', progress);
 const saveSettings = () => store.set('ovz-settings', settings);
-const mapUnlocked = (i) => i === 0 || progress.maps[MAPS[i - 1].id].done;
+const totalStars = () => MAPS.filter((m) => !m.special).reduce((sum, m) => sum + (progress.maps[m.id]?.stars || 0), 0);
+const mapUnlocked = (i) => !MAPS[i].needStars || totalStars() >= MAPS[i].needStars;
 
 // ------------------------------------------------------------------ Renderer ---
 const canvas = $('view');
@@ -68,6 +69,9 @@ window.addEventListener('resize', resize);
 const THEMES = {
   day: { sky: 0x9fd8ff, fog: [40, 90], hemi: [0xffffff, 0x6a8a4a, 1.4], sun: [0xfff1d6, 2.3], grass: ['#6cbf4a', '#7ccf57', '#5aad3d'], stones: ['#e3c98e', '#d8bb7c', '#ecd6a2', '#cfb37a'], gap: '#9a8a72', edge: 0xb9b2a4, tuft: 0x4fa83d, flowers: [0xff6b8b, 0xffd23f, 0xffffff, 0xb06bff] },
   night: { sky: 0x171c38, fog: [26, 70], hemi: [0x8a98e8, 0x2a2a44, 1.6], sun: [0xb8c8ff, 1.6], grass: ['#2f4a3a', '#3a5a44', '#28402f'], stones: ['#6b5f86', '#5e547a', '#776a92'], gap: '#3e3550', edge: 0x8a86a0, tuft: 0x3a5a44, flowers: [0x9b8cff, 0x6fd3ff] },
+  beach: { sky: 0x8fd8ff, fog: [40, 95], hemi: [0xffffff, 0xd8c08a, 1.5], sun: [0xfff4dc, 2.4], grass: ['#f2dca0', '#f7e6b5', '#e6cc8a'], stones: [], planks: true, edge: 0xd9d2c0, tuft: 0x7ab84a, flowers: [0xfff8e8, 0xffb6c8] },
+  autumn: { sky: 0xffd8a8, fog: [34, 85], hemi: [0xffe8c8, 0x7a5a3a, 1.45], sun: [0xffd8a0, 2.2], grass: ['#b9a24e', '#c9b25a', '#a8903e'], stones: ['#a88a6a', '#9a7c5c', '#b8987a'], gap: '#5a4030', edge: 0x8a7a68, tuft: 0x9a7a2a, flowers: [0xff7a1a, 0xffc21a, 0xd8401a] },
+  lava: { sky: 0x2a0e12, fog: [22, 70], hemi: [0xff9a6a, 0x2a1010, 1.25], sun: [0xffa070, 1.5], grass: ['#3a2c2c', '#463434', '#2e2222'], stones: ['#4a3a3a', '#3e3030', '#584444'], gap: '#ff6a10', edge: 0x2a2020, tuft: 0x4a3a2a, flowers: [0xff5a1a, 0xffb020], lava: true },
   snow: { sky: 0xcfe6ff, fog: [36, 90], hemi: [0xffffff, 0x8aa0c0, 1.5], sun: [0xfff6ea, 2.0], grass: ['#eef5ff', '#ffffff', '#dde8f5'], stones: ['#c9c4bd', '#d6d1ca', '#bdb7af', '#e0dbd4'], gap: '#8f8a84', edge: 0xf2f6ff, tuft: 0xb8c8d8, flowers: [0xff4f4f, 0x3fb6ff] },
 };
 const W = { scene: null, curve: null, len: 1, samples: [], blockers: [], sun: null, theme: 'day', snow: null, flies: null };
@@ -77,7 +81,15 @@ function noiseTex(cols, rep) {
   for (let i = 0; i < 900; i++) { g.fillStyle = cols[1 + (i % 2)]; g.beginPath(); g.ellipse(rand() * 512, rand() * 512, 3 + rand() * 9, 2 + rand() * 4, rand() * 3, 0, 7); g.fill(); }
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+function planks() {
+  const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+  const cols = ['#b88752', '#a87845', '#c4935e'];
+  for (let i = 0; i < 8; i++) { g.fillStyle = cols[i % 3]; g.fillRect(0, i * 32, 256, 32); g.fillStyle = '#5a3a1e'; g.fillRect(0, i * 32, 256, 4); g.fillStyle = '#e0c49a'; for (const x of [20, 236]) { g.beginPath(); g.arc(x, i * 32 + 16, 3, 0, 7); g.fill(); } }
+  g.strokeStyle = 'rgba(60,30,10,0.25)'; g.lineWidth = 1.5; for (let i = 0; i < 30; i++) { const y = Math.random() * 256; g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(80, y + 3, 170, y - 3, 256, y); g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
 function cobble(th) {
+  if (th.planks) return planks();
   const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
   g.fillStyle = th.gap; g.fillRect(0, 0, 256, 256);
   for (let row = 0; row < 6; row++) for (let k = -1; k < 6; k++) {
@@ -133,6 +145,38 @@ function snowman(g, x, z) {
   mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.03, 14), M(0x222233), 0, 1.37, 0, s);
   mesh(new THREE.TorusGeometry(0.22, 0.05, 6, 16), M(0xe5383b), 0, 1.05, 0, s).rotation.x = Math.PI / 2;
 }
+function palm(g, x, z, s = 1) {
+  const t = new THREE.Group(); t.position.set(x, 0, z); t.scale.setScalar(s); t.rotation.y = rand() * 6; g.add(t);
+  for (let i = 0; i < 6; i++) { const seg = mesh(new THREE.CylinderGeometry(0.11 - i * 0.008, 0.13 - i * 0.008, 0.42, 8), M(i % 2 ? 0x9a7048 : 0x8a6038), 0.06 * i, 0.21 + i * 0.4, 0, t); seg.rotation.z = -0.06; }
+  for (let i = 0; i < 6; i++) { const lf = mesh(new THREE.ConeGeometry(0.22, 1.4, 4), M(i % 2 ? 0x3fa34d : 0x2e8b3e), 0.35, 2.5, 0, t); lf.scale.set(1, 1, 0.25); lf.rotation.set(0, (i / 6) * Math.PI * 2, 1.25); lf.position.set(0.35 + Math.cos((i / 6) * Math.PI * 2) * 0.5, 2.4, Math.sin((i / 6) * Math.PI * 2) * 0.5); }
+  for (let i = 0; i < 3; i++) mesh(new THREE.SphereGeometry(0.1, 8, 6), M(0x6a4a2a), 0.3 + (i - 1) * 0.12, 2.35, 0.1, t);
+}
+function umbrella(g, x, z) {
+  const u = new THREE.Group(); u.position.set(x, 0, z); g.add(u);
+  mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.5, 6), M(0xffffff), 0, 0.75, 0, u);
+  const cols = [0xe5383b, 0xffffff];
+  for (let i = 0; i < 8; i++) { const p = mesh(new THREE.ConeGeometry(0.75, 0.35, 8, 1, false, (i / 8) * Math.PI * 2, Math.PI / 4), M(cols[i % 2], { side: THREE.DoubleSide }), 0, 1.55, 0, u); }
+  const towel = mesh(new THREE.BoxGeometry(0.6, 0.03, 1.1), M([0x3fb6ff, 0xffd23f, 0xff6b8b][Math.floor(rand() * 3)]), 0.6, 0.02, 0.2, u); towel.rotation.y = rand();
+}
+function sandcastle(g, x, z) {
+  const c = new THREE.Group(); c.position.set(x, 0, z); c.rotation.y = rand() * 6; g.add(c);
+  const sand = M(0xe6c98a);
+  mesh(new THREE.BoxGeometry(0.8, 0.3, 0.8), sand, 0, 0.15, 0, c);
+  for (const [px, pz] of [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]]) { mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.55, 10), sand, px, 0.3, pz, c); mesh(new THREE.ConeGeometry(0.15, 0.2, 10), sand, px, 0.67, pz, c); }
+  mesh(new THREE.ConeGeometry(0.03, 0.18, 4), M(0xe5383b), 0, 0.5, 0, c);
+}
+function pumpkin(g, x, z, s = 1) {
+  const p = new THREE.Group(); p.position.set(x, 0, z); p.scale.setScalar(s); g.add(p);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const r = mesh(new THREE.SphereGeometry(0.2, 10, 8), M(0xff8c1a), Math.cos(a) * 0.12, 0.22, Math.sin(a) * 0.12, p); r.scale.set(0.8, 1, 0.8); }
+  mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.14, 6), M(0x4a6a2a), 0, 0.44, 0, p);
+}
+function leafPile(g, x, z) {
+  const cols = [0xff7a1a, 0xffc21a, 0xd8401a, 0xb8601a];
+  for (let i = 0; i < 9; i++) { const l = mesh(new THREE.SphereGeometry(0.16, 6, 4), M(cols[i % 4]), x + (rand() - 0.5) * 0.7, 0.06, z + (rand() - 0.5) * 0.7, g); l.scale.set(1.2, 0.35, 0.9); }
+}
+function rockLump(g, x, z, s = 1, col = 0x2e2626) {
+  const r = mesh(new THREE.DodecahedronGeometry(0.6 * s, 0), M(col), x, 0.25 * s, z, g); r.scale.set(1.2, 0.7, 1); r.rotation.y = rand() * 6;
+}
 function buildWorld(mapIdx) {
   if (W.scene) W.scene.traverse((o) => { if (o.isMesh && o.geometry && !o.userData.keep) o.geometry.dispose(); });
   const map = MAPS[mapIdx];
@@ -185,7 +229,8 @@ function buildWorld(mapIdx) {
   pg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   pg.setIndex(idx);
   pg.computeVertexNormals();
-  const pathMesh = new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ map: cobble(th), roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -1 }));
+  const ptex = cobble(th);
+  const pathMesh = new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ map: ptex, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -1, ...(th.lava ? { emissiveMap: ptex, emissive: 0xff7a30, emissiveIntensity: 0.55 } : {}) }));
   pathMesh.receiveShadow = true;
   scene.add(pathMesh);
   const stoneMesh = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.12, 0), new THREE.MeshStandardMaterial({ color: th.edge, roughness: 0.9 }), stones.length);
@@ -205,10 +250,37 @@ function buildWorld(mapIdx) {
     return false;
   };
   // dichter Wald / Hecke rund um die Karte (versteckt, wo die Zombies herkommen)
-  const ring = map.theme === 'snow' ? (x, z) => pine(deco, x, z, 1 + rand() * 0.6) : map.theme === 'night' ? (x, z) => (rand() < 0.6 ? deadTree(deco, x, z) : tree(deco, x, z, 0.9 + rand() * 0.4, [0x234a3a, 0x2c5a46, 0x1d3f32])) : (x, z) => tree(deco, x, z, 0.9 + rand() * 0.5);
+  const ring = map.theme === 'beach' ? (x, z) => palm(deco, x, z, 0.9 + rand() * 0.4) : map.theme === 'autumn' ? (x, z) => tree(deco, x, z, 0.9 + rand() * 0.5, [[0xff7a1a, 0xffa62a, 0xd8501a], [0xffc21a, 0xffd85a, 0xe8a010], [0xc0401a, 0xe0602a, 0xa8301a]][Math.floor(rand() * 3)]) : map.theme === 'lava' ? (x, z) => (rand() < 0.5 ? deadTree(deco, x, z) : rockLump(deco, x, z, 1 + rand())) : map.theme === 'snow' ? (x, z) => pine(deco, x, z, 1 + rand() * 0.6) : map.theme === 'night' ? (x, z) => (rand() < 0.6 ? deadTree(deco, x, z) : tree(deco, x, z, 0.9 + rand() * 0.4, [0x234a3a, 0x2c5a46, 0x1d3f32])) : (x, z) => tree(deco, x, z, 0.9 + rand() * 0.5);
   for (let i = 0; i < 70; i++) tryPlace(0.9, ring, false, 12);
   if (map.pond) { pond(deco, map.pond.x, map.pond.z, map.pond.r); W.blockers.push({ x: map.pond.x, z: map.pond.z, r: map.pond.r + 0.3 }); }
-  if (map.theme === 'day') {
+  if (map.pools) for (const [px, pz, pr] of map.pools) { W.blockers.push({ x: px, z: pz, r: pr + 0.2 }); }
+  if (map.theme === 'beach') {
+    for (let i = 0; i < 5; i++) tryPlace(0.8, (x, z) => umbrella(deco, x, z));
+    for (let i = 0; i < 3; i++) tryPlace(0.6, (x, z) => sandcastle(deco, x, z));
+    for (let i = 0; i < 4; i++) tryPlace(0.9, (x, z) => palm(deco, x, z, 0.8 + rand() * 0.3));
+    // Meer oben
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(80, 26), new THREE.MeshStandardMaterial({ color: 0x2fa8e0, roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.92 }));
+    sea.rotation.x = -Math.PI / 2; sea.position.set(0, 0.05, b.z0 - 15.5); scene.add(sea); W.sea = sea;
+    const foam = new THREE.Mesh(new THREE.PlaneGeometry(80, 0.6), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 }));
+    foam.rotation.x = -Math.PI / 2; foam.position.set(0, 0.06, b.z0 - 2.6); scene.add(foam); W.foam = foam;
+  } else if (map.theme === 'autumn') {
+    for (let i = 0; i < 6; i++) tryPlace(0.9, (x, z) => tree(deco, x, z, 0.8 + rand() * 0.3, [[0xff7a1a, 0xffa62a, 0xd8501a], [0xffc21a, 0xffd85a, 0xe8a010]][i % 2]));
+    for (let i = 0; i < 8; i++) tryPlace(0.4, (x, z) => pumpkin(deco, x, z, 0.8 + rand() * 0.6));
+    for (let i = 0; i < 8; i++) tryPlace(0.5, (x, z) => leafPile(deco, x, z));
+    for (let i = 0; i < 2; i++) tryPlace(0.8, (x, z) => bench(deco, x, z, rand() * 6));
+  } else if (map.theme === 'lava') {
+    for (const [px, pz, pr] of map.pools) {
+      const pool = new THREE.Mesh(new THREE.CircleGeometry(pr, 28), new THREE.MeshBasicMaterial({ color: 0xff6a10 }));
+      pool.rotation.x = -Math.PI / 2; pool.position.set(px, 0.04, pz); scene.add(pool);
+      const core = new THREE.Mesh(new THREE.CircleGeometry(pr * 0.55, 20), new THREE.MeshBasicMaterial({ color: 0xffd040 }));
+      core.rotation.x = -Math.PI / 2; core.position.set(px, 0.05, pz); scene.add(core);
+      (W.pools ||= []).push(core);
+      for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2; rockLump(deco, px + Math.cos(a) * (pr + 0.15), pz + Math.sin(a) * (pr + 0.15), 0.35); }
+    }
+    for (let i = 0; i < 3; i++) { const p0 = map.pools[i * 2]; const l = new THREE.PointLight(0xff6a20, 9, 7, 1.5); l.position.set(p0[0], 1.2, p0[1]); scene.add(l); }
+    for (let i = 0; i < 10; i++) tryPlace(0.6, (x, z) => rockLump(deco, x, z, 0.6 + rand() * 0.6, 0x3a2e2e));
+    for (let i = 0; i < 4; i++) tryPlace(0.6, (x, z) => deadTree(deco, x, z));
+  } else if (map.theme === 'day') {
     for (let i = 0; i < 4; i++) tryPlace(0.9, (x, z) => tree(deco, x, z, 0.75 + rand() * 0.3));
     for (let i = 0; i < 3; i++) tryPlace(0.9, (x, z) => flowerBed(deco, x, z, rand() * 3, [[0xff6b8b, 0xffd23f, 0xffffff], [0xb06bff, 0xff9f1c, 0xff6b8b]][i % 2]));
     for (let i = 0; i < 5; i++) tryPlace(0.35, (x, z) => gnome(deco, x, z, rand() * 6));
@@ -243,8 +315,17 @@ function buildWorld(mapIdx) {
   fl.count = nf; tuft.count = nt;
   scene.add(fl, tuft);
   // Schneeflocken / Glühwürmchen
-  W.snow = null; W.flies = null;
-  if (map.theme !== 'day') {
+  W.snow = null; W.flies = null; W.leaves = null; W.embers = null; W.pools = null; W.foam = null; W.sea = null;
+  if (map.theme === 'autumn' || map.theme === 'lava') {
+    const n = map.theme === 'lava' ? 260 : 160;
+    const g = new THREE.BufferGeometry();
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { arr[i * 3] = b.x0 - 4 + rand() * (b.x1 - b.x0 + 8); arr[i * 3 + 1] = rand() * 9; arr[i * 3 + 2] = b.z0 - 4 + rand() * (b.z1 - b.z0 + 8); }
+    g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    const pts2 = new THREE.Points(g, new THREE.PointsMaterial({ color: map.theme === 'lava' ? 0xff8a20 : 0xff9a2a, size: map.theme === 'lava' ? 0.1 : 0.16, transparent: true, opacity: 0.95, depthWrite: false }));
+    scene.add(pts2);
+    if (map.theme === 'lava') W.embers = pts2; else W.leaves = pts2;
+  } else if (map.theme !== 'day' && map.theme !== 'beach') {
     const n = map.theme === 'snow' ? 500 : 60;
     const g = new THREE.BufferGeometry();
     const arr = new Float32Array(n * 3);
@@ -386,6 +467,9 @@ const SND = {
   star: () => { tone(784, 1046, 0.16, 'square', 0.06); noise(0.15, 4000, 0.04, 'highpass'); },
   count: () => sfx('count', () => tone(1200, 1200, 0.02, 'square', 0.015), 0.04),
   smack: () => sfx('smack', () => { noise(0.09, 700, 0.07, 'bandpass'); tone(140, 70, 0.09, 'square', 0.05); }, 0.08),
+  boom: () => { noise(0.7, 500, 0.13); tone(120, 35, 0.6, 'sawtooth', 0.08); tone(80, 30, 0.5, 'square', 0.05, 0.05); },
+  whoosh: () => { noise(0.9, 3000, 0.04, 'bandpass'); tone(1400, 260, 0.9, 'square', 0.018); },
+  gold: () => sfx('gold', () => arp([1046, 1318, 1568, 2093], 0.05, 0.12, 0.04), 0.1),
   meow: () => sfx('meow', () => { tone(700, 1100, 0.12, 'square', 0.03); tone(1100, 600, 0.18, 'square', 0.03, 0.12); }, 0.4),
 };
 
@@ -478,7 +562,9 @@ function startMap(mapIdx) {
   G.zombies = []; G.omas = []; G.shots = []; G.fx = [];
   G.streams = []; G.waveActive = false; G.drag = null; G.selected = null;
   G.coffee = 0; G.coffeeCd = 0; G.speed = 1;
-  G.stats = { kills: 0, bosses: 0, earned: 0, crits: 0, time: 0, startBest: progress.maps[MAPS[mapIdx].id].best };
+  G.stats = { kills: 0, bosses: 0, earned: 0, crits: 0, time: 0, startBest: progress.maps[MAPS[mapIdx].id].best, starsBefore: totalStars() };
+  G.meteorT = 12; G.meteors = [];
+  if (MAPS[mapIdx].special) setTimeout(() => { if (G.mode === 'play') banner('SPEZIAL-KARTE!', 'Meteore fallen & Goldzombies geben 4× Kekse'); }, 600);
   G.nextWaveT = settings.auto ? 15 : null;
   G.mode = 'play';
   showScreen('hud');
@@ -507,6 +593,16 @@ function startWave() {
   if (G.map === 0) for (const [id, def] of Object.entries(OMA_DEF)) if (def.unlock === G.wave && G.wave > 1) { banner('NEUE OMA!', `${OMAS[id].name} ist jetzt dabei`); renderSidebar(); }
   updateHud();
 }
+let _goldMat = null;
+function goldGlowMat() {
+  if (_goldMat) return _goldMat;
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 2, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,230,120,0.9)'); gr.addColorStop(0.4, 'rgba(255,190,40,0.45)'); gr.addColorStop(1, 'rgba(255,170,0,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+  _goldMat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  return _goldMat;
+}
 function spawnZombie(s) {
   const def = ZOMBIE_DEF[s.type];
   const obj = figure('zombie', def.model);
@@ -516,7 +612,15 @@ function spawnZombie(s) {
   bar.scale.setScalar(1 / def.size);
   obj.add(bar);
   W.scene.add(obj);
-  const z = { type: s.type, def, obj, bar, hpMax: def.hp * s.hp, hp: def.hp * s.hp, dist: 0, speed: def.speed * s.speed, slowT: 0, slowF: 1, dead: false, deadT: 0, ph: Math.random() * 6, side: (Math.random() - 0.5) * 0.35 };
+  const gold = MAPS[G.map].special && !def.boss && Math.random() < 0.07;
+  if (gold) {
+    const glow = new THREE.Sprite(goldGlowMat());
+    glow.scale.setScalar(2.2); glow.position.y = 0.8;
+    obj.add(glow);
+    obj.traverse((m) => { if (m.isMesh && m.material && m.material.isMeshStandardMaterial) { m.material = m.material.clone(); m.material.emissive.set(0xffb000); m.material.emissiveIntensity = 0.55; } });
+  }
+  const hpm = gold ? 1.5 : 1;
+  const z = { type: s.type, def, obj, bar, gold, hpMax: def.hp * s.hp * hpm, hp: def.hp * s.hp * hpm, dist: 0, speed: def.speed * s.speed, slowT: 0, slowF: 1, dead: false, deadT: 0, ph: Math.random() * 6, side: (Math.random() - 0.5) * 0.35 };
   G.zombies.push(z);
   placeZombie(z);
 }
@@ -550,7 +654,8 @@ function kill(z, src) {
   z.dead = true;
   z.deadT = 0;
   z.bar.visible = false;
-  const rew = Math.round(z.def.reward * 0.7 * (1 + difficulty(G.map, Math.max(1, G.wave)) * 0.008));
+  const rew = Math.round(z.def.reward * 0.7 * (1 + difficulty(G.map, Math.max(1, G.wave)) * 0.008)) * (z.gold ? 4 : 1);
+  if (z.gold) { G.stats.gold = (G.stats.gold || 0) + 1; SND.gold(); sparkleAt(z.obj.position.clone().setY(0.9), 0xffd23f); floatText(z.obj.position, 'GOLD!', 'crit'); }
   G.cookies += rew;
   G.stats.earned += rew;
   G.stats.kills++;
@@ -563,7 +668,7 @@ function kill(z, src) {
 function omaUnlocked(id) {
   const def = OMA_DEF[id];
   if (!def) return false;
-  if (G.map > 0) return true;
+  if (G.map > 0) return true; // auf allen anderen Karten sofort alle Omas
   return def.unlock <= Math.max(1, G.wave);
 }
 function canPlace(x, z) {
@@ -715,7 +820,7 @@ function updateFx(dt) {
     const f = G.fx[i];
     f.t += dt;
     if (f.ring) {
-      if (!f.m) { f.m = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 40), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, depthWrite: false })); f.m.rotation.x = -Math.PI / 2; f.m.position.set(f.x, 0.06, f.z); W.scene.add(f.m); }
+      if (!f.m) { f.m = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 40), new THREE.MeshBasicMaterial({ color: f.color || 0xffd23f, transparent: true, depthWrite: false })); f.m.rotation.x = -Math.PI / 2; f.m.position.set(f.x, 0.06, f.z); W.scene.add(f.m); }
       f.m.scale.setScalar(f.r * (0.3 + f.t * 2.5)); f.m.material.opacity = Math.max(0, 1 - f.t * 2.5);
       if (f.t > 0.4) { W.scene.remove(f.m); f.m.geometry.dispose(); f.m.material.dispose(); G.fx.splice(i, 1); }
       continue;
@@ -741,7 +846,75 @@ function ambient(t, dt) {
     W.snow.geometry.attributes.position.needsUpdate = true;
   }
   if (W.flies) { W.flies.material.opacity = 0.6 + 0.4 * Math.sin(t * 3); W.flies.position.y = Math.sin(t * 0.7) * 0.2; }
+  if (W.leaves) {
+    const a = W.leaves.geometry.attributes.position.array;
+    for (let i = 0; i < a.length; i += 3) { a[i + 1] -= dt * 0.7; a[i] += Math.sin(t * 1.5 + i) * dt * 0.6; if (a[i + 1] < 0.05) a[i + 1] = 9; }
+    W.leaves.geometry.attributes.position.needsUpdate = true;
+  }
+  if (W.embers) {
+    const a = W.embers.geometry.attributes.position.array;
+    for (let i = 0; i < a.length; i += 3) { a[i + 1] += dt * (0.6 + (i % 7) * 0.1); a[i] += Math.sin(t * 2 + i) * dt * 0.3; if (a[i + 1] > 8) a[i + 1] = 0; }
+    W.embers.geometry.attributes.position.needsUpdate = true;
+    W.embers.material.opacity = 0.7 + 0.3 * Math.sin(t * 5);
+  }
+  if (W.pools) for (const p of W.pools) p.material.color.setHSL(0.1 + 0.03 * Math.sin(t * 2 + p.position.x), 1, 0.55 + 0.08 * Math.sin(t * 3 + p.position.z));
+  if (W.foam) W.foam.position.z = view.bounds.z0 - 2.6 + Math.sin(t * 0.8) * 0.4;
 }
+
+// ---------------------------------------------- Meteore (Spezial-Karte) ---
+const METEOR = { geo: new THREE.IcosahedronGeometry(0.42, 1), mat: new THREE.MeshBasicMaterial({ color: 0xff7a1a }), core: new THREE.MeshBasicMaterial({ color: 0xffe08a }), mark: new THREE.RingGeometry(1.3, 1.6, 40) };
+function spawnMeteor() {
+  const live = G.zombies.filter((z) => !z.dead && onMap(z.obj.position.x, z.obj.position.z, -1));
+  if (!live.length) return false;
+  const tgt = live[Math.floor(Math.random() * live.length)];
+  const g = new THREE.Group();
+  const rock = new THREE.Mesh(METEOR.geo, METEOR.mat);
+  const core = new THREE.Mesh(METEOR.geo, METEOR.core); core.scale.setScalar(0.7);
+  const glow = new THREE.Sprite(goldGlowMat()); glow.scale.setScalar(2.6);
+  g.add(rock, core, glow);
+  const light = new THREE.PointLight(0xff6a00, 6, 7);
+  g.add(light);
+  W.scene.add(g);
+  const mark = new THREE.Mesh(METEOR.mark, new THREE.MeshBasicMaterial({ color: 0xff3b1a, transparent: true, opacity: 0.6, depthWrite: false }));
+  mark.rotation.x = -Math.PI / 2;
+  W.scene.add(mark);
+  const p = tgt.obj.position;
+  G.meteors.push({ g, mark, tgt, x: p.x, z: p.z, t: 0, dur: 1.1, ox: 5, oz: -4 });
+  SND.whoosh();
+  return true;
+}
+function updateMeteors(dt) {
+  if (!MAPS[G.map].special) return;
+  if (G.zombies.some((z) => !z.dead)) {
+    G.meteorT -= dt;
+    if (G.meteorT <= 0) G.meteorT = spawnMeteor() ? 11 + Math.random() * 8 : 2;
+  }
+  for (let i = G.meteors.length - 1; i >= 0; i--) {
+    const m = G.meteors[i];
+    m.t += dt;
+    if (m.tgt && !m.tgt.dead) { m.x += (m.tgt.obj.position.x - m.x) * Math.min(1, dt * 6); m.z += (m.tgt.obj.position.z - m.z) * Math.min(1, dt * 6); }
+    const k = Math.min(1, m.t / m.dur), f = 1 - k;
+    m.g.position.set(m.x + m.ox * f, 0.3 + 11 * f, m.z + m.oz * f);
+    m.g.rotation.x += dt * 8; m.g.rotation.z += dt * 5;
+    m.mark.position.set(m.x, 0.07, m.z);
+    m.mark.scale.setScalar(0.6 + 0.4 * k);
+    m.mark.material.opacity = 0.3 + 0.5 * k * (0.6 + 0.4 * Math.sin(m.t * 30));
+    if (k >= 1) {
+      const dmg = 25 + G.wave * 4;
+      for (const z of [...G.zombies]) if (!z.dead && Math.hypot(z.obj.position.x - m.x, z.obj.position.z - m.z) < 1.6) damage(z, dmg, 'splash', null, 0);
+      G.fx.push({ ring: true, x: m.x, z: m.z, r: 2.2, t: 0, color: 0xff6a00 });
+      G.fx.push({ ring: true, x: m.x, z: m.z, r: 1.4, t: -0.08, color: 0xffe08a });
+      for (let j = 0; j < 3; j++) sparkleAt(new THREE.Vector3(m.x, 0.4 + j * 0.3, m.z), [0xff6a00, 0xffd23f, 0xff3b1a][j]);
+      floatText(new THREE.Vector3(m.x, 0, m.z), 'METEOR!', 'crit');
+      SND.boom();
+      if (navigator.vibrate) navigator.vibrate(40);
+      shake = 0.35;
+      W.scene.remove(m.g, m.mark); m.mark.material.dispose();
+      G.meteors.splice(i, 1);
+    }
+  }
+}
+let shake = 0;
 
 // ------------------------------------------------------------------ Update ---
 function update(dt) {
@@ -764,6 +937,7 @@ function update(dt) {
     while (st.q.length && st.t <= 0) { const s = st.q.shift(); spawnZombie(s); st.t += s.gap; }
     if (!st.q.length) G.streams.splice(i, 1);
   }
+  updateMeteors(dt);
   const camQ = camera.quaternion;
   for (let i = G.zombies.length - 1; i >= 0; i--) {
     const z = G.zombies[i];
@@ -883,7 +1057,9 @@ function showResult(won, stars, firstWin) {
   $('rTitle').textContent = won ? 'KARTE GESCHAFFT!' : 'OH NEIN!';
   $('rTitle').className = won ? 'win' : 'lose';
   $('rMap').textContent = MAPS[G.map].name;
-  $('rRibbon').textContent = won ? (firstWin && MAPS[G.map + 1] ? `NEUE KARTE FREI: ${MAPS[G.map + 1].name}!` : 'ALLE 60 WELLEN ÜBERSTANDEN') : record ? 'NEUER REKORD!' : `REKORD: WELLE ${p.best}`;
+  const special = MAPS.find((m) => m.special);
+  const justUnlocked = won && special && !MAPS[G.map].special && totalStars() >= special.needStars && G.stats.starsBefore < special.needStars;
+  $('rRibbon').textContent = won ? (justUnlocked ? `🌋 ${special.name} FREIGESCHALTET!` : `ALLE 60 WELLEN · ${totalStars()} / 15 ★`) : record ? 'NEUER REKORD!' : `REKORD: WELLE ${p.best}`;
   $('rRibbon').classList.toggle('gold', won || record);
   // Sterne nacheinander
   const st = $('rStars');
@@ -915,7 +1091,7 @@ function showResult(won, stars, firstWin) {
     if (k < 1) { SND.count(); requestAnimationFrame(count); }
   };
   requestAnimationFrame(count);
-  $('rNext').classList.toggle('hidden', !(won && MAPS[G.map + 1]));
+  $('rNext').classList.toggle('hidden', !(won && MAPS[G.map + 1] && mapUnlocked(G.map + 1)));
   $('rRetry').textContent = won ? 'NOCHMAL' : 'NOCHMAL VERSUCHEN';
   $('confetti').innerHTML = won ? Array.from({ length: 40 }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${['#ffd23f', '#ff6b8b', '#7ddc4a', '#5fc8ff', '#b06bff'][i % 5]};animation-delay:${Math.random() * 1.5}s;animation-duration:${2 + Math.random() * 2}s"></i>`).join('') : '';
   showScreen('result');
@@ -1189,7 +1365,10 @@ function renderTitle() {
   const locked = !mapUnlocked(sel.map);
   $('tStart').disabled = locked;
   $('tStart').textContent = locked ? 'GESPERRT' : 'START';
-  $('mapLock').textContent = locked ? `Schaffe zuerst ${MAPS[sel.map - 1].name} (alle ${WAVES} Wellen)` : '';
+  const need = m.needStars || 0;
+  $('mapLock').textContent = locked ? `🔒 Sammle ${need} ★ (du hast ${totalStars()} / ${need})` : m.special ? '★ SPEZIAL-KARTE: Meteore & Goldzombies!' : '';
+  $('tMap').parentElement.parentElement.classList.toggle('locked', locked);
+  $('tMap').parentElement.parentElement.classList.toggle('special', !!m.special && !locked);
 }
 $('mapPrev').addEventListener('click', () => { if (sel.map > 0) { sel.map--; renderTitle(); tone(500, 600, 0.06, 'triangle', 0.05); } });
 $('mapNext').addEventListener('click', () => { if (sel.map < MAPS.length - 1) { sel.map++; renderTitle(); tone(500, 600, 0.06, 'triangle', 0.05); } });
@@ -1345,7 +1524,15 @@ function frame(now) {
   } catch (err) {
     console.warn(err);
   }
-  if (W.scene) renderer.render(W.scene, camera);
+  if (W.scene) {
+    if (shake > 0) {
+      shake = Math.max(0, shake - dt);
+      const o = camera.position.clone();
+      camera.position.x += (Math.random() - 0.5) * shake * 0.8; camera.position.z += (Math.random() - 0.5) * shake * 0.8;
+      renderer.render(W.scene, camera);
+      camera.position.copy(o);
+    } else renderer.render(W.scene, camera);
+  }
 }
 
 // ------------------------------------------------------------------- Start ---
@@ -1363,4 +1550,4 @@ function frame(now) {
 })();
 
 // zum Testen
-window.__oma = { G, W, renderer, selectOma, showResult, sim: (sec) => { for (let i = 0; i < sec * 30 && G.mode === 'play'; i++) update(1 / 30); }, startMap, startWave, placeOma, canPlace, view, OMA_DEF, progress, MAPS, placeCamera, project: (x, z) => { const v = new THREE.Vector3(x, 0, z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight }; } };
+window.__oma = { G, W, renderer, selectOma, showResult, sim: (sec) => { for (let i = 0; i < sec * 30 && G.mode === 'play'; i++) update(1 / 30); }, startMap, startWave, placeOma, spawnMeteor, renderTitle, sel, canPlace, view, OMA_DEF, progress, MAPS, placeCamera, project: (x, z) => { const v = new THREE.Vector3(x, 0, z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight }; } };

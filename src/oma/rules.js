@@ -61,9 +61,10 @@ function arc(cx, cz, r, a0, a1, n) {
   return out;
 }
 const DEG = Math.PI / 180;
+// diff = wie viel schwerer die Karte ist · needStars = erst ab so vielen Sternen spielbar
 export const MAPS = [
   {
-    id: 'garten', name: 'SCHREBERGARTEN', theme: 'day',
+    id: 'garten', name: 'SCHREBERGARTEN', theme: 'day', diff: 0,
     bounds: { x0: -8, x1: 8, z0: -15, z1: 16 },
     pond: { x: -0.3, z: 0.6, r: 1.5 },
     line: [
@@ -76,20 +77,47 @@ export const MAPS = [
     ],
   },
   {
-    id: 'friedhof', name: 'FRIEDHOF', theme: 'night',
+    // Strand: Wellen-Spalten von oben nach unten, das Meer liegt oben
+    id: 'strand', name: 'STRAND', theme: 'beach', diff: 2,
     bounds: { x0: -8, x1: 8, z0: -15, z1: 16 },
     line: [
-      [19, -12], [3, -12], [-6, -12], [-6.5, -8], [-2, -7.8], [2.5, -9], [6.5, -7.5], [6.5, -3.5], [0, -3.2], [-6.5, -3.5],
-      [-6.8, 0.6], [-3, 1], [1, 0.8], [4.5, 1.5], [6.4, 4], [4.6, 6.6], [0, 6.6], [-5.5, 6.8], [-6.8, 9.6], [-5, 12], [0, 11.4],
-      [4, 12.4], [6.5, 14.6], [6, 24],
+      [-20, -13.5], [-6.5, -13.5], [-7.2, -8], [-5.8, -3], [-7.2, 2], [-6.5, 7], [-6.5, 12.5], [-2.5, 12.5],
+      [-1.8, 7], [-3.2, 2], [-1.8, -3], [-3, -7.5], [-2.5, -10.5], [1.5, -10.5], [2.2, -6], [0.8, -1], [2.2, 4], [1.5, 12.5],
+      [5.5, 12.5], [6.2, 7], [4.8, 2], [6.2, -3], [5.5, -8], [5.5, -13.5], [20, -13.5],
     ],
   },
   {
-    id: 'winter', name: 'WINTERDORF', theme: 'snow',
+    // Friedhof: einmal ganz außen herum, dann im Zickzack durch die Mitte (kreuzt den Weg unten)
+    id: 'friedhof', name: 'FRIEDHOF', theme: 'night', diff: 4,
+    bounds: { x0: -8, x1: 8, z0: -15, z1: 16 },
+    line: [
+      [-6.6, -22], [-6.6, 13], [6.6, 13], [6.6, -12.8], [-3, -12.8],
+      [-3, -9.5], [3, -6.2], [-3, -2.8], [3, 0.6], [-3, 4], [3, 7.4], [0, 9.8], [0, 24],
+    ],
+  },
+  {
+    // Herbstwald: Spirale nach innen, dann quer durch alle Ringe nach draußen
+    id: 'herbst', name: 'HERBSTWALD', theme: 'autumn', diff: 6,
+    bounds: { x0: -8, x1: 8, z0: -15, z1: 16 },
+    line: [
+      [20, -13], [-6.6, -13], [-6.6, 13], [6.6, 13], [6.6, -9.2], [-3, -9.2], [-3, 9], [3, 9], [3, -5.4], [0.2, -5.4], [0.2, 24],
+    ],
+  },
+  {
+    id: 'winter', name: 'WINTERDORF', theme: 'snow', diff: 8,
     bounds: { x0: -8, x1: 8, z0: -15, z1: 16 },
     line: [
       [-19, -13], [-2.5, -13], [-2.5, -9], [-7, -9], [-7, -4.5], [2.5, -4.5], [2.5, -9.5], [7, -9.5], [7, 1.5], [3.5, 1.5],
       [3.5, -1.5], [-6.5, -1.5], [-6.5, 5.5], [0, 5.5], [0, 9.5], [-6.5, 9.5], [-6.5, 13.5], [5.5, 13.5], [5.5, 24],
+    ],
+  },
+  {
+    // Special: Vulkaninsel – Blitz-Zickzack, Lava, Meteore, goldene Zombies
+    id: 'vulkan', name: 'VULKANINSEL', theme: 'lava', diff: 18, special: true, needStars: 15,
+    bounds: { x0: -8, x1: 8, z0: -15, z1: 16 },
+    pools: [[4.2, -12.3, 1.3], [-4.6, -7.6, 1.2], [4.6, -3.2, 1.2], [-4.6, 1.6, 1.2], [4.6, 5.6, 1.2], [-4.4, 9.6, 1.1]],
+    line: [
+      [-20, -13.5], [-6.5, -13.5], [6.5, -9.5], [-6.5, -5.5], [6.5, -1.5], [-6.5, 2.5], [6.5, 6.5], [-6.5, 10.5], [3, 14], [3.5, 24],
     ],
   },
 ];
@@ -123,14 +151,15 @@ function rng(seed) {
   };
 }
 // Schwierigkeit einer Welle: Karte 2 fängt etwas schwerer an, Karte 3 noch mehr
-export const difficulty = (mapIdx, wave) => wave + mapIdx * 6 * Math.min(1, wave / 20); // Aufschlag kommt in den ersten 20 Wellen langsam dazu
-export const startCookies = (mapIdx) => 450 + mapIdx * 200;
+export const difficulty = (mapIdx, wave) => wave + MAPS[mapIdx].diff * Math.min(1, wave / 20); // Aufschlag kommt in den ersten 20 Wellen langsam dazu
+export const startCookies = (mapIdx) => 450 + MAPS[mapIdx].diff * 35;
 
 // ------------------------------------------------------------- Wellen ---
 // Welle 1–10: nur normale · ab 11 ab und zu schnelle · ab 16 Schild · Welle 20: erster Boss + dicke
 // Bosse in Welle 20, 30, 40, 50 – Welle 60: die schwerste mit mehreren Bossen
 export function genWaves(mapIdx) {
   const r = rng(mapIdx * 1000003 + 7);
+  const tier = Math.min(3, Math.floor(MAPS[mapIdx].diff / 4)); // mehr Bosse auf schweren Karten
   const waves = [];
   for (let w = 1; w <= WAVES; w++) {
     const D = difficulty(mapIdx, w);
@@ -152,9 +181,9 @@ export function genWaves(mapIdx) {
       budget -= a[2];
       list.push({ type: a[0], hp, speed, gap: a[0] === 'jogger' ? gap * 0.6 : a[0] === 'dieter' ? gap * 1.4 : gap });
     }
-    const bosses = w === WAVES ? 2 + mapIdx : w >= 20 && w % 10 === 0 ? 1 + (w >= 40 ? mapIdx : 0) : 0;
+    const bosses = w === WAVES ? 2 + tier : w >= 20 && w % 10 === 0 ? 1 + (w >= 40 ? Math.min(2, tier) : 0) : 0;
     if (bosses) {
-      for (let k = 0; k < 2 + mapIdx; k++) list.push({ type: 'dieter', hp, speed, gap: gap * 1.4 });
+      for (let k = 0; k < 2 + tier; k++) list.push({ type: 'dieter', hp, speed, gap: gap * 1.4 });
       for (let b = 0; b < bosses; b++) list.push({ type: 'boss', hp: 1 + D * 0.05, speed: 1, gap: 3 });
     }
     waves.push(list);
