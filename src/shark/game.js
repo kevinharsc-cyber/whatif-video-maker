@@ -12,6 +12,10 @@ const FLOOR_Y = -1.6;
 const SWIM_Y = 0.6;
 const BOOST_Y = 2.8;
 const DIVE_Y = -0.75;
+// zweite Ebene (auf Schiffswracks und Riffen)
+const PLAT_H = 3.2; // Höhe der Plattform über dem Boden
+const PLAT_TOP = -1.6 + PLAT_H;
+const ON_TOP = 0.7; // so hoch schwimmt man über der Plattform
 const START_SPEED = 13;
 const MAX_SPEED = 32;
 const CAM = { x: 0, y: 4.6, z: 6.8, lookY: 0, lookZ: -7 };
@@ -635,7 +639,7 @@ function drawCoinFace() {
 drawCoinFace();
 const coinMats = [toon(0xe8a400), new THREE.MeshToonMaterial({ map: coinTex, gradientMap: grad }), new THREE.MeshToonMaterial({ map: coinTex, gradientMap: grad })];
 const coinPool = [];
-for (let i = 0; i < 48; i++) {
+for (let i = 0; i < 72; i++) {
   const c = new THREE.Mesh(coinGeo, coinMats);
   const o = new THREE.Mesh(coinGeo, OUTLINE);
   o.scale.setScalar(1.1);
@@ -646,6 +650,113 @@ for (let i = 0; i < 48; i++) {
   holder.visible = false;
   scene.add(holder);
   coinPool.push(holder);
+}
+
+// --------------------------------------------- Zweite Ebene: Wracks + Riffe ---
+// Ursprung = vordere Kante unten Mitte; die Plattform reicht nach hinten (-z)
+const PLAT = {
+  wreck: {
+    len: 22,
+    ramp: 6, // schräge Planke vorne: man schwimmt automatisch hoch
+    make() {
+      const g = new THREE.Group();
+      const L = 22 - 6;
+      const hull = part(new THREE.BoxGeometry(1.9, PLAT_H, L), 0x6b4426, { w: 0.02 });
+      hull.position.set(0, PLAT_H / 2, -6 - L / 2);
+      g.add(hull);
+      const deck = part(new THREE.BoxGeometry(2.0, 0.16, L), 0x9a6a3c, { outline: false });
+      deck.position.set(0, PLAT_H, -6 - L / 2);
+      g.add(deck);
+      for (let i = 0; i < 5; i++) {
+        const plank = new THREE.Mesh(new THREE.BoxGeometry(1.92, 0.06, 0.08), toon(0x5a3a1e));
+        plank.position.set(0, PLAT_H * (0.3 + (i % 3) * 0.2), -8 - i * 3);
+        g.add(plank);
+        for (const sx of [-1, 1]) {
+          const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.06, 12), toon(0x1d3b4f));
+          hole.rotation.z = Math.PI / 2;
+          hole.position.set(sx * 0.97, PLAT_H * 0.62, -8.5 - i * 3);
+          g.add(hole);
+        }
+      }
+      // kaputte Reling an den Seiten (verdeckt nicht die Sicht)
+      for (let i = 0; i < 6; i++) {
+        for (const sx of [-1, 1]) {
+          if ((i + (sx > 0 ? 1 : 0)) % 3 === 0) continue;
+          const post = part(new THREE.BoxGeometry(0.1, 0.45 + (i % 2) * 0.2, 0.1), 0x5a3a1e, { w: 0.08 });
+          post.position.set(sx * 0.92, PLAT_H + 0.25, -7 - i * 2.6);
+          post.rotation.z = sx * (0.1 + (i % 3) * 0.12);
+          g.add(post);
+        }
+      }
+      const RL = Math.hypot(6, PLAT_H);
+      const ramp = part(new THREE.BoxGeometry(1.7, 0.18, RL), 0x8a5a30, { w: 0.03 });
+      ramp.position.set(0, PLAT_H / 2, -3);
+      ramp.rotation.x = Math.atan2(PLAT_H, 6);
+      g.add(ramp);
+      for (let i = 0; i < 4; i++) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.05, 0.1), toon(0x5a3a1e));
+        rib.position.set(0, PLAT_H * ((i + 0.6) / 4.6) + 0.11, -0.6 - i * 1.3);
+        rib.rotation.x = Math.atan2(PLAT_H, 6);
+        g.add(rib);
+      }
+      return g;
+    },
+  },
+  reef: {
+    len: 14,
+    ramp: 0, // steile Wand: hochschwimmen (↑) nötig
+    make() {
+      const g = new THREE.Group();
+      const rock = part(new THREE.BoxGeometry(1.9, PLAT_H, 14), 0xb3627e, { w: 0.02 });
+      rock.position.set(0, PLAT_H / 2, -7);
+      g.add(rock);
+      const top = part(new THREE.BoxGeometry(2.0, 0.2, 14.1), 0xd77a98, { outline: false });
+      top.position.set(0, PLAT_H, -7);
+      g.add(top);
+      const cols = [0xff9f1c, 0xb06bff, 0xffd23f, 0x3fd1c4];
+      for (let i = 0; i < 7; i++) {
+        const sx = i % 2 ? -1 : 1;
+        const bump = part(new THREE.SphereGeometry(0.32 + (i % 3) * 0.08, 8, 6), cols[i % 4], { w: 0.08 });
+        bump.position.set(sx * 0.95, PLAT_H * (0.35 + (i % 3) * 0.2), -1 - i * 1.9);
+        g.add(bump);
+        const sprig = part(new THREE.CylinderGeometry(0.06, 0.1, 0.6, 5), cols[(i + 1) % 4], { w: 0.1 });
+        sprig.position.set(sx * 0.7, PLAT_H + 0.3, -1.5 - i * 1.9);
+        sprig.rotation.z = sx * 0.3;
+        g.add(sprig);
+      }
+      const front = part(new THREE.BoxGeometry(1.95, 0.25, 0.25), 0xff6b8b, { w: 0.06 });
+      front.position.set(0, PLAT_H - 0.1, 0);
+      g.add(front);
+      return g;
+    },
+  },
+};
+const platPools = {};
+for (const k of Object.keys(PLAT)) {
+  platPools[k] = [];
+  for (let i = 0; i < 3; i++) {
+    const m = PLAT[k].make();
+    m.visible = false;
+    scene.add(m);
+    platPools[k].push(m);
+  }
+}
+// Höhe der Plattform-Oberkante bei z = 0 in Bahn-Position x (null = keine Plattform)
+let platRamp = false; // true = man ist gerade auf einer Rampe (darauf kommt man immer hoch)
+function platTopAt(x) {
+  let top = null;
+  platRamp = false;
+  for (const p of G.plats) {
+    if (Math.abs(LANES[p.lane] - x) > 1.0) continue;
+    if (p.z < 0 || p.z - p.len > 0) continue;
+    const into = p.z; // so weit ist man schon auf der Plattform
+    const h = p.ramp && into < p.ramp ? (PLAT_H * into) / p.ramp : PLAT_H;
+    if (FLOOR_Y + h > (top ?? -99)) {
+      top = FLOOR_Y + h;
+      platRamp = !!p.ramp && into < p.ramp;
+    }
+  }
+  return top;
 }
 
 // ------------------------------------------------------------- Power-ups ---
@@ -922,7 +1033,7 @@ function startMusic() {
   if (!music.bus) music.bus = createBus(a, a.destination);
   music.bus.master.gain.cancelScheduledValues(a.currentTime);
   music.bus.master.gain.setValueAtTime(0.0001, a.currentTime);
-  music.bus.master.gain.exponentialRampToValueAtTime(0.9, a.currentTime + 0.6);
+  music.bus.master.gain.exponentialRampToValueAtTime(1.6, a.currentTime + 0.6); // lauter
   music.on = true;
   music.next = a.currentTime + 0.05;
   music.timer = setInterval(musicTick, 50);
@@ -961,6 +1072,8 @@ const G = {
   vFrom: SWIM_Y,
   baseY: SWIM_Y,
   pickup: null,
+  plats: [], // { obj, kind, lane, z (vordere Kante), len, ramp, hit }
+  nextPlat: 90,
 };
 
 function clearWorld() {
@@ -970,6 +1083,9 @@ function clearWorld() {
   G.pickup = null;
   for (const k of Object.keys(G.power)) G.power[k] = 0;
   rideDolphin.visible = false;
+  for (const p of G.plats) p.obj.visible = false;
+  G.plats.length = 0;
+  G.nextPlat = 90;
   G.active.length = 0;
   G.coinsOn.length = 0;
 }
@@ -997,9 +1113,14 @@ function take(kind) {
 function spawnRow(z) {
   const level = Math.min(1, G.dist / 1500);
   const kinds = Object.keys(OBST);
-  const free = Math.floor(Math.random() * 3); // diese Bahn bleibt ganz frei
-  const blockCount = Math.random() < 0.35 + level * 0.4 ? 2 : 1;
-  const lanes = [0, 1, 2].filter((l) => l !== free).sort(() => Math.random() - 0.5).slice(0, blockCount);
+  // Bahnen mit Plattform bleiben frei von Hindernissen (oben kann man durch)
+  const covered = new Set(G.plats.filter((p) => z <= p.z + 4 && z >= p.z - p.len - 3).map((p) => p.lane));
+  const ground = [0, 1, 2].filter((l) => !covered.has(l));
+  if (G.power.ride > 1.5) skyCoins(z);
+  if (!ground.length) return;
+  const free = ground[Math.floor(Math.random() * ground.length)]; // diese Bahn bleibt ganz frei
+  const blockCount = Math.min(ground.length - 1, Math.random() < 0.35 + level * 0.4 ? 2 : 1);
+  const lanes = ground.filter((l) => l !== free).sort(() => Math.random() - 0.5).slice(0, blockCount);
   for (const lane of lanes) {
     let kind = kinds[Math.floor(Math.random() * kinds.length)];
     const obj = take(kind) || take((kind = 'rock'));
@@ -1025,6 +1146,35 @@ function spawnRow(z) {
       obj.position.set(LANES[free], SWIM_Y + 0.2, z - 6);
       G.pickup = { kind: k, obj, lane: free, z: z - 6 };
       break;
+    }
+  }
+}
+// Delfin-Ritt: Münzreihe hoch oben, nur mit dem Delfin erreichbar
+let skyLane = 1;
+function skyCoins(z, count = 5) {
+  if (Math.random() < 0.5) skyLane = Math.max(0, Math.min(2, skyLane + (Math.random() < 0.5 ? -1 : 1)));
+  for (let i = 0; i < count; i++) placeCoin(skyLane, z + 7 - i * 2.9, RIDE_Y);
+}
+// Plattform(en) setzen: 1–2 Bahnen, nie alle drei
+function spawnPlatforms(z) {
+  const blocked = new Set(G.active.filter((a) => a.z < z + 8).map((a) => a.lane));
+  const lanes = [0, 1, 2].filter((l) => !blocked.has(l)).sort(() => Math.random() - 0.5);
+  const n = Math.min(lanes.length, Math.random() < 0.35 ? 2 : 1);
+  for (let i = 0; i < n; i++) {
+    const kind = Math.random() < 0.55 ? 'wreck' : 'reef';
+    const obj = platPools[kind].find((m) => !m.visible);
+    if (!obj) continue;
+    const lane = lanes[i];
+    const P = PLAT[kind];
+    obj.visible = true;
+    obj.position.set(LANES[lane], FLOOR_Y, z);
+    G.plats.push({ obj, kind, lane, z, len: P.len, ramp: P.ramp, hit: false });
+    // Münzen auf der Plattform (bei Rampe auch die Rampe hoch)
+    if (i === 0) {
+      for (let d = 1.5; d < P.len - 1; d += 2.9) {
+        const h = P.ramp && d < P.ramp ? (PLAT_H * d) / P.ramp : PLAT_H;
+        placeCoin(lane, z - d, FLOOR_Y + h + ON_TOP);
+      }
     }
   }
 }
@@ -1055,6 +1205,7 @@ function setVertical(mode) {
   if (G.power.ride > 0) return;
   if (G.vMode === mode && G.vT < 0.5) return;
   G.vFrom = G.y;
+  G.vBase = G.baseY;
   G.vMode = mode;
   G.vT = 0;
   if (G.run && G.mode === 'play') G.run[mode === 'up' ? 'jumps' : 'dives']++;
@@ -1062,6 +1213,15 @@ function setVertical(mode) {
 }
 function move(dir) {
   const n = Math.max(0, Math.min(2, G.lane + dir));
+  // seitlich gegen eine Plattform-Wand: abprallen statt durchschwimmen
+  const wall = G.mode === 'play' && !(G.power.ride > 0) ? platTopAt(LANES[n]) : null;
+  if (n !== G.lane && wall !== null && G.y - HALF_H < wall - 0.35) {
+    G.shake = 0.5;
+    G.vx = dir * -6;
+    sfx.swipe();
+    if (navigator.vibrate) navigator.vibrate(30);
+    return;
+  }
   if (n !== G.lane) {
     G.lane = n;
     sfx.swipe();
@@ -1220,13 +1380,26 @@ function update(dt) {
   G.vx = (G.vx || 0) + (SPRING * (LANES[G.lane] - G.x) - 2 * Math.sqrt(SPRING) * G.vx) * dt;
   G.x += G.vx * dt;
   const prevY = G.y;
-  // Delfin-Ritt: hoch über allen Hindernissen
-  G.baseY += ((G.power.ride > 0 ? RIDE_Y : SWIM_Y) - G.baseY) * Math.min(1, dt * 4);
+  // Grundhöhe: Delfin-Ritt hoch oben · auf einer Plattform = zweite Ebene · sonst normale Schwimmhöhe
+  let baseTarget = SWIM_Y;
+  G.onTop = false;
+  if (G.power.ride > 0) baseTarget = RIDE_Y;
+  else if (G.mode === 'play') {
+    const top = platTopAt(G.x);
+    if (top !== null && (platRamp || G.y - HALF_H >= top - 0.35)) {
+      baseTarget = Math.max(SWIM_Y, top + ON_TOP);
+      G.onTop = top > FLOOR_Y + PLAT_H * 0.5;
+    }
+  }
+  if (baseTarget > G.baseY && G.power.ride <= 0) G.baseY = baseTarget; // Rampe hoch / Landen: sofort mitgehen
+  else G.baseY += (baseTarget - G.baseY) * Math.min(1, dt * (G.power.ride > 0 ? 4 : 5)); // runterfallen
   if (G.vMode !== 'swim') {
     G.vT += dt;
     const dur = 0.85;
     const k = Math.min(1, G.vT / dur);
-    const target = G.vMode === 'up' ? BOOST_Y : DIVE_Y;
+    // hoch = 2,2 über der aktuellen Ebene; runter = abtauchen (auf einer Plattform nur ducken)
+    const onTopNow = G.baseY > SWIM_Y + 0.5 && !(G.power.ride > 0);
+    const target = G.vMode === 'up' ? G.vBase + (BOOST_Y - SWIM_Y) : onTopNow ? G.baseY - 0.3 : DIVE_Y;
     // erste Hälfte: vom Startpunkt zum Ziel (schnell), zweite Hälfte: zurück zur Schwimmhöhe
     G.y = k < 0.45 ? lerp(G.vFrom, target, Math.sin((k / 0.45) * Math.PI / 2)) : k < 0.6 ? target : lerp(target, G.baseY, smoothstep((k - 0.6) / 0.4));
     if (k >= 1) {
@@ -1332,6 +1505,30 @@ function update(dt) {
 
   if (playing) {
     // neue Reihen
+    G.nextPlat -= dz;
+    if (G.nextPlat <= 0) {
+      if (G.dist > 150 && G.power.ride <= 0) spawnPlatforms(-58);
+      G.nextPlat = 55 + Math.random() * 55;
+    }
+    for (let i = G.plats.length - 1; i >= 0; i--) {
+      const p = G.plats[i];
+      p.z += dz;
+      p.obj.position.z = p.z;
+      // vorne gegen ein Riff (ohne Rampe) geschwommen
+      if (!p.hit && !riding && p.z >= 0 && p.z - dz < 0.6 && Math.abs(LANES[p.lane] - G.x) < 1.0 && G.y - HALF_H < FLOOR_Y + (p.ramp ? 0 : PLAT_H) - 0.3) {
+        p.hit = true;
+        hitObstacle(p);
+        // nach dem Aufprall klettert man aufs Riff (nicht durch die Wand)
+        if (G.mode === 'play') {
+          G.baseY = G.y = PLAT_TOP + ON_TOP;
+          G.vMode = 'swim';
+        }
+      }
+      if (p.z - p.len > 14) {
+        p.obj.visible = false;
+        G.plats.splice(i, 1);
+      }
+    }
     G.nextRow -= dz;
     if (G.nextRow <= 0) {
       spawnRow(-58);
@@ -1366,14 +1563,15 @@ function update(dt) {
       c.obj.position.z = c.z;
       c.obj.rotation.y = Math.sin(t * 2 + c.z) * 0.6;
       // Magnet: Münzen in der Nähe fliegen zum Taucher
-      if ((G.power.magnet > 0 || riding) && c.z > -16 && c.z < 2) c.pull = true;
+      if (G.power.magnet > 0 && c.z > -16 && c.z < 2) c.pull = true;
       if (c.pull) {
         c.px = (c.px ?? c.obj.position.x) + (G.x - (c.px ?? c.obj.position.x)) * Math.min(1, dt * 9);
         c.py = (c.py ?? c.y) + (G.y - (c.py ?? c.y)) * Math.min(1, dt * 9);
         c.z += (0 - c.z) * Math.min(1, dt * 9);
         c.obj.position.set(c.px, c.py, c.z);
       }
-      const near = c.pull ? Math.hypot(c.obj.position.x - G.x, c.obj.position.y - G.y, c.z) < 0.9 : Math.abs(c.z) < 0.8 && Math.abs(LANES[c.lane] - G.x) < 0.9 && Math.abs(c.y - G.y) < 1.2;
+      // nur wenn man wirklich durch die Münze schwimmt (auch bei hohem Tempo nichts überspringen)
+      const near = c.pull ? Math.hypot(c.obj.position.x - G.x, c.obj.position.y - G.y, c.z) < 0.9 : c.z >= -0.55 && c.z - dz <= 0.55 && Math.abs(LANES[c.lane] - G.x) < 0.75 && Math.abs(c.y - G.y) < 0.85;
       if (near) {
         G.coins += G.power.pearl > 0 ? 2 : 1;
         sfx.coin();
@@ -1398,7 +1596,9 @@ function update(dt) {
           G.power[p.kind] = POWER[p.kind].dur;
           if (p.kind === 'ride') {
             G.vMode = 'swim';
-            banner('🐬 DELFIN-RITT! Flieg über alles drüber!');
+            skyLane = G.lane;
+            for (let zz = -10; zz > -58; zz -= 14.5) skyCoins(zz);
+            banner('🐬 DELFIN-RITT! Hol dir die Münzen da oben!');
           }
         }
         G.run.powers++;
@@ -2127,4 +2327,4 @@ document.fonts?.load('80px "Lilita One"').then(drawCoinFace).catch(() => {});
 window.addEventListener('pointerdown', () => startMusic(), { once: true });
 
 // zum Testen
-window.__shark = { G, coinPool, addXp, Q, get quests() { return quests; }, move, setVertical, startRun, openPanel, profile, addFriend, shareLink, get bank() { return bank; }, set bank(v) { bank = v; } };
+window.__shark = { G, coinPool, spawnPlatforms, platTopAt, placeCoin, addXp, Q, get quests() { return quests; }, move, setVertical, startRun, openPanel, profile, addFriend, shareLink, get bank() { return bank; }, set bank(v) { bank = v; } };
