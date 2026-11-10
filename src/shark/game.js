@@ -12,6 +12,9 @@ const START_SPEED = 13;
 const MAX_SPEED = 32;
 const CAM = { x: 0, y: 4.6, z: 6.8, lookY: 0, lookZ: -7 };
 
+const lerp = (a, b, k) => a + (b - a) * k;
+const smoothstep = (k) => k * k * (3 - 2 * k);
+
 // --------------------------------------------------------------- Speicher ---
 const store = {
   get(k, d) {
@@ -32,6 +35,17 @@ const store = {
 };
 let best = store.get('shark-best', 0);
 let bank = store.get('shark-coins', 0);
+const settings = { music: true, sfx: true, ...store.get('shark-settings', {}) };
+let top = store.get('shark-top', []);
+const today = new Date().toISOString().slice(0, 10);
+let daily = store.get('shark-daily', null);
+if (!daily || daily.day !== today) daily = { day: today, coins: 0, bestDist: 0, bestDodged: 0, powers: 0, claimed: [] };
+const MISSIONS = [
+  { id: 'coins', text: 'Sammle heute 300 Münzen', goal: 300, val: () => daily.coins, reward: 150 },
+  { id: 'dist', text: 'Schwimme 1.000 m in einem Lauf', goal: 1000, val: () => daily.bestDist, reward: 200 },
+  { id: 'dodge', text: 'Weiche 20 Hindernissen in einem Lauf aus', goal: 20, val: () => daily.bestDodged, reward: 150 },
+  { id: 'power', text: 'Sammle 2 Power-ups ein', goal: 2, val: () => daily.powers, reward: 100 },
+];
 
 // ------------------------------------------------------------------ Szene ---
 const canvas = document.getElementById('view');
@@ -496,16 +510,92 @@ for (const k of Object.keys(OBST)) {
     pools[k].push(m);
   }
 }
-const coinGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.1, 20);
+const coinGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.12, 24);
+// Münzseite: Gold mit Rand und großem „C“ (wird nach dem Laden der Schrift neu gezeichnet)
+const coinCanvas = document.createElement('canvas');
+coinCanvas.width = coinCanvas.height = 128;
+const coinTex = new THREE.CanvasTexture(coinCanvas);
+coinTex.colorSpace = THREE.SRGBColorSpace;
+function drawCoinFace() {
+  const g = coinCanvas.getContext('2d');
+  const gr = g.createRadialGradient(48, 44, 8, 64, 64, 64);
+  gr.addColorStop(0, '#fff3a6');
+  gr.addColorStop(0.55, '#ffd23f');
+  gr.addColorStop(1, '#e8a400');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, 128, 128);
+  g.lineWidth = 9;
+  g.strokeStyle = '#c98a00';
+  g.beginPath();
+  g.arc(64, 64, 50, 0, Math.PI * 2);
+  g.stroke();
+  g.font = '78px "Lilita One", "Arial Black", sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = '#c98a00';
+  g.fillText('C', 66, 70);
+  g.fillStyle = '#fff6c9';
+  g.fillText('C', 62, 66);
+  coinTex.needsUpdate = true;
+}
+drawCoinFace();
+const coinMats = [toon(0xe8a400), new THREE.MeshToonMaterial({ map: coinTex, gradientMap: grad }), new THREE.MeshToonMaterial({ map: coinTex, gradientMap: grad })];
 const coinPool = [];
-for (let i = 0; i < 40; i++) {
-  const c = part(coinGeo, 0xffd23f, { w: 0.1 });
+for (let i = 0; i < 48; i++) {
+  const c = new THREE.Mesh(coinGeo, coinMats);
+  const o = new THREE.Mesh(coinGeo, OUTLINE);
+  o.scale.setScalar(1.1);
+  c.add(o);
   c.rotation.x = Math.PI / 2;
   const holder = new THREE.Group();
   holder.add(c);
   holder.visible = false;
   scene.add(holder);
   coinPool.push(holder);
+}
+
+// ------------------------------------------------------------- Power-ups ---
+function makeMagnet() {
+  const g = new THREE.Group();
+  const arc = part(new THREE.TorusGeometry(0.42, 0.16, 10, 20, Math.PI), 0xe5383b, { w: 0.08 });
+  arc.rotation.z = Math.PI;
+  arc.position.y = 0.1;
+  g.add(arc);
+  for (const sx of [-0.42, 0.42]) {
+    const leg = part(new THREE.CylinderGeometry(0.16, 0.16, 0.45, 10), 0xe5383b, { w: 0.08 });
+    leg.position.set(sx, 0.32, 0);
+    g.add(leg);
+    const tip = part(new THREE.CylinderGeometry(0.165, 0.165, 0.2, 10), 0xdfe6ee, { w: 0.08 });
+    tip.position.set(sx, 0.62, 0);
+    g.add(tip);
+  }
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.85, 14, 10), new THREE.MeshBasicMaterial({ color: 0x7fd8ff, transparent: true, opacity: 0.18, depthWrite: false })));
+  return g;
+}
+function makePearl() {
+  const g = new THREE.Group();
+  for (const s of [1, -1]) {
+    const half = part(new THREE.SphereGeometry(0.6, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), 0xffb6c8, { w: 0.06, extra: { side: THREE.DoubleSide } });
+    half.scale.set(1, 0.45, 1);
+    half.rotation.x = s > 0 ? -0.9 : Math.PI;
+    half.position.set(0, s > 0 ? 0.05 : -0.05, s > 0 ? -0.15 : 0);
+    g.add(half);
+  }
+  const pearl = part(new THREE.SphereGeometry(0.3, 16, 12), 0xffe58a, { w: 0.08 });
+  pearl.position.y = 0.12;
+  g.add(pearl);
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(0.9, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffe58a, transparent: true, opacity: 0.22, depthWrite: false })));
+  return g;
+}
+const POWER = {
+  magnet: { make: makeMagnet, dur: 8, label: 'MAGNET', color: '#e5383b', icon: '🧲', chance: 0.07 },
+  pearl: { make: makePearl, dur: 10, label: 'x2 MÜNZEN', color: '#d9a400', icon: '🦪', chance: 0.035 },
+};
+const powerObjs = {};
+for (const k of Object.keys(POWER)) {
+  powerObjs[k] = POWER[k].make();
+  powerObjs[k].visible = false;
+  scene.add(powerObjs[k]);
 }
 
 // --------------------------------------------------------------- Figuren ---
@@ -551,6 +641,7 @@ function audio() {
   return ac;
 }
 function tone(f0, f1, len, type = 'sine', vol = 0.1) {
+  if (!settings.sfx) return;
   const a = audio();
   if (!a) return;
   const t = a.currentTime;
@@ -566,6 +657,10 @@ function tone(f0, f1, len, type = 'sine', vol = 0.1) {
   o.stop(t + len + 0.02);
 }
 const sfx = {
+  power: () => {
+    tone(500, 1000, 0.15, 'triangle', 0.09);
+    setTimeout(() => tone(800, 1600, 0.2, 'triangle', 0.09), 110);
+  },
   coin: () => tone(1100, 1700, 0.1, 'triangle', 0.08),
   swipe: () => tone(300, 520, 0.12, 'sine', 0.06),
   up: () => tone(260, 700, 0.25, 'sine', 0.07),
@@ -577,6 +672,79 @@ const sfx = {
     setTimeout(() => tone(90, 30, 0.4, 'square', 0.12), 120);
   },
 };
+
+// ----------------------------------------------------------------- Musik ---
+// leichte, fröhliche Unterwasser-Melodie (Marimba + Bass + Shaker), wird mit dem Hai spannender
+const music = { on: false, gain: null, next: 0, step: 0, timer: null };
+const CHORDS = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]]; // Am F C G
+const MELODY = [76, 0, 72, 74, 76, 0, 79, 76, 74, 0, 72, 0, 69, 72, 74, 0];
+const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+function note(a, out, f, at, len, type, vol) {
+  const o = a.createOscillator();
+  const gn = a.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(f, at);
+  gn.gain.setValueAtTime(0.0001, at);
+  gn.gain.exponentialRampToValueAtTime(vol, at + 0.01);
+  gn.gain.exponentialRampToValueAtTime(0.0001, at + len);
+  o.connect(gn).connect(out);
+  o.start(at);
+  o.stop(at + len + 0.05);
+}
+let noiseBuf = null;
+function shaker(a, out, at, vol) {
+  if (!noiseBuf) {
+    noiseBuf = a.createBuffer(1, a.sampleRate * 0.1, a.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const s = a.createBufferSource();
+  s.buffer = noiseBuf;
+  const hp = a.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 6000;
+  const gn = a.createGain();
+  gn.gain.setValueAtTime(vol, at);
+  gn.gain.exponentialRampToValueAtTime(0.0001, at + 0.06);
+  s.connect(hp).connect(gn).connect(out);
+  s.start(at);
+  s.stop(at + 0.08);
+}
+function musicTick() {
+  const a = ac;
+  if (!a || !music.on) return;
+  const tense = G.mode === 'play' ? G.danger : 0;
+  const stepLen = 60 / (100 + tense * 30) / 4;
+  while (music.next < a.currentTime + 0.15) {
+    const s = music.step % 64;
+    const bar = Math.floor(s / 16);
+    const k = s % 16;
+    const ch = CHORDS[bar];
+    const at = music.next;
+    if (k % 2 === 0) note(a, music.gain, hz(ch[(k / 2) % 3] + 12), at, 0.25, 'triangle', 0.11);
+    if (k % 4 === 0) note(a, music.gain, hz(ch[0] - 24), at, 0.35, 'sine', 0.22);
+    if (MELODY[k] && bar % 2 === 1) note(a, music.gain, hz(MELODY[k]), at, 0.3, 'sine', 0.08);
+    if (G.mode === 'play') shaker(a, music.gain, at, k % 4 === 2 ? 0.06 : 0.025);
+    if (tense > 0.5 && k % 2 === 0) note(a, music.gain, hz(ch[0] - 12), at, 0.12, 'square', 0.03 * tense);
+    music.next += stepLen;
+    music.step++;
+  }
+}
+function startMusic() {
+  const a = audio();
+  if (!a || music.on || !settings.music) return;
+  music.gain = music.gain || a.createGain();
+  music.gain.gain.value = 0.55;
+  music.gain.connect(a.destination);
+  music.on = true;
+  music.next = a.currentTime + 0.05;
+  music.timer = setInterval(musicTick, 50);
+}
+function stopMusic() {
+  music.on = false;
+  clearInterval(music.timer);
+  if (music.gain) music.gain.disconnect();
+}
 
 // ----------------------------------------------------------------- Spiel ---
 const G = {
@@ -599,16 +767,24 @@ const G = {
   caughtT: 0,
   beatT: 0,
   dodged: 0,
+  power: { magnet: 0, pearl: 0 },
+  pickup: null,
 };
 
 function clearWorld() {
   for (const a of G.active) a.obj.visible = false;
   for (const c of G.coinsOn) c.obj.visible = false;
+  if (G.pickup) G.pickup.obj.visible = false;
+  G.pickup = null;
+  G.power.magnet = 0;
+  G.power.pearl = 0;
   G.active.length = 0;
   G.coinsOn.length = 0;
 }
 function startRun() {
   audio();
+  startMusic();
+  G.camBlend = 0;
   clearWorld();
   Object.assign(G, { mode: 'play', t: 0, speed: START_SPEED, dist: 0, coins: 0, danger: 0.85, slow: 0, shake: 0, nextRow: 26, lane: 1, x: 0, y: SWIM_Y, vMode: 'swim', vT: 0, caughtT: 0, dodged: 0 });
   showOnly('hud');
@@ -641,15 +817,40 @@ function spawnRow(z) {
   } else {
     for (let i = 0; i < 5; i++) placeCoin(free, z + 6 - i * 2.2, SWIM_Y);
   }
+  // seltenes Power-up (nie zwei gleichzeitig unterwegs, nicht direkt nach dem Start)
+  if (!G.pickup && G.dist > 120) {
+    for (const k of Object.keys(POWER)) {
+      if (G.power[k] > 0 || Math.random() > POWER[k].chance) continue;
+      const obj = powerObjs[k];
+      obj.visible = true;
+      obj.position.set(LANES[free], SWIM_Y + 0.2, z - 6);
+      G.pickup = { kind: k, obj, lane: free, z: z - 6 };
+      break;
+    }
+  }
 }
 function placeCoin(lane, z, y) {
   const obj = coinPool.find((c) => !c.visible);
   if (!obj) return;
   obj.visible = true;
   obj.position.set(LANES[lane], y, z);
-  G.coinsOn.push({ obj, lane, y, z });
+  G.coinsOn.push({ obj, lane, y, z, pull: false });
 }
 
+let powersHtml = '';
+function renderPowers() {
+  let html = '';
+  for (const k of Object.keys(POWER)) {
+    const left = G.power[k];
+    if (left <= 0) continue;
+    const pct = Math.round((left / POWER[k].dur) * 100);
+    html += `<div class="pw" style="--c:${POWER[k].color}"><span>${POWER[k].icon}</span><b>${POWER[k].label}</b><i style="width:${pct}%"></i></div>`;
+  }
+  if (html !== powersHtml) {
+    powersHtml = html;
+    $('powers').innerHTML = html;
+  }
+}
 function setVertical(mode) {
   if (G.vMode !== 'swim') return;
   G.vMode = mode;
@@ -690,6 +891,12 @@ function finish() {
   }
   bank += G.coins;
   store.set('shark-coins', bank);
+  daily.coins += G.coins;
+  daily.bestDist = Math.max(daily.bestDist, Math.floor(G.dist));
+  daily.bestDodged = Math.max(daily.bestDodged, G.dodged);
+  store.set('shark-daily', daily);
+  top = [...top, { score, dist: Math.floor(G.dist), coins: G.coins, day: today }].sort((a, b) => b.score - a.score).slice(0, 10);
+  store.set('shark-top', top);
   $('oScore').textContent = score;
   $('oDist').textContent = Math.floor(G.dist);
   $('oCoins').textContent = G.coins;
@@ -727,6 +934,31 @@ function update(dt) {
       G.y = SWIM_Y;
     }
   }
+  if (G.mode === 'menu') {
+    // Menü: Taucher schaut in die Kamera, Hai lauert dahinter
+    // aufrecht, Bauch und Gesicht zur Kamera
+    diver.rotation.order = 'YXZ';
+    diver.position.set(1.0, 0.4 + Math.sin(t * 1.6) * 0.12, 0.2);
+    diver.rotation.set(1.15, Math.PI + 0.35, 0.08);
+    diver.userData.head.rotation.x = -0.95;
+    diver.userData.arms[0].rotation.y = 0.9 + Math.sin(t * 3) * 0.2;
+    diver.userData.arms[1].rotation.y = -0.6;
+    const kk = Math.sin(t * 6);
+    diver.userData.legs[0].rotation.x = kk * 0.4;
+    diver.userData.legs[1].rotation.x = -kk * 0.4;
+    shark.position.set(-1.3, 2.5 + Math.sin(t * 1.2) * 0.2, -4.6);
+    shark.rotation.set(0.12, Math.PI - 0.38 + Math.sin(t * 0.8) * 0.06, 0);
+    shark.userData.tail.rotation.y = Math.sin(t * 5) * 0.4;
+    shark.userData.jaw.rotation.x = 0.35 + Math.sin(t * 2.2) * 0.25;
+    camera.position.set(0, 1.9 + Math.sin(t * 0.5) * 0.08, 6.2);
+    camera.lookAt(-0.3, 1.9, 0);
+    for (const d of decos) if (d.userData.weed) d.children.forEach((s) => (s.rotation.z = Math.sin(t * 2 + s.userData.sway) * 0.25));
+    return;
+  }
+  G.camBlend = Math.min(1, (G.camBlend ?? 1) + dt * 1.6);
+  shark.rotation.x = 0;
+  diver.rotation.order = 'XYZ';
+  diver.userData.head.rotation.x = 0;
   diver.position.set(G.x, G.y + Math.sin(t * 3) * 0.06, 0);
   const tilt = (LANES[G.lane] - G.x) * 0.25;
   diver.rotation.set(G.vMode === 'up' ? -0.5 * Math.sin(Math.min(1, G.vT / 0.85) * Math.PI) : G.vMode === 'down' ? 0.5 * Math.sin(Math.min(1, G.vT / 0.85) * Math.PI) : 0, 0, -tilt);
@@ -807,8 +1039,17 @@ function update(dt) {
       c.z += dz;
       c.obj.position.z = c.z;
       c.obj.rotation.y = Math.sin(t * 2 + c.z) * 0.6;
-      if (Math.abs(c.z) < 0.8 && Math.abs(LANES[c.lane] - G.x) < 0.9 && Math.abs(c.y - G.y) < 1.2) {
-        G.coins++;
+      // Magnet: Münzen in der Nähe fliegen zum Taucher
+      if (G.power.magnet > 0 && c.z > -16 && c.z < 2) c.pull = true;
+      if (c.pull) {
+        c.px = (c.px ?? c.obj.position.x) + (G.x - (c.px ?? c.obj.position.x)) * Math.min(1, dt * 9);
+        c.py = (c.py ?? c.y) + (G.y - (c.py ?? c.y)) * Math.min(1, dt * 9);
+        c.z += (0 - c.z) * Math.min(1, dt * 9);
+        c.obj.position.set(c.px, c.py, c.z);
+      }
+      const near = c.pull ? Math.hypot(c.obj.position.x - G.x, c.obj.position.y - G.y, c.z) < 0.9 : Math.abs(c.z) < 0.8 && Math.abs(LANES[c.lane] - G.x) < 0.9 && Math.abs(c.y - G.y) < 1.2;
+      if (near) {
+        G.coins += G.power.pearl > 0 ? 2 : 1;
         sfx.coin();
         c.obj.visible = false;
         G.coinsOn.splice(i, 1);
@@ -819,6 +1060,25 @@ function update(dt) {
         G.coinsOn.splice(i, 1);
       }
     }
+    if (G.pickup) {
+      const p = G.pickup;
+      p.z += dz;
+      p.obj.position.z = p.z;
+      p.obj.position.y = SWIM_Y + 0.2 + Math.sin(t * 3) * 0.2;
+      p.obj.rotation.y = t * 2;
+      if (Math.abs(p.z) < 0.9 && Math.abs(LANES[p.lane] - G.x) < 1.0 && Math.abs(G.y - SWIM_Y) < 1.3) {
+        G.power[p.kind] = POWER[p.kind].dur;
+        daily.powers++;
+        p.obj.visible = false;
+        G.pickup = null;
+        sfx.power();
+      } else if (p.z > 12) {
+        p.obj.visible = false;
+        G.pickup = null;
+      }
+    }
+    for (const k of Object.keys(G.power)) G.power[k] = Math.max(0, G.power[k] - dt);
+    renderPowers();
     // Herzschlag, wenn der Hai nah ist
     G.beatT -= dt;
     if (G.danger > 0.45 && G.beatT <= 0) {
@@ -839,8 +1099,9 @@ function update(dt) {
   const warn = Math.max(0, (G.danger - 0.4) / 0.6);
   $('warn').style.boxShadow = `inset 0 0 ${80 + warn * 80}px ${warn * 50}px rgba(255,30,30,${(warn * 0.55).toFixed(2)})`;
   const sh = G.shake * 0.25;
-  camera.position.set(CAM.x + G.x * 0.35 + (Math.random() - 0.5) * sh, CAM.y + (Math.random() - 0.5) * sh + (G.mode === 'menu' ? Math.sin(t * 0.5) * 0.3 : 0), CAM.z);
-  camera.lookAt(G.x * 0.3, CAM.lookY, CAM.lookZ);
+  const cb = smoothstep(G.camBlend ?? 1);
+  camera.position.set(lerp(0, CAM.x + G.x * 0.35, cb) + (Math.random() - 0.5) * sh, lerp(1.9, CAM.y, cb) + (Math.random() - 0.5) * sh, lerp(6.2, CAM.z, cb));
+  camera.lookAt(lerp(-0.3, G.x * 0.3, cb), lerp(1.9, CAM.lookY, cb), lerp(0, CAM.lookZ, cb));
 }
 
 // --------------------------------------------------------------- Steuerung ---
@@ -888,10 +1149,65 @@ function menu() {
   G.mode = 'menu';
   clearWorld();
   G.danger = 0.55;
-  $('mBest').textContent = best;
-  $('mCoins').textContent = bank;
+  G.x = 0;
+  updateMenu();
   showOnly('menu');
 }
+function updateMenu() {
+  $('mCoins').textContent = bank.toLocaleString('de-DE');
+  const open = MISSIONS.filter((m) => m.val() >= m.goal && !daily.claimed.includes(m.id)).length;
+  $('missionDot').classList.toggle('hidden', !open);
+  $('musicBtn').textContent = settings.music ? 'AN' : 'AUS';
+  $('sfxBtn').textContent = settings.sfx ? 'AN' : 'AUS';
+}
+function openPanel(id) {
+  if (id === 'ranking') {
+    $('rankList').innerHTML = top.length
+      ? top.map((r, i) => `<div class="rank${i === 0 ? ' gold' : ''}"><span>${i + 1}.</span><b>${r.score}</b><small>${r.dist} m · ${r.coins} C</small></div>`).join('')
+      : '<p class="hint">Noch keine Läufe – schwimm los!</p>';
+  }
+  if (id === 'missions') {
+    $('missionList').innerHTML = MISSIONS.map((m) => {
+      const v = Math.min(m.goal, m.val());
+      const done = v >= m.goal;
+      const got = daily.claimed.includes(m.id);
+      return `<div class="mission"><div>${m.text}<div class="bar"><i style="width:${(v / m.goal) * 100}%"></i></div><small>${v.toLocaleString('de-DE')} / ${m.goal.toLocaleString('de-DE')}</small></div>${got ? '<em>✓</em>' : `<button class="claim" data-m="${m.id}" ${done ? '' : 'disabled'}>+${m.reward} C</button>`}</div>`;
+    }).join('');
+    document.querySelectorAll('.claim').forEach((b) => b.addEventListener('click', () => {
+      const m = MISSIONS.find((x) => x.id === b.dataset.m);
+      if (!m || daily.claimed.includes(m.id) || m.val() < m.goal) return;
+      daily.claimed.push(m.id);
+      bank += m.reward;
+      store.set('shark-coins', bank);
+      store.set('shark-daily', daily);
+      sfx.power();
+      openPanel('missions');
+      updateMenu();
+    }));
+  }
+  if (id === 'skins' || id === 'shop') $(`${id}Coins`).textContent = bank.toLocaleString('de-DE');
+  for (const p of ['ranking', 'skins', 'shop', 'missions', 'settings']) $(`p-${p}`).classList.toggle('hidden', p !== id);
+}
+document.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => {
+  audio();
+  openPanel(b.dataset.open);
+}));
+document.querySelectorAll('.close').forEach((b) => b.addEventListener('click', () => {
+  for (const p of ['ranking', 'skins', 'shop', 'missions', 'settings']) $(`p-${p}`).classList.add('hidden');
+  updateMenu();
+}));
+$('musicBtn').addEventListener('click', () => {
+  settings.music = !settings.music;
+  store.set('shark-settings', settings);
+  if (settings.music) startMusic();
+  else stopMusic();
+  updateMenu();
+});
+$('sfxBtn').addEventListener('click', () => {
+  settings.sfx = !settings.sfx;
+  store.set('shark-settings', settings);
+  updateMenu();
+});
 $('play').addEventListener('click', startRun);
 $('again').addEventListener('click', startRun);
 $('toMenu').addEventListener('click', menu);
@@ -923,6 +1239,8 @@ function frame(now) {
 }
 menu();
 requestAnimationFrame(frame);
+document.fonts?.load('80px "Lilita One"').then(drawCoinFace).catch(() => {});
+window.addEventListener('pointerdown', () => startMusic(), { once: true });
 
 // zum Testen
 window.__shark = { G, move, setVertical, startRun };

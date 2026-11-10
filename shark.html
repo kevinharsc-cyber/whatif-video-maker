@@ -24,7 +24,7 @@
       .chip.coins { color: #ffd23f; }
       #pause { width: 52px; height: 52px; border-radius: 16px; border: 3px solid #0b2233; background: rgba(8, 30, 50, 0.75); color: #fff; font-size: 24px; font-family: inherit; }
       #warn { position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px 40px rgba(255, 30, 30, 0.0); transition: box-shadow 0.15s; }
-      #powers { position: fixed; left: 14px; top: calc(env(safe-area-inset-top) + 86px); display: flex; gap: 8px; }
+      #powers { position: fixed; left: 14px; top: calc(env(safe-area-inset-top) + 80px); display: flex; flex-direction: column; gap: 8px; }
       .center { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px; text-align: center; }
       .logo { font-size: 64px; line-height: 0.95; color: #fff; }
       .logo span { color: #ff5a5a; display: block; font-size: 78px; }
@@ -38,6 +38,49 @@
       .row b { color: #ffd23f; font-weight: normal; }
       .hint { font-size: 16px; color: #bfeaff; max-width: 320px; line-height: 1.35; }
       .newbest { color: #7ddc4a; font-size: 22px; }
+      /* Hauptmenü */
+      #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; padding: calc(env(safe-area-inset-top) + 10px) 14px calc(env(safe-area-inset-bottom) + 14px); box-sizing: border-box; }
+      .topbar { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+      .coinpill { display: flex; align-items: center; gap: 8px; background: rgba(8, 30, 50, 0.8); border: 3px solid #0b2233; border-radius: 30px; padding: 4px 6px 4px 4px; color: #fff; font-family: inherit; font-size: 22px; }
+      .coin { width: 38px; height: 38px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff3a6, #ffd23f 55%, #e8a400); border: 3px solid #0b2233; color: #c98a00; display: flex; align-items: center; justify-content: center; font-size: 22px; box-sizing: border-box; }
+      .plus { width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(#8ee04a, #4caf2a); border: 3px solid #0b2233; display: flex; align-items: center; justify-content: center; font-size: 22px; box-sizing: border-box; }
+      .gear { width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(#3fb6ff, #1d7fd1); border: 3px solid #0b2233; font-size: 26px; }
+      .logo2 { margin-top: 18px; display: flex; flex-direction: column; align-items: center; transform: rotate(-4deg); line-height: 0.88; }
+      .logo2 span { font-size: 76px; -webkit-text-stroke: 3px #0b2233; paint-order: stroke fill; filter: drop-shadow(0 6px 0 #0b2233); }
+      .logo2 .l1 { background: linear-gradient(#e8f8ff 15%, #5fc8ff 60%, #1d7fd1); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .logo2 .l2 { font-size: 84px; background: linear-gradient(#fff3a6 10%, #ffb020 55%, #ff7a00); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .menuBottom { margin-top: auto; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+      .start { font-family: inherit; font-size: 44px; color: #fff; width: 82%; max-width: 380px; padding: 14px 0; border-radius: 40px; background: linear-gradient(#ffd24a, #ff9800); border: 4px solid #0b2233; box-shadow: 0 7px 0 #0b2233, inset 0 3px 0 rgba(255,255,255,0.5); -webkit-text-stroke: 2px #0b2233; paint-order: stroke fill; }
+      .start:active, .tile:active { transform: translateY(4px); box-shadow: 0 2px 0 #0b2233; }
+      .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; max-width: 440px; }
+      .tile { position: relative; font-family: inherit; font-size: 13px; color: #fff; background: linear-gradient(#3fb6ff, #1d6fd1); border: 3px solid #0b2233; border-radius: 18px; padding: 8px 0 8px; box-shadow: 0 5px 0 #0b2233; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+      .tile span { font-size: 30px; line-height: 1.1; }
+      .dot { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: #e5383b; border: 3px solid #0b2233; }
+      .modal { position: fixed; inset: 0; background: rgba(4, 20, 35, 0.55); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 5; }
+      .box { position: relative; width: 100%; max-width: 380px; max-height: 80vh; overflow-y: auto; background: linear-gradient(#155f93, #0b3a5e); border: 4px solid #0b2233; border-radius: 26px; padding: 18px 18px 14px; box-shadow: 0 8px 0 #0b2233; }
+      .box h2 { margin: 0 44px 12px; text-align: center; font-weight: normal; font-size: 26px; color: #ffd23f; -webkit-text-stroke: 2px #0b2233; paint-order: stroke fill; }
+      .close { position: absolute; top: 10px; right: 10px; width: 38px; height: 38px; border-radius: 12px; background: #e5383b; color: #fff; border: 3px solid #0b2233; font-size: 18px; font-family: inherit; }
+      .rank { display: flex; align-items: baseline; gap: 10px; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 8px 12px; margin: 6px 0; font-size: 20px; }
+      .rank b { font-weight: normal; color: #ffd23f; font-size: 24px; }
+      .rank small { margin-left: auto; opacity: 0.75; font-size: 14px; }
+      .rank.gold { background: rgba(255, 210, 63, 0.25); }
+      .skin, .mission, .set { display: flex; align-items: center; gap: 12px; background: rgba(0,0,0,0.2); border-radius: 14px; padding: 10px 12px; margin: 8px 0; font-size: 18px; }
+      .skin span { font-size: 30px; }
+      .skin small, .mission small { display: block; font-size: 13px; opacity: 0.75; }
+      .skin em, .mission em { margin-left: auto; font-style: normal; font-size: 22px; }
+      .skin.on { background: rgba(125, 220, 74, 0.25); }
+      .mission > div { flex: 1; font-size: 16px; }
+      .bar { height: 10px; background: rgba(0,0,0,0.35); border-radius: 6px; margin: 6px 0 2px; overflow: hidden; }
+      .bar i { display: block; height: 100%; background: linear-gradient(90deg, #ffd23f, #ff9800); }
+      .claim { font-family: inherit; font-size: 15px; color: #fff; background: linear-gradient(#8ee04a, #4caf2a); border: 3px solid #0b2233; border-radius: 12px; padding: 6px 8px; }
+      .claim:disabled { background: #4b5170; opacity: 0.7; }
+      .set { justify-content: space-between; }
+      .toggle { font-family: inherit; font-size: 18px; color: #fff; background: linear-gradient(#3fb6ff, #1d7fd1); border: 3px solid #0b2233; border-radius: 12px; padding: 6px 16px; }
+      /* Power-ups im Spiel */
+      .pw { position: relative; display: flex; align-items: center; gap: 6px; background: rgba(8, 30, 50, 0.8); border: 3px solid #0b2233; border-radius: 14px; padding: 4px 10px 8px; font-size: 14px; overflow: hidden; }
+      .pw span { font-size: 22px; }
+      .pw b { font-weight: normal; color: var(--c); -webkit-text-stroke: 0; }
+      .pw i { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--c); }
     </style>
   </head>
   <body>
@@ -52,16 +95,43 @@
       </div>
       <div id="powers"></div>
 
-      <div id="menu" class="center">
-        <div class="logo stroke">SHARK<span>ATTACK</span></div>
-        <div class="tag stroke">Swim fast. Don't get eaten.</div>
-        <button id="play" class="btn">SPIELEN</button>
-        <div class="card">
-          <div class="row">Rekord: <b id="mBest">0</b></div>
-          <div class="row">Münzen: <b id="mCoins">0</b></div>
+      <div id="menu">
+        <div class="topbar">
+          <button class="coinpill panel" data-open="shop"><span class="coin">C</span><b id="mCoins">0</b><span class="plus">+</span></button>
+          <button class="gear panel" data-open="settings">⚙️</button>
         </div>
-        <div class="hint stroke">Wischen ← → = Bahn wechseln · ↑ = nach oben schwimmen · ↓ = abtauchen</div>
+        <div class="logo2"><span class="l1">SHARK</span><span class="l2">ATTACK</span></div>
+        <div class="tag stroke">Swim fast. Don't get eaten.</div>
+        <div class="menuBottom">
+          <button id="play" class="start panel">START ▶</button>
+          <div class="tiles">
+            <button class="tile panel" data-open="ranking"><span>👑</span>RANKING</button>
+            <button class="tile panel" data-open="skins"><span>👕</span>SKINS</button>
+            <button class="tile panel" data-open="shop"><span>🛒</span>SHOP</button>
+            <button class="tile panel" data-open="missions"><span>📋</span>MISSIONS<i id="missionDot" class="dot hidden"></i></button>
+          </div>
+        </div>
       </div>
+
+      <div id="p-ranking" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>RANKING</h2><div id="rankList"></div></div></div>
+      <div id="p-skins" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>SKINS</h2>
+        <div class="skin on"><span>🤿</span><div>Standard-Taucher<small>ausgewählt</small></div><em>✓</em></div>
+        <div class="skin"><span>🧑‍🚀</span><div>Profi-Taucher<small>500 C</small></div><em>🔒</em></div>
+        <div class="skin"><span>🏴‍☠️</span><div>Piraten-Taucher<small>1.000 C</small></div><em>🔒</em></div>
+        <div class="skin"><span>🔦</span><div>Tiefsee-Forscher<small>2.000 C</small></div><em>🔒</em></div>
+        <div class="skin"><span>✨</span><div>Neon-Taucher<small>5.000 C</small></div><em>🔒</em></div>
+        <p class="hint">Deine Münzen: <b id="skinsCoins">0</b> C · Kaufen kommt im nächsten Update.</p></div></div>
+      <div id="p-shop" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>SHOP</h2>
+        <p class="row">Deine Münzen: <b id="shopCoins">0</b> C</p>
+        <div class="skin"><span>🧲</span><div>Magnet länger<small>300 C</small></div><em>🔒</em></div>
+        <div class="skin"><span>🦪</span><div>Goldene Perle länger<small>400 C</small></div><em>🔒</em></div>
+        <div class="skin"><span>🛡️</span><div>Schild zum Start<small>250 C</small></div><em>🔒</em></div>
+        <p class="hint">Der Shop öffnet im nächsten Update. Sammle schon mal Münzen!</p></div></div>
+      <div id="p-missions" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>TÄGLICHE MISSIONEN</h2><div id="missionList"></div><p class="hint">Neue Missionen jeden Tag.</p></div></div>
+      <div id="p-settings" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>EINSTELLUNGEN</h2>
+        <div class="set"><span>🎵 Musik</span><button id="musicBtn" class="toggle">AN</button></div>
+        <div class="set"><span>🔊 Sounds</span><button id="sfxBtn" class="toggle">AN</button></div>
+        <p class="hint">Steuerung: Wischen ← → Bahn wechseln · ↑ nach oben · ↓ abtauchen</p></div></div>
 
       <div id="paused" class="center hidden">
         <div class="logo stroke" style="font-size:52px">PAUSE</div>
