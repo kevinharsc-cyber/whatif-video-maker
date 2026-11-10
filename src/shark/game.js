@@ -40,6 +40,31 @@ let top = store.get('shark-top', []);
 const today = new Date().toISOString().slice(0, 10);
 let daily = store.get('shark-daily', null);
 if (!daily || daily.day !== today) daily = { day: today, coins: 0, bestDist: 0, bestDodged: 0, powers: 0, claimed: [] };
+// Profil: Name, Level, Skins, Haie, Glücksrad, Freunde
+const DIVER_SKINS = [
+  { id: 'standard', name: 'Standard', price: 0, suit: 0x1d2f6b, acc: 0xffd23f },
+  { id: 'black', name: 'Schwarz', price: 10000, suit: 0x17191f, acc: 0x9aa3ad },
+  { id: 'red', name: 'Rot', price: 20000, suit: 0xc62828, acc: 0xffffff },
+];
+const SHARKS = [
+  { id: 'white', name: 'Weißer Hai', price: 0, top: 0x3d6f9e, brow: 0x24476b, eye: 0x4a2a12, stripes: false, size: 1 },
+  { id: 'tiger', name: 'Tigerhai', price: 50000, top: 0x7a8a5a, brow: 0x3e4a2a, eye: 0x6a3a12, stripes: true, size: 1.08 },
+  { id: 'mega', name: 'Megalodon', price: 100000, top: 0x2d3038, brow: 0x111317, eye: 0xd61f1f, stripes: false, size: 1.28 },
+];
+const profile = { name: '', skin: 'standard', shark: 'white', skins: ['standard'], sharks: ['white'], xp: 0, wheelAt: 0, friends: [], ...store.get('shark-profile', {}) };
+const saveProfile = () => store.set('shark-profile', profile);
+// Level: jedes Level braucht etwas mehr XP
+const levelOf = (xp) => {
+  let lvl = 1;
+  let need = 100;
+  let rest = xp;
+  while (rest >= need) {
+    rest -= need;
+    lvl++;
+    need = 100 + (lvl - 1) * 60;
+  }
+  return { lvl, rest, need };
+};
 const MISSIONS = [
   { id: 'coins', text: 'Sammle heute 300 Münzen', goal: 300, val: () => daily.coins, reward: 150 },
   { id: 'dist', text: 'Schwimme 1.000 m in einem Lauf', goal: 1000, val: () => daily.bestDist, reward: 200 },
@@ -102,12 +127,13 @@ function part(geo, color, { outline = true, w = 0.05, extra } = {}) {
 }
 
 // --------------------------------------------------------------- Taucher ---
-function makeDiver() {
+function makeDiver(skinId = 'standard') {
+  const sk = DIVER_SKINS.find((s) => s.id === skinId) || DIVER_SKINS[0];
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const SUIT = 0x1d2f6b;
-  const YEL = 0xffd23f;
+  const SUIT = sk.suit;
+  const YEL = sk.acc;
   const SKIN = 0xf2c29b;
   // Körper liegt waagerecht (schwimmt nach vorne = -z)
   const torso = part(new THREE.CapsuleGeometry(0.34, 0.75, 6, 12), SUIT);
@@ -183,11 +209,12 @@ function makeDiver() {
 }
 
 // ------------------------------------------------------------------- Hai ---
-function makeShark() {
+function makeShark(sharkId = 'white') {
+  const sv = SHARKS.find((s) => s.id === sharkId) || SHARKS[0];
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
-  const TOP = 0x3d6f9e;
+  const TOP = sv.top;
   const BELLY = 0xf1f5f8;
   const b = part(new THREE.SphereGeometry(1, 20, 14), TOP, { w: 0.03 });
   b.scale.set(1.15, 1.0, 3.0);
@@ -230,10 +257,10 @@ function makeShark() {
     const eye = part(new THREE.SphereGeometry(0.22, 12, 10), 0xffffff, { w: 0.12 });
     eye.position.set(sx * 0.72, 0.45, -2.15);
     body.add(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), toon(0x4a2a12));
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), sv.id === 'mega' ? new THREE.MeshBasicMaterial({ color: sv.eye }) : toon(sv.eye));
     pupil.position.set(sx * 0.06, 0, -0.14);
     eye.add(pupil);
-    const brow = part(new THREE.BoxGeometry(0.5, 0.1, 0.12), 0x24476b);
+    const brow = part(new THREE.BoxGeometry(0.5, 0.1, 0.12), sv.brow);
     brow.position.set(sx * 0.72, 0.72, -2.2);
     brow.rotation.z = sx * 0.45;
     body.add(brow);
@@ -263,11 +290,30 @@ function makeShark() {
   }
   // Kiemen
   for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) {
-    const gill = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.45, 0.06), toon(0x24476b));
+    const gill = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.45, 0.06), toon(sv.brow));
     gill.position.set(sx * 1.1, 0.0, -1.1 + i * 0.22);
     body.add(gill);
   }
-  root.userData = { body, tail, jaw };
+  if (sv.stripes) {
+    // Tigerstreifen auf dem Rücken
+    for (let i = 0; i < 7; i++) {
+      const st = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.06, 0.16), toon(0x2e3520));
+      st.position.set(0, 0.97, -1.2 + i * 0.5);
+      st.rotation.z = (i % 2 ? 0.25 : -0.25);
+      body.add(st);
+    }
+  }
+  if (sv.id === 'mega') {
+    // Narben + größere Zähne
+    for (let i = 0; i < 3; i++) {
+      const sc = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.06), toon(0x6b6f78));
+      sc.position.set(0.75, 0.55 - i * 0.12, -0.4 + i * 0.25);
+      sc.rotation.x = 0.8;
+      body.add(sc);
+    }
+  }
+  root.scale.setScalar(sv.size);
+  root.userData = { body, tail, jaw, size: sv.size };
   return root;
 }
 
@@ -480,24 +526,25 @@ const OBST = {
       // Wrackteil: Balken quer über der Bahn, man taucht drunter durch
       const g = new THREE.Group();
       const beam = part(new THREE.BoxGeometry(2.3, 0.7, 0.7), 0x6b4426, { w: 0.05 });
-      beam.position.y = 1.15;
+      beam.position.y = 1.95;
       beam.rotation.z = 0.08;
       g.add(beam);
       for (const x of [-1.1, 1.1]) {
-        const p = part(new THREE.BoxGeometry(0.3, 4.2, 0.3), 0x5a3a1e, { w: 0.05 });
-        p.position.set(x, 1.6, 0);
+        const p = part(new THREE.BoxGeometry(0.3, 4.6, 0.3), 0x5a3a1e, { w: 0.05 });
+        p.position.set(x, 2.3, 0);
         p.rotation.z = x * 0.04;
         g.add(p);
       }
       const plank = part(new THREE.BoxGeometry(2.4, 2.2, 0.15), 0x7a4b2a, { w: 0.03 });
-      plank.position.y = 2.6;
+      plank.position.y = 3.3;
       g.add(plank);
       return g;
     },
   },
 };
 // vertikale Bereiche (Unterkante, Oberkante) relativ zum Boden
-const VBAND = { full: [0, 9], low: [0, 2.9], high: [1.0, 9] };
+const VBAND = { full: [0, 9], low: [0, 2.9], high: [1.6, 9] };
+const HALF_H = 0.38; // halbe Höhe des Tauchers für Treffer
 
 // Objekt-Pools (keine neuen Objekte während des Spiels)
 const pools = {};
@@ -516,6 +563,9 @@ const coinCanvas = document.createElement('canvas');
 coinCanvas.width = coinCanvas.height = 128;
 const coinTex = new THREE.CanvasTexture(coinCanvas);
 coinTex.colorSpace = THREE.SRGBColorSpace;
+// Zylinder-Deckel liegen gedreht: Textur um die Mitte drehen, damit das „C“ aufrecht steht
+coinTex.center.set(0.5, 0.5);
+coinTex.rotation = Math.PI / 2;
 function drawCoinFace() {
   const g = coinCanvas.getContext('2d');
   const gr = g.createRadialGradient(48, 44, 8, 64, 64, 64);
@@ -587,7 +637,63 @@ function makePearl() {
   g.add(new THREE.Mesh(new THREE.SphereGeometry(0.9, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffe58a, transparent: true, opacity: 0.22, depthWrite: false })));
   return g;
 }
+function makeDolphin() {
+  const g = new THREE.Group();
+  const body = part(new THREE.SphereGeometry(0.6, 16, 12), 0x5aa9e6, { w: 0.05 });
+  body.scale.set(0.8, 0.75, 2.0);
+  g.add(body);
+  const belly = part(new THREE.SphereGeometry(0.55, 14, 10), 0xe9f6ff, { outline: false });
+  belly.scale.set(0.7, 0.55, 1.8);
+  belly.position.y = -0.18;
+  g.add(belly);
+  const beak = part(new THREE.CylinderGeometry(0.12, 0.2, 0.55, 10), 0x5aa9e6, { w: 0.08 });
+  beak.rotation.x = Math.PI / 2;
+  beak.position.set(0, -0.08, -1.35);
+  g.add(beak);
+  const fin = part(new THREE.ConeGeometry(0.3, 0.7, 4), 0x4a8fc8, { w: 0.06 });
+  fin.scale.set(0.25, 1, 1);
+  fin.position.set(0, 0.6, 0.1);
+  fin.rotation.x = 0.5;
+  g.add(fin);
+  const tail = new THREE.Group();
+  tail.position.z = 1.2;
+  g.add(tail);
+  const t1 = part(new THREE.ConeGeometry(0.35, 0.9, 4), 0x4a8fc8, { w: 0.06 });
+  t1.scale.set(1, 1, 0.2);
+  t1.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+  t1.position.z = 0.35;
+  tail.add(t1);
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), toon(0x111111));
+    eye.position.set(sx * 0.4, 0.15, -0.9);
+    g.add(eye);
+  }
+  g.userData.tail = tail;
+  return g;
+}
+function makeChest() {
+  const g = new THREE.Group();
+  const box = part(new THREE.BoxGeometry(1.1, 0.6, 0.75), 0x8a5a30, { w: 0.06 });
+  box.position.y = 0.3;
+  g.add(box);
+  const lid = part(new THREE.CylinderGeometry(0.375, 0.375, 1.1, 12, 1, false, 0, Math.PI), 0x9a6a3c, { w: 0.06 });
+  lid.rotation.z = Math.PI / 2;
+  lid.position.y = 0.6;
+  g.add(lid);
+  for (const x of [-0.4, 0, 0.4]) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.98, 0.8), toon(0xd9a400));
+    band.position.set(x, 0.45, 0);
+    g.add(band);
+  }
+  const lock = part(new THREE.BoxGeometry(0.2, 0.22, 0.08), 0xffd23f, { w: 0.1 });
+  lock.position.set(0, 0.55, -0.4);
+  g.add(lock);
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(1.1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffe58a, transparent: true, opacity: 0.2, depthWrite: false })));
+  return g;
+}
 const POWER = {
+  ride: { make: makeDolphin, dur: 8, label: 'DELFIN-RITT', color: '#5aa9e6', icon: '🐬', chance: 0.012 },
+  treasure: { make: makeChest, dur: 0, label: 'SCHATZ', color: '#ffd23f', icon: '🧰', chance: 0.01 },
   magnet: { make: makeMagnet, dur: 8, label: 'MAGNET', color: '#e5383b', icon: '🧲', chance: 0.07 },
   pearl: { make: makePearl, dur: 10, label: 'x2 MÜNZEN', color: '#d9a400', icon: '🦪', chance: 0.035 },
 };
@@ -599,12 +705,73 @@ for (const k of Object.keys(POWER)) {
 }
 
 // --------------------------------------------------------------- Figuren ---
-const diver = makeDiver();
+let diver = makeDiver(profile.skin);
 diver.scale.setScalar(1.35);
 scene.add(diver);
-const shark = makeShark();
-shark.scale.setScalar(1.15);
+let shark = makeShark(profile.shark);
+shark.scale.setScalar(1.15 * shark.userData.size);
 scene.add(shark);
+function setDiverSkin(id) {
+  const pos = diver.position.clone();
+  scene.remove(diver);
+  diver = makeDiver(id);
+  diver.scale.setScalar(1.35);
+  diver.position.copy(pos);
+  scene.add(diver);
+}
+function setSharkModel(id) {
+  const pos = shark.position.clone();
+  scene.remove(shark);
+  shark = makeShark(id);
+  shark.scale.setScalar(1.15 * shark.userData.size);
+  shark.position.copy(pos);
+  scene.add(shark);
+}
+// Delfin, auf dem der Taucher reitet
+const rideDolphin = makeDolphin();
+rideDolphin.scale.setScalar(1.5);
+rideDolphin.visible = false;
+scene.add(rideDolphin);
+const RIDE_Y = 3.6;
+
+// kleine Fischschwärme im Hintergrund (eine einzige InstancedMesh = günstig)
+const FISH = 36;
+const fishGeo = new THREE.ConeGeometry(0.12, 0.42, 5);
+fishGeo.rotateX(-Math.PI / 2);
+const fishes = new THREE.InstancedMesh(fishGeo, new THREE.MeshBasicMaterial({ color: 0xffb347 }), FISH);
+const fishData = [];
+const fishM = new THREE.Matrix4();
+const fishCols = [0xffb347, 0xffe066, 0x7fe0ff, 0xff7b9c];
+for (let i = 0; i < FISH; i++) {
+  const school = Math.floor(i / 9);
+  fishData.push({ school, ox: (Math.random() - 0.5) * 2.2, oy: (Math.random() - 0.5) * 1.2, oz: (Math.random() - 0.5) * 2.5, ph: Math.random() * 6 });
+  fishes.setColorAt(i, new THREE.Color(fishCols[school % 4]));
+}
+const schools = [0, 1, 2, 3].map((i) => ({ x: (i % 2 ? 1 : -1) * (6 + Math.random() * 3), y: 2 + Math.random() * 4, z: -16 - i * 10, dir: i % 2 ? -1 : 1 }));
+scene.add(fishes);
+// Lichtmuster (Kaustik) auf dem Sand
+const causticCanvas = document.createElement('canvas');
+causticCanvas.width = causticCanvas.height = 128;
+{
+  const g = causticCanvas.getContext('2d');
+  g.strokeStyle = 'rgba(255,255,255,0.8)';
+  g.lineWidth = 2;
+  g.filter = 'blur(1.5px)';
+  for (let i = 0; i < 40; i++) {
+    g.beginPath();
+    const x = Math.random() * 128;
+    const y = Math.random() * 128;
+    g.ellipse(x, y, 8 + Math.random() * 12, 5 + Math.random() * 8, Math.random() * 3, 0, Math.PI * 2);
+    g.stroke();
+  }
+}
+const causticTex = new THREE.CanvasTexture(causticCanvas);
+causticTex.wrapS = causticTex.wrapT = THREE.RepeatWrapping;
+causticTex.repeat.set(5, 20);
+const caustic = new THREE.Mesh(new THREE.PlaneGeometry(40, 160), new THREE.MeshBasicMaterial({ map: causticTex, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false }));
+caustic.rotation.x = -Math.PI / 2;
+caustic.position.set(0, FLOOR_Y + 0.02, -60);
+scene.add(caustic);
 
 // ------------------------------------------------------------------ Ton ---
 let ac = null;
@@ -767,7 +934,9 @@ const G = {
   caughtT: 0,
   beatT: 0,
   dodged: 0,
-  power: { magnet: 0, pearl: 0 },
+  power: { ride: 0, magnet: 0, pearl: 0 },
+  vFrom: SWIM_Y,
+  baseY: SWIM_Y,
   pickup: null,
 };
 
@@ -776,8 +945,8 @@ function clearWorld() {
   for (const c of G.coinsOn) c.obj.visible = false;
   if (G.pickup) G.pickup.obj.visible = false;
   G.pickup = null;
-  G.power.magnet = 0;
-  G.power.pearl = 0;
+  for (const k of Object.keys(G.power)) G.power[k] = 0;
+  rideDolphin.visible = false;
   G.active.length = 0;
   G.coinsOn.length = 0;
 }
@@ -786,7 +955,8 @@ function startRun() {
   startMusic();
   G.camBlend = 0;
   clearWorld();
-  Object.assign(G, { mode: 'play', t: 0, speed: START_SPEED, dist: 0, coins: 0, danger: 0.85, slow: 0, shake: 0, nextRow: 26, lane: 1, x: 0, y: SWIM_Y, vMode: 'swim', vT: 0, caughtT: 0, dodged: 0 });
+  Object.assign(G, { mode: 'play', t: 0, speed: START_SPEED, dist: 0, coins: 0, danger: 0.85, slow: 0, shake: 0, nextRow: 26, lane: 1, x: 0, y: SWIM_Y, vMode: 'swim', vT: 0, vFrom: SWIM_Y, baseY: SWIM_Y, caughtT: 0, dodged: 0, treasureMsg: '' });
+  G.runStart = performance.now();
   showOnly('hud');
 }
 function take(kind) {
@@ -813,14 +983,14 @@ function spawnRow(z) {
   // Münzen: Reihe in der freien Bahn, manchmal als Bogen über einem niedrigen Hindernis
   const arcOver = G.active.find((a) => a.z === z && OBST[a.kind].v === 'low');
   if (arcOver && Math.random() < 0.5) {
-    for (let i = 0; i < 5; i++) placeCoin(arcOver.lane, z + 4 - i * 2, SWIM_Y + Math.sin((i / 4) * Math.PI) * 2.4);
+    for (let i = 0; i < 5; i++) placeCoin(arcOver.lane, z + 5 - i * 2.6, SWIM_Y + Math.sin((i / 4) * Math.PI) * 2.4);
   } else {
-    for (let i = 0; i < 5; i++) placeCoin(free, z + 6 - i * 2.2, SWIM_Y);
+    for (let i = 0; i < 5; i++) placeCoin(free, z + 7 - i * 2.9, SWIM_Y);
   }
   // seltenes Power-up (nie zwei gleichzeitig unterwegs, nicht direkt nach dem Start)
   if (!G.pickup && G.dist > 120) {
     for (const k of Object.keys(POWER)) {
-      if (G.power[k] > 0 || Math.random() > POWER[k].chance) continue;
+      if (G.power[k] > 0 || G.power.ride > 0 || Math.random() > POWER[k].chance) continue;
       const obj = powerObjs[k];
       obj.visible = true;
       obj.position.set(LANES[free], SWIM_Y + 0.2, z - 6);
@@ -841,8 +1011,8 @@ let powersHtml = '';
 function renderPowers() {
   let html = '';
   for (const k of Object.keys(POWER)) {
-    const left = G.power[k];
-    if (left <= 0) continue;
+    const left = G.power[k] || 0;
+    if (left <= 0 || !POWER[k].dur) continue;
     const pct = Math.round((left / POWER[k].dur) * 100);
     html += `<div class="pw" style="--c:${POWER[k].color}"><span>${POWER[k].icon}</span><b>${POWER[k].label}</b><i style="width:${pct}%"></i></div>`;
   }
@@ -851,8 +1021,11 @@ function renderPowers() {
     $('powers').innerHTML = html;
   }
 }
+// Hoch/Runter: man kann mitten in der Bewegung umschalten (hoch → sofort runter = abtauchen)
 function setVertical(mode) {
-  if (G.vMode !== 'swim') return;
+  if (G.power.ride > 0) return;
+  if (G.vMode === mode && G.vT < 0.5) return;
+  G.vFrom = G.y;
   G.vMode = mode;
   G.vT = 0;
   (mode === 'up' ? sfx.up : sfx.down)();
@@ -874,6 +1047,31 @@ function hitObstacle(a) {
   if (navigator.vibrate) navigator.vibrate(80);
   if (G.danger >= 1) caught();
 }
+// Geheime Schatzkiste: Münzen oder ein seltener Skin
+function openTreasure() {
+  const lockedSkins = DIVER_SKINS.filter((sk) => !profile.skins.includes(sk.id));
+  let msg;
+  if (lockedSkins.length && Math.random() < 0.08) {
+    const sk = lockedSkins[0];
+    profile.skins.push(sk.id);
+    saveProfile();
+    msg = `🧰 SCHATZ! Skin „${sk.name}“ freigeschaltet!`;
+  } else {
+    const amount = Math.random() < 0.15 ? 1500 + Math.floor(Math.random() * 16) * 100 : 300 + Math.floor(Math.random() * 8) * 100;
+    bank += amount;
+    store.set('shark-coins', bank);
+    msg = `🧰 SCHATZ! +${amount.toLocaleString('de-DE')} Münzen`;
+  }
+  banner(msg);
+}
+let bannerTimer = 0;
+function banner(text) {
+  const b = $('banner');
+  b.textContent = text;
+  b.classList.remove('hidden');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => b.classList.add('hidden'), 2600);
+}
 function caught() {
   G.mode = 'caught';
   G.caughtT = 0;
@@ -883,7 +1081,18 @@ function caught() {
 }
 function finish() {
   G.mode = 'over';
+  showOnly('over');
   const score = Math.floor(G.dist) + G.coins * 10;
+  // Erfahrung: Strecke + Münzen; Level-Aufstieg gibt Münzen
+  const before = levelOf(profile.xp).lvl;
+  const xpGain = Math.floor(G.dist / 10) + G.coins;
+  profile.xp += xpGain;
+  const after = levelOf(profile.xp).lvl;
+  let lvlBonus = 0;
+  for (let l = before + 1; l <= after; l++) lvlBonus += 100 * l;
+  bank += lvlBonus;
+  saveProfile();
+  $('oXp').innerHTML = after > before ? `<span class="newbest">LEVEL ${after}! +${lvlBonus} C</span>` : `+${xpGain} XP · Level ${after}`;
   const isBest = score > best;
   if (isBest) {
     best = score;
@@ -900,12 +1109,32 @@ function finish() {
   $('oScore').textContent = score;
   $('oDist').textContent = Math.floor(G.dist);
   $('oCoins').textContent = G.coins;
-  $('oBest').textContent = best;
   $('oBestRow').className = isBest ? 'row newbest' : 'row';
   $('oBestRow').innerHTML = isBest ? 'NEUER REKORD!' : `Rekord: <b>${best}</b>`;
   showOnly('over');
 }
 
+function updateFish(t, dt) {
+  const v = G.mode === 'play' ? G.speed * 0.6 : 3;
+  for (const sc of schools) {
+    sc.x += sc.dir * dt * 1.2;
+    sc.z += v * dt * 0.5;
+    if (sc.z > -8 || Math.abs(sc.x) > 14) {
+      sc.z = -40 - Math.random() * 12;
+      sc.dir = Math.random() < 0.5 ? -1 : 1;
+      sc.x = -sc.dir * (7 + Math.random() * 4);
+      sc.y = 1.5 + Math.random() * 5;
+    }
+  }
+  for (let i = 0; i < FISH; i++) {
+    const f = fishData[i];
+    const sc = schools[f.school];
+    fishM.makeRotationY(sc.dir > 0 ? -Math.PI / 2 : Math.PI / 2);
+    fishM.setPosition(sc.x + f.ox + Math.sin(t * 2 + f.ph) * 0.2, sc.y + f.oy + Math.sin(t * 3 + f.ph) * 0.1, sc.z + f.oz);
+    fishes.setMatrixAt(i, fishM);
+  }
+  fishes.instanceMatrix.needsUpdate = true;
+}
 function update(dt) {
   const t = (G.t += dt);
   const playing = G.mode === 'play';
@@ -915,7 +1144,7 @@ function update(dt) {
     G.slow = Math.max(0, G.slow - dt * 1.2);
     // Hai fällt langsam zurück (fair: man kann sich erholen)
     // Start: Hai ist erst ganz nah (Schreckmoment), dann fällt er zurück
-    G.danger = Math.max(0.18, G.danger - dt * (t < 1.4 ? 0 : t < 3.2 ? 0.3 : 0.06));
+    G.danger = Math.max(G.power.ride > 0 ? 0 : 0.18, G.danger - dt * (G.power.ride > 0 ? 0.35 : t < 1.4 ? 0 : t < 3.2 ? 0.3 : 0.06));
   }
   const v = playing ? G.speed * (1 - 0.45 * G.slow) : G.mode === 'menu' ? 6 : 0;
   const dz = v * dt;
@@ -923,18 +1152,24 @@ function update(dt) {
 
   // Spieler: Bahn + Höhe
   G.x += (LANES[G.lane] - G.x) * Math.min(1, dt * 12);
+  // Delfin-Ritt: hoch über allen Hindernissen
+  G.baseY += ((G.power.ride > 0 ? RIDE_Y : SWIM_Y) - G.baseY) * Math.min(1, dt * 4);
   if (G.vMode !== 'swim') {
     G.vT += dt;
     const dur = 0.85;
     const k = Math.min(1, G.vT / dur);
     const target = G.vMode === 'up' ? BOOST_Y : DIVE_Y;
-    G.y = SWIM_Y + (target - SWIM_Y) * Math.sin(k * Math.PI);
+    // erste Hälfte: vom Startpunkt zum Ziel (schnell), zweite Hälfte: zurück zur Schwimmhöhe
+    G.y = k < 0.45 ? lerp(G.vFrom, target, Math.sin((k / 0.45) * Math.PI / 2)) : k < 0.6 ? target : lerp(target, G.baseY, smoothstep((k - 0.6) / 0.4));
     if (k >= 1) {
       G.vMode = 'swim';
-      G.y = SWIM_Y;
+      G.y = G.baseY;
     }
-  }
+  } else G.y = G.baseY;
+  updateFish(t, dt);
+  causticTex.offset.x = Math.sin(t * 0.3) * 0.05;
   if (G.mode === 'menu') {
+    rideDolphin.visible = false;
     // Menü: Taucher schaut in die Kamera, Hai lauert dahinter
     // aufrecht, Bauch und Gesicht zur Kamera
     diver.rotation.order = 'YXZ';
@@ -946,20 +1181,36 @@ function update(dt) {
     const kk = Math.sin(t * 6);
     diver.userData.legs[0].rotation.x = kk * 0.4;
     diver.userData.legs[1].rotation.x = -kk * 0.4;
-    shark.position.set(-1.3, 2.5 + Math.sin(t * 1.2) * 0.2, -4.6);
+    const big = shark.userData.size - 1;
+    shark.position.set(-1.3 - big * 2, 2.5 + big * 2 + Math.sin(t * 1.2) * 0.2, -4.6 - big * 14);
     shark.rotation.set(0.12, Math.PI - 0.38 + Math.sin(t * 0.8) * 0.06, 0);
     shark.userData.tail.rotation.y = Math.sin(t * 5) * 0.4;
     shark.userData.jaw.rotation.x = 0.35 + Math.sin(t * 2.2) * 0.25;
+    if (friendShark) {
+      friendShark.visible = true;
+      const fx = Math.sin(t * 0.35);
+      friendShark.position.set(2.6 + fx * 1.2, 2.4 + Math.sin(t * 1.1) * 0.15, -9);
+      friendShark.rotation.set(0, Math.cos(t * 0.35) >= 0 ? -Math.PI / 2 : Math.PI / 2, 0);
+      friendShark.userData.tail.rotation.y = Math.sin(t * 5) * 0.4;
+    }
     camera.position.set(0, 1.9 + Math.sin(t * 0.5) * 0.08, 6.2);
     camera.lookAt(-0.3, 1.9, 0);
     for (const d of decos) if (d.userData.weed) d.children.forEach((s) => (s.rotation.z = Math.sin(t * 2 + s.userData.sway) * 0.25));
     return;
   }
   G.camBlend = Math.min(1, (G.camBlend ?? 1) + dt * 1.6);
+  if (friendShark) friendShark.visible = false;
   shark.rotation.x = 0;
   diver.rotation.order = 'XYZ';
   diver.userData.head.rotation.x = 0;
   diver.position.set(G.x, G.y + Math.sin(t * 3) * 0.06, 0);
+  const riding = (G.power.ride > 0 || G.grace > 0) && G.mode === 'play';
+  rideDolphin.visible = G.power.ride > 0;
+  if (rideDolphin.visible) {
+    rideDolphin.position.set(G.x, G.y - 0.75, 0.15);
+    rideDolphin.rotation.set(Math.sin(t * 4) * 0.08, 0, -(LANES[G.lane] - G.x) * 0.25);
+    rideDolphin.userData.tail.rotation.x = Math.sin(t * 9) * 0.5;
+  }
   const tilt = (LANES[G.lane] - G.x) * 0.25;
   diver.rotation.set(G.vMode === 'up' ? -0.5 * Math.sin(Math.min(1, G.vT / 0.85) * Math.PI) : G.vMode === 'down' ? 0.5 * Math.sin(Math.min(1, G.vT / 0.85) * Math.PI) : 0, 0, -tilt);
   const ud = diver.userData;
@@ -1012,8 +1263,8 @@ function update(dt) {
       const level = Math.min(1, G.dist / 1500);
       G.nextRow = 22 - level * 7 + Math.random() * 6;
     }
-    const py0 = G.y - 0.55 - FLOOR_Y;
-    const py1 = G.y + 0.55 - FLOOR_Y;
+    const py0 = G.y - HALF_H - FLOOR_Y;
+    const py1 = G.y + HALF_H - FLOOR_Y;
     for (let i = G.active.length - 1; i >= 0; i--) {
       const a = G.active[i];
       a.z += dz;
@@ -1021,7 +1272,7 @@ function update(dt) {
       if (a.obj.userData.float) a.obj.position.y = FLOOR_Y + Math.sin(t * 2 + a.z) * 0.15;
       if (a.obj.userData.blink) a.obj.userData.blink.visible = Math.sin(t * 8) > 0;
       // Treffer prüfen, wenn das Hindernis auf Höhe des Tauchers ist
-      if (!a.hit && Math.abs(a.z) < 0.9 && Math.abs(LANES[a.lane] - G.x) < 1.0) {
+      if (!a.hit && !riding && Math.abs(a.z) < 0.9 && Math.abs(LANES[a.lane] - G.x) < 1.0) {
         const [b0, b1] = VBAND[OBST[a.kind].v];
         if (py1 > b0 && py0 < b1) hitObstacle(a);
       }
@@ -1040,7 +1291,7 @@ function update(dt) {
       c.obj.position.z = c.z;
       c.obj.rotation.y = Math.sin(t * 2 + c.z) * 0.6;
       // Magnet: Münzen in der Nähe fliegen zum Taucher
-      if (G.power.magnet > 0 && c.z > -16 && c.z < 2) c.pull = true;
+      if ((G.power.magnet > 0 || riding) && c.z > -16 && c.z < 2) c.pull = true;
       if (c.pull) {
         c.px = (c.px ?? c.obj.position.x) + (G.x - (c.px ?? c.obj.position.x)) * Math.min(1, dt * 9);
         c.py = (c.py ?? c.y) + (G.y - (c.py ?? c.y)) * Math.min(1, dt * 9);
@@ -1066,8 +1317,15 @@ function update(dt) {
       p.obj.position.z = p.z;
       p.obj.position.y = SWIM_Y + 0.2 + Math.sin(t * 3) * 0.2;
       p.obj.rotation.y = t * 2;
-      if (Math.abs(p.z) < 0.9 && Math.abs(LANES[p.lane] - G.x) < 1.0 && Math.abs(G.y - SWIM_Y) < 1.3) {
-        G.power[p.kind] = POWER[p.kind].dur;
+      if (Math.abs(p.z) < 0.9 && Math.abs(LANES[p.lane] - G.x) < 1.0 && Math.abs(G.y - SWIM_Y) < 1.6) {
+        if (p.kind === 'treasure') openTreasure();
+        else {
+          G.power[p.kind] = POWER[p.kind].dur;
+          if (p.kind === 'ride') {
+            G.vMode = 'swim';
+            banner('🐬 DELFIN-RITT! Flieg über alles drüber!');
+          }
+        }
         daily.powers++;
         p.obj.visible = false;
         G.pickup = null;
@@ -1077,7 +1335,10 @@ function update(dt) {
         G.pickup = null;
       }
     }
+    const rideBefore = G.power.ride;
     for (const k of Object.keys(G.power)) G.power[k] = Math.max(0, G.power[k] - dt);
+    if (rideBefore > 0 && G.power.ride === 0) G.grace = 1.3; // sanft landen, ohne sofort zu crashen
+    G.grace = Math.max(0, (G.grace || 0) - dt);
     renderPowers();
     // Herzschlag, wenn der Hai nah ist
     G.beatT -= dt;
@@ -1092,7 +1353,10 @@ function update(dt) {
   if (G.mode === 'caught') {
     G.caughtT += dt;
     G.shake = 1;
-    if (G.caughtT > 1.1) finish();
+    if (G.caughtT > 1.1) {
+      G.mode = 'over';
+      finish();
+    }
   }
   // Warn-Rand + Kamera
   G.shake = Math.max(0, G.shake - dt * 2.5);
@@ -1100,7 +1364,8 @@ function update(dt) {
   $('warn').style.boxShadow = `inset 0 0 ${80 + warn * 80}px ${warn * 50}px rgba(255,30,30,${(warn * 0.55).toFixed(2)})`;
   const sh = G.shake * 0.25;
   const cb = smoothstep(G.camBlend ?? 1);
-  camera.position.set(lerp(0, CAM.x + G.x * 0.35, cb) + (Math.random() - 0.5) * sh, lerp(1.9, CAM.y, cb) + (Math.random() - 0.5) * sh, lerp(6.2, CAM.z, cb));
+  const rideLift = (G.baseY - SWIM_Y) * 0.55;
+  camera.position.set(lerp(0, CAM.x + G.x * 0.35, cb) + (Math.random() - 0.5) * sh, lerp(1.9, CAM.y + rideLift, cb) + (Math.random() - 0.5) * sh, lerp(6.2, CAM.z, cb));
   camera.lookAt(lerp(-0.3, G.x * 0.3, cb), lerp(1.9, CAM.lookY, cb), lerp(0, CAM.lookZ, cb));
 }
 
@@ -1153,14 +1418,306 @@ function menu() {
   updateMenu();
   showOnly('menu');
 }
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const fmt = (n) => Number(n).toLocaleString('de-DE');
+const PANELS = ['ranking', 'skins', 'sharks', 'locker', 'missions', 'wheel', 'friends', 'settings'];
 function updateMenu() {
-  $('mCoins').textContent = bank.toLocaleString('de-DE');
+  $('mCoins').textContent = fmt(bank);
   const open = MISSIONS.filter((m) => m.val() >= m.goal && !daily.claimed.includes(m.id)).length;
   $('missionDot').classList.toggle('hidden', !open);
+  $('wheelDot').classList.toggle('hidden', Date.now() - profile.wheelAt < WHEEL_COOLDOWN);
   $('musicBtn').textContent = settings.music ? 'AN' : 'AUS';
   $('sfxBtn').textContent = settings.sfx ? 'AN' : 'AUS';
+  const lv = levelOf(profile.xp);
+  $('mLevel').textContent = lv.lvl;
+  $('mXp').style.width = `${(lv.rest / lv.need) * 100}%`;
+  const f = profile.friends.find((x) => x.n === profile.showFriend);
+  $('friendTag').classList.toggle('hidden', !f);
+  if (f) $('friendTag').innerHTML = `🦈 ${esc(f.n)} · Rekord <b>${fmt(f.b)}</b>`;
+  updateFriendShark();
 }
+
+// ---- Vorschaubilder (einmal mit einem kleinen Extra-Renderer gezeichnet) ----
+const thumbs = {};
+function makeThumbs() {
+  if (thumbs.done) return;
+  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  r.setSize(160, 160);
+  r.setPixelRatio(1);
+  r.outputColorSpace = THREE.SRGBColorSpace;
+  const sc = new THREE.Scene();
+  sc.add(new THREE.HemisphereLight(0xbfefff, 0x1a4b6b, 1.8));
+  const l = new THREE.DirectionalLight(0xffffff, 1.6);
+  l.position.set(4, 8, 6);
+  sc.add(l);
+  const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+  const shot = (obj, pos, look) => {
+    sc.add(obj);
+    cam.position.set(...pos);
+    cam.lookAt(...look);
+    r.render(sc, cam);
+    const url = r.domElement.toDataURL('image/png');
+    sc.remove(obj);
+    return url;
+  };
+  for (const sk of DIVER_SKINS) {
+    const d = makeDiver(sk.id);
+    d.rotation.order = 'YXZ';
+    d.rotation.set(1.15, Math.PI + 0.5, 0.08);
+    d.userData.head.rotation.x = -0.95;
+    thumbs[`d-${sk.id}`] = shot(d, [0, 0.2, 4.2], [0, 0.15, 0]);
+  }
+  for (const sv of SHARKS) {
+    const h = makeShark(sv.id);
+    h.rotation.set(0.1, -Math.PI / 2 - 0.5, 0);
+    h.userData.jaw.rotation.x = 0.5;
+    thumbs[`s-${sv.id}`] = shot(h, [0, 1.2, 10], [0, 0, 0]);
+  }
+  r.dispose();
+  r.forceContextLoss?.();
+  thumbs.done = true;
+}
+const thumbImg = (key, locked) => `<img class="thumb${locked ? ' locked' : ''}" src="${thumbs[key]}" alt="">`;
+
+function itemList(kind) {
+  const list = kind === 'skins' ? DIVER_SKINS : SHARKS;
+  const owned = kind === 'skins' ? profile.skins : profile.sharks;
+  const cur = kind === 'skins' ? profile.skin : profile.shark;
+  return list
+    .map((it) => {
+      const has = owned.includes(it.id);
+      const on = cur === it.id;
+      const btn = on ? '<em>✓</em>' : has ? `<button class="claim" data-pick="${it.id}">WÄHLEN</button>` : `<button class="claim buy" data-buy="${it.id}" ${bank >= it.price ? '' : 'disabled'}>${fmt(it.price)} C</button>`;
+      return `<div class="skin${on ? ' on' : ''}">${thumbImg(`${kind === 'skins' ? 'd' : 's'}-${it.id}`, !has)}<div>${it.name}<small>${on ? 'ausgewählt' : has ? 'freigeschaltet' : '🔒 gesperrt'}</small></div>${btn}</div>`;
+    })
+    .join('');
+}
+function bindItems(kind) {
+  const list = kind === 'skins' ? DIVER_SKINS : SHARKS;
+  const owned = kind === 'skins' ? profile.skins : profile.sharks;
+  const box = $(`${kind}List`);
+  box.querySelectorAll('[data-buy]').forEach((b) => b.addEventListener('click', () => {
+    const it = list.find((x) => x.id === b.dataset.buy);
+    if (!it || owned.includes(it.id) || bank < it.price) return;
+    bank -= it.price;
+    store.set('shark-coins', bank);
+    owned.push(it.id);
+    pick(kind, it.id);
+    sfx.power();
+  }));
+  box.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => pick(kind, b.dataset.pick)));
+}
+function pick(kind, id) {
+  if (kind === 'skins') {
+    profile.skin = id;
+    setDiverSkin(id);
+  } else {
+    profile.shark = id;
+    setSharkModel(id);
+  }
+  saveProfile();
+  openPanel(kind);
+  updateMenu();
+}
+
+// ---- Glücksrad ----
+const WHEEL_COOLDOWN = 24 * 3600 * 1000;
+const WHEEL = [100, 500, 150, 1000, 200, 300, 250, 750];
+const WHEEL_W = [24, 9, 20, 3, 16, 10, 12, 6];
+const WHEEL_COL = ['#3fb6ff', '#ff9800', '#7ddc4a', '#e5383b', '#b06bff', '#ffd23f', '#2ec4f0', '#ff6b8b'];
+let wheelAngle = 0;
+let spinning = false;
+function drawWheel() {
+  const c = $('wheelCanvas');
+  const g = c.getContext('2d');
+  const R = c.width / 2;
+  g.clearRect(0, 0, c.width, c.height);
+  const seg = (Math.PI * 2) / WHEEL.length;
+  WHEEL.forEach((v, i) => {
+    g.beginPath();
+    g.moveTo(R, R);
+    g.arc(R, R, R - 6, i * seg - Math.PI / 2 - seg / 2, (i + 1) * seg - Math.PI / 2 - seg / 2);
+    g.closePath();
+    g.fillStyle = WHEEL_COL[i];
+    g.fill();
+    g.lineWidth = 4;
+    g.strokeStyle = '#0b2233';
+    g.stroke();
+    g.save();
+    g.translate(R, R);
+    g.rotate(i * seg);
+    g.font = '26px "Lilita One", "Arial Black", sans-serif';
+    g.textAlign = 'center';
+    g.lineWidth = 5;
+    g.strokeText(v, 0, -R * 0.62);
+    g.fillStyle = '#fff';
+    g.fillText(v, 0, -R * 0.62);
+    g.restore();
+  });
+  g.beginPath();
+  g.arc(R, R, R - 4, 0, Math.PI * 2);
+  g.lineWidth = 8;
+  g.stroke();
+}
+function wheelInfo() {
+  const left = WHEEL_COOLDOWN - (Date.now() - profile.wheelAt);
+  const btn = $('spinBtn');
+  if (spinning) return;
+  if (left > 0) {
+    const h = Math.floor(left / 3600000);
+    const m = Math.floor((left % 3600000) / 60000);
+    btn.disabled = true;
+    btn.textContent = `WIEDER IN ${h} STD ${m} MIN`;
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'DREHEN!';
+  }
+}
+$('spinBtn').addEventListener('click', () => {
+  if (spinning || Date.now() - profile.wheelAt < WHEEL_COOLDOWN) return;
+  let r = Math.random() * WHEEL_W.reduce((a, b) => a + b, 0);
+  let idx = 0;
+  while ((r -= WHEEL_W[idx]) > 0) idx++;
+  spinning = true;
+  profile.wheelAt = Date.now();
+  saveProfile();
+  const seg = 360 / WHEEL.length;
+  wheelAngle += 360 * 5 + ((360 - idx * seg - (wheelAngle % 360)) % 360 + 360) % 360;
+  $('wheelCanvas').style.transform = `rotate(${wheelAngle}deg)`;
+  $('spinBtn').disabled = true;
+  $('spinBtn').textContent = '...';
+  $('wheelWin').textContent = '';
+  const tick = setInterval(() => tone(900, 700, 0.03, 'square', 0.03), 120);
+  setTimeout(() => {
+    clearInterval(tick);
+    spinning = false;
+    bank += WHEEL[idx];
+    store.set('shark-coins', bank);
+    $('wheelWin').textContent = `GEWONNEN: +${WHEEL[idx]} MÜNZEN!`;
+    sfx.power();
+    wheelInfo();
+    updateMenu();
+  }, 4200);
+});
+
+// ---- Freunde (über Link) ----
+function myCode() {
+  const data = { n: profile.name || 'Taucher', b: best, s: profile.skin, h: profile.shark, l: levelOf(profile.xp).lvl };
+  return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+}
+function shareLink() {
+  return `${location.origin}${location.pathname}#f=${myCode()}`;
+}
+function readFriendFromHash() {
+  const m = location.hash.match(/f=([A-Za-z0-9+/=]+)/);
+  if (!m) return null;
+  try {
+    const d = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+    if (!d || typeof d.n !== 'string') return null;
+    return {
+      n: d.n.slice(0, 16),
+      b: Math.max(0, Math.floor(Number(d.b) || 0)),
+      s: DIVER_SKINS.some((x) => x.id === d.s) ? d.s : 'standard',
+      h: SHARKS.some((x) => x.id === d.h) ? d.h : 'white',
+      l: Math.max(1, Math.floor(Number(d.l) || 1)),
+    };
+  } catch {
+    return null;
+  }
+}
+function addFriend(f) {
+  const i = profile.friends.findIndex((x) => x.n === f.n);
+  if (i >= 0) profile.friends[i] = f;
+  else profile.friends.push(f);
+  if (!profile.showFriend) profile.showFriend = f.n;
+  saveProfile();
+}
+let friendShark = null;
+let friendSharkId = '';
+function updateFriendShark() {
+  const f = profile.friends.find((x) => x.n === profile.showFriend);
+  const id = f ? f.h : '';
+  if (id === friendSharkId) return;
+  if (friendShark) scene.remove(friendShark);
+  friendShark = null;
+  friendSharkId = id;
+  if (!id) return;
+  friendShark = makeShark(id);
+  friendShark.scale.setScalar(friendShark.userData.size);
+  scene.add(friendShark);
+}
+function renderFriends() {
+  const q = $('friendSearch').value.trim().toLowerCase();
+  const list = profile.friends.filter((f) => f.n.toLowerCase().includes(q)).sort((a, b) => b.b - a.b);
+  $('friendList').innerHTML = list.length
+    ? list
+        .map((f) => {
+          const sk = DIVER_SKINS.find((x) => x.id === f.s);
+          const sv = SHARKS.find((x) => x.id === f.h);
+          const on = profile.showFriend === f.n;
+          return `<div class="skin${on ? ' on' : ''}">${thumbImg(`s-${f.h}`)}<div>${esc(f.n)} <small>Level ${f.l} · Rekord ${fmt(f.b)}<br>Skin: ${sk.name} · ${sv.name}</small></div><button class="claim" data-show="${esc(f.n)}">${on ? 'IM MENÜ ✓' : 'ZEIGEN'}</button></div>`;
+        })
+        .join('')
+    : `<p class="hint">${profile.friends.length ? 'Kein Freund mit diesem Namen.' : 'Noch keine Freunde. Teile deinen Link – wer ihn öffnet, kann dich hinzufügen, und du ihn mit seinem Link.'}</p>`;
+  $('friendList').querySelectorAll('[data-show]').forEach((b) => b.addEventListener('click', () => {
+    profile.showFriend = profile.showFriend === b.dataset.show ? '' : b.dataset.show;
+    saveProfile();
+    renderFriends();
+    updateMenu();
+  }));
+}
+$('friendSearch').addEventListener('input', renderFriends);
+$('nameInput').addEventListener('change', () => {
+  profile.name = $('nameInput').value.trim().slice(0, 16);
+  saveProfile();
+});
+$('shareBtn').addEventListener('click', async () => {
+  profile.name = $('nameInput').value.trim().slice(0, 16);
+  saveProfile();
+  if (!profile.name) {
+    $('nameInput').focus();
+    $('shareMsg').textContent = 'Gib zuerst deinen Namen ein.';
+    return;
+  }
+  const url = shareLink();
+  try {
+    if (navigator.share) await navigator.share({ title: 'SHARK ATTACK', text: `Schaffst du meinen Rekord von ${fmt(best)}? 🦈`, url });
+    else {
+      await navigator.clipboard.writeText(url);
+      $('shareMsg').textContent = 'Link kopiert!';
+    }
+  } catch {
+    /* abgebrochen */
+  }
+});
+$('addFriendYes').addEventListener('click', () => {
+  if (pendingFriend) addFriend(pendingFriend);
+  pendingFriend = null;
+  $('p-addfriend').classList.add('hidden');
+  updateMenu();
+  openPanel('friends');
+});
+$('addFriendNo').addEventListener('click', () => {
+  pendingFriend = null;
+  $('p-addfriend').classList.add('hidden');
+});
+let pendingFriend = readFriendFromHash();
+if (pendingFriend) {
+  history.replaceState(null, '', location.pathname + location.search);
+  $('addFriendText').innerHTML = `<b>${esc(pendingFriend.n)}</b> (Level ${pendingFriend.l}, Rekord ${fmt(pendingFriend.b)}) als Freund hinzufügen?`;
+  $('p-addfriend').classList.remove('hidden');
+}
+
+// ---- Spind ----
+function renderLocker() {
+  const lv = levelOf(profile.xp);
+  const all = [...DIVER_SKINS.map((x) => ({ ...x, key: `d-${x.id}`, has: profile.skins.includes(x.id) })), ...SHARKS.map((x) => ({ ...x, key: `s-${x.id}`, has: profile.sharks.includes(x.id) }))];
+  $('lockerTop').innerHTML = `<div class="lvl">LEVEL <b>${lv.lvl}</b></div><div class="bar"><i style="width:${(lv.rest / lv.need) * 100}%"></i></div><small>${lv.rest} / ${lv.need} XP bis Level ${lv.lvl + 1} · ${all.filter((x) => x.has).length}/${all.length} freigeschaltet</small>`;
+  $('lockerGrid').innerHTML = all.map((x) => `<div class="locker${x.has ? '' : ' off'}">${thumbImg(x.key, !x.has)}<small>${x.name}</small><em>${x.has ? '✓' : `🔒 ${fmt(x.price)} C`}</em></div>`).join('');
+}
+
 function openPanel(id) {
+  makeThumbs();
   if (id === 'ranking') {
     $('rankList').innerHTML = top.length
       ? top.map((r, i) => `<div class="rank${i === 0 ? ' gold' : ''}"><span>${i + 1}.</span><b>${r.score}</b><small>${r.dist} m · ${r.coins} C</small></div>`).join('')
@@ -1171,9 +1728,9 @@ function openPanel(id) {
       const v = Math.min(m.goal, m.val());
       const done = v >= m.goal;
       const got = daily.claimed.includes(m.id);
-      return `<div class="mission"><div>${m.text}<div class="bar"><i style="width:${(v / m.goal) * 100}%"></i></div><small>${v.toLocaleString('de-DE')} / ${m.goal.toLocaleString('de-DE')}</small></div>${got ? '<em>✓</em>' : `<button class="claim" data-m="${m.id}" ${done ? '' : 'disabled'}>+${m.reward} C</button>`}</div>`;
+      return `<div class="mission"><div>${m.text}<div class="bar"><i style="width:${(v / m.goal) * 100}%"></i></div><small>${fmt(v)} / ${fmt(m.goal)}</small></div>${got ? '<em>✓</em>' : `<button class="claim" data-m="${m.id}" ${done ? '' : 'disabled'}>+${m.reward} C</button>`}</div>`;
     }).join('');
-    document.querySelectorAll('.claim').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-m]').forEach((b) => b.addEventListener('click', () => {
       const m = MISSIONS.find((x) => x.id === b.dataset.m);
       if (!m || daily.claimed.includes(m.id) || m.val() < m.goal) return;
       daily.claimed.push(m.id);
@@ -1185,17 +1742,32 @@ function openPanel(id) {
       updateMenu();
     }));
   }
-  if (id === 'skins' || id === 'shop') $(`${id}Coins`).textContent = bank.toLocaleString('de-DE');
-  for (const p of ['ranking', 'skins', 'shop', 'missions', 'settings']) $(`p-${p}`).classList.toggle('hidden', p !== id);
+  if (id === 'skins' || id === 'sharks') {
+    $(`${id}Coins`).textContent = fmt(bank);
+    $(`${id}List`).innerHTML = itemList(id);
+    bindItems(id);
+  }
+  if (id === 'wheel') {
+    drawWheel();
+    wheelInfo();
+  }
+  if (id === 'friends') {
+    $('nameInput').value = profile.name;
+    $('shareMsg').textContent = '';
+    renderFriends();
+  }
+  if (id === 'locker') renderLocker();
+  for (const p of PANELS) $(`p-${p}`).classList.toggle('hidden', p !== id);
 }
 document.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => {
   audio();
   openPanel(b.dataset.open);
 }));
 document.querySelectorAll('.close').forEach((b) => b.addEventListener('click', () => {
-  for (const p of ['ranking', 'skins', 'shop', 'missions', 'settings']) $(`p-${p}`).classList.add('hidden');
+  for (const p of PANELS) $(`p-${p}`).classList.add('hidden');
   updateMenu();
 }));
+setInterval(() => !$('p-wheel').classList.contains('hidden') && wheelInfo(), 20000);
 $('musicBtn').addEventListener('click', () => {
   settings.music = !settings.music;
   store.set('shark-settings', settings);
@@ -1231,11 +1803,26 @@ document.addEventListener('visibilitychange', () => {
 // ------------------------------------------------------------------- Loop ---
 let last = performance.now();
 function frame(now) {
+  requestAnimationFrame(frame); // zuerst: die Schleife läuft immer weiter, auch wenn etwas schiefgeht
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (G.mode !== 'paused') update(dt);
+  try {
+    if (G.mode !== 'paused') update(dt);
+  } catch (e) {
+    console.warn(e);
+    // Notbremse: nie im „gefressen“-Zustand hängen bleiben
+    if (G.mode === 'caught' || G.mode === 'play') {
+      try {
+        finish();
+      } catch {
+        G.mode = 'over';
+        showOnly('over');
+      }
+    }
+  }
+  // Wächter: wenn „gefressen“ zu lange dauert, Game Over erzwingen
+  if (G.mode === 'caught' && G.caughtT > 2) finish();
   renderer.render(scene, camera);
-  requestAnimationFrame(frame);
 }
 menu();
 requestAnimationFrame(frame);
@@ -1243,4 +1830,4 @@ document.fonts?.load('80px "Lilita One"').then(drawCoinFace).catch(() => {});
 window.addEventListener('pointerdown', () => startMusic(), { once: true });
 
 // zum Testen
-window.__shark = { G, move, setVertical, startRun };
+window.__shark = { G, coinPool, move, setVertical, startRun, openPanel, profile, addFriend, shareLink, get bank() { return bank; }, set bank(v) { bank = v; } };
