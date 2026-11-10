@@ -385,6 +385,8 @@ const SND = {
   tick: () => tone(660, 660, 0.03, 'square', 0.025),
   star: () => { tone(784, 1046, 0.16, 'square', 0.06); noise(0.15, 4000, 0.04, 'highpass'); },
   count: () => sfx('count', () => tone(1200, 1200, 0.02, 'square', 0.015), 0.04),
+  smack: () => sfx('smack', () => { noise(0.09, 700, 0.07, 'bandpass'); tone(140, 70, 0.09, 'square', 0.05); }, 0.08),
+  meow: () => sfx('meow', () => { tone(700, 1100, 0.12, 'square', 0.03); tone(1100, 600, 0.18, 'square', 0.03, 0.12); }, 0.4),
 };
 
 // ------------------------------------------------------------------ Musik ---
@@ -438,7 +440,7 @@ const G = {
   lives: LIVES,
   waves: [],
   wave: 0,
-  spawnQ: [],
+  streams: [],
   spawnT: 0,
   waveActive: false,
   nextWaveT: null,
@@ -474,7 +476,7 @@ function startMap(mapIdx) {
   G.cookies = startCookies(mapIdx);
   G.lives = LIVES;
   G.zombies = []; G.omas = []; G.shots = []; G.fx = [];
-  G.spawnQ = []; G.waveActive = false; G.drag = null; G.selected = null;
+  G.streams = []; G.waveActive = false; G.drag = null; G.selected = null;
   G.coffee = 0; G.coffeeCd = 0; G.speed = 1;
   G.stats = { kills: 0, bosses: 0, earned: 0, crits: 0, time: 0, startBest: progress.maps[MAPS[mapIdx].id].best };
   G.nextWaveT = settings.auto ? 15 : null;
@@ -491,10 +493,10 @@ function startMap(mapIdx) {
 // Welle starten – auch während eine Welle läuft (dann kommt die nächste gleich hinterher)
 function startWave() {
   if (G.wave >= G.waves.length || G.mode !== 'play') return;
-  const early = G.waveActive && (G.spawnQ.length || G.zombies.some((z) => !z.dead));
+  const early = G.waveActive && (G.streams.length || G.zombies.some((z) => !z.dead));
   const list = G.waves[G.wave].map((s) => ({ ...s }));
-  if (early) G.spawnQ.push(...list);
-  else { G.spawnQ = list; G.spawnT = 0.3; }
+  // jede Welle bekommt ihren eigenen Strom – vorgezogene Wellen laufen GLEICHZEITIG los
+  G.streams.push({ q: list, t: 0.3 });
   G.wave++;
   G.waveActive = true;
   G.nextWaveT = null;
@@ -527,12 +529,12 @@ function placeZombie(z) {
   z.obj.rotation.y = Math.atan2(tg.x, tg.z);
 }
 function onMap(x, z, m = 0) { const b = view.bounds; return x > b.x0 - m && x < b.x1 + m && z > b.z0 - m && z < b.z1 + m; }
-function damage(z, amount, kind, src) {
+function damage(z, amount, kind, src, critChance = 0.1) {
   if (z.dead) return;
   let d = amount;
   if (z.def.armor && !['splash', 'pierce', 'aoe'].includes(kind)) d *= 1 - z.def.armor;
   // kritischer Treffer: 10 % Chance auf doppelten Schaden (nicht bei Gießkanne/Rollator)
-  if (kind !== 'aoe' && Math.random() < 0.1) {
+  if (kind !== 'aoe' && Math.random() < critChance) {
     d *= 2;
     G.stats.crits++;
     SND.crit();
@@ -595,6 +597,36 @@ function placeOma(id, x, z) {
 }
 // Ziel-Wahl pro Oma: Erster (am weitesten vorne), Letzter, Stärkster, Nächster
 const TARGETS = { first: 'ERSTER', last: 'LETZTER', strong: 'STÄRKSTER', close: 'NÄCHSTER' };
+// Stufe sichtbar machen: Ring am Boden (Silber/Gold), Sterne über dem Kopf, Goldschimmer bei Stufe 3
+function starTex(n) {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 48; const g = c.getContext('2d');
+  g.font = '40px "Lilita One", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 8; g.strokeStyle = '#24192e'; g.strokeText('★'.repeat(n), 64, 26);
+  g.fillStyle = n >= 3 ? '#ffd23f' : '#e8eef5'; g.fillText('★'.repeat(n), 64, 26);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const LV_TEX = {};
+function decorateOma(o) {
+  if (o.deco) { o.obj.remove(o.deco); o.deco.traverse((m) => { if (m.material) m.material.dispose(); }); }
+  o.deco = null;
+  if (o.lvl < 2) return;
+  const g = new THREE.Group();
+  const gold = o.lvl >= 3;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.58, 32), new THREE.MeshBasicMaterial({ color: gold ? 0xffc21a : 0xc8d4e0, transparent: true, opacity: 0.95, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; g.add(ring);
+  LV_TEX[o.lvl] ||= starTex(o.lvl);
+  const st = new THREE.Sprite(new THREE.SpriteMaterial({ map: LV_TEX[o.lvl], depthTest: false, transparent: true }));
+  st.scale.set(0.9, 0.34, 1); st.position.y = 1.85; st.renderOrder = 12; g.add(st);
+  if (gold) {
+    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+    const rg = x.createRadialGradient(32, 32, 4, 32, 32, 32); rg.addColorStop(0, 'rgba(255,214,80,0.55)'); rg.addColorStop(1, 'rgba(255,214,80,0)'); x.fillStyle = rg; x.fillRect(0, 0, 64, 64);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+    glow.scale.setScalar(1.9); glow.position.y = 0.8; g.add(glow);
+    g.userData.glow = glow;
+  }
+  o.obj.add(g);
+  o.deco = g;
+}
 function targetFor(o, s) {
   let best = null, bestV = 0;
   for (const z of G.zombies) {
@@ -614,6 +646,13 @@ function projMesh(kind) {
     if (kind === 'slipper') { mesh(new RoundedBoxGeometry(0.2, 0.09, 0.38, 3, 0.04), M(0xff8fc7, { roughness: 1 }), 0, 0, 0, g); mesh(new THREE.SphereGeometry(0.07, 10, 8), M(0xffffff), 0, 0.06, -0.12, g); }
     if (kind === 'cookie') { cookie(g, 0, 0); g.children[0].position.y = 0; g.scale.setScalar(1.4); }
     if (kind === 'drop') mesh(new THREE.SphereGeometry(0.07, 8, 6), M(0x8fd3ff, { roughness: 0.1 }), 0, 0, 0, g);
+    if (kind === 'cat') {
+      const fur = M(0xff9f43, { roughness: 1 });
+      mesh(new THREE.CapsuleGeometry(0.12, 0.2, 6, 10), fur, 0, 0, 0, g).rotation.x = Math.PI / 2;
+      const h = mesh(new THREE.SphereGeometry(0.13, 12, 10), fur, 0, 0.06, -0.2, g);
+      for (const sx of [-1, 1]) { mesh(new THREE.ConeGeometry(0.045, 0.09, 6), fur, sx * 0.07, 0.12, 0, h); mesh(new THREE.SphereGeometry(0.022, 6, 5), M(0x2a7a2a), sx * 0.05, 0.03, -0.11, h); }
+      mesh(new THREE.CapsuleGeometry(0.03, 0.22, 4, 6), fur, 0, 0.08, 0.24, g).rotation.x = -0.8;
+    }
     PROJ[kind] = bake(g);
   }
   return PROJ[kind].clone();
@@ -634,6 +673,14 @@ function fire(o, s, tgt) {
       }
     }
     if (s.push) { SND.hit(); G.fx.push({ ring: true, x: o.x, z: o.z, r: s.range, t: 0 }); }
+    return;
+  }
+  if (s.melee) {
+    // Handtasche: sofortiger Treffer, kein Wurf
+    o.anim = 1.6;
+    damage(tgt, s.dmg, 'pierce', o, s.crit);
+    sparkleAt(tgt.obj.position.clone().setY(0.9), 0xff8fc7);
+    SND.smack();
     return;
   }
   const m = projMesh(s.proj);
@@ -711,9 +758,11 @@ function update(dt) {
     if (Math.ceil(G.nextWaveT) !== before && G.nextWaveT <= 3 && G.nextWaveT > 0) SND.tick();
     if (G.nextWaveT <= 0) startWave();
   }
-  if (G.spawnQ.length) {
-    G.spawnT -= dt;
-    while (G.spawnQ.length && G.spawnT <= 0) { const s = G.spawnQ.shift(); spawnZombie(s); G.spawnT += s.gap; }
+  for (let i = G.streams.length - 1; i >= 0; i--) {
+    const st = G.streams[i];
+    st.t -= dt;
+    while (st.q.length && st.t <= 0) { const s = st.q.shift(); spawnZombie(s); st.t += s.gap; }
+    if (!st.q.length) G.streams.splice(i, 1);
   }
   const camQ = camera.quaternion;
   for (let i = G.zombies.length - 1; i >= 0; i--) {
@@ -726,7 +775,8 @@ function update(dt) {
       continue;
     }
     if (z.slowT > 0) { z.slowT -= dt; if (z.slowT <= 0) z.slowF = 1; }
-    z.dist += z.speed * z.slowF * dt;
+    if (z.stunT > 0) z.stunT -= dt; // von Lottes Katze festgehalten
+    else z.dist += z.speed * z.slowF * dt;
     if (z.dist >= W.len) {
       G.lives = Math.max(0, G.lives - z.def.lives);
       SND.leak();
@@ -761,6 +811,7 @@ function update(dt) {
       if (o.cd <= 0) { fire(o, s, tgt); o.cd = 1 / s.rate; }
     }
     o.anim = Math.max(0, o.anim - dt * 4);
+    if (o.deco && o.deco.userData.glow) o.deco.userData.glow.material.opacity = 0.7 + 0.3 * Math.sin(t * 3 + o.x);
     o.obj.rotation.x = -o.anim * 0.25;
     o.obj.position.y = Math.sin(t * 2 + o.x) * 0.02;
   }
@@ -784,6 +835,7 @@ function update(dt) {
         G.fx.push({ ring: true, x: sh.to.x, z: sh.to.z, r: sh.s.splash, t: 0 });
       } else if (sh.tgt && !sh.tgt.dead) {
         damage(sh.tgt, sh.s.dmg, sh.kind, sh.src);
+        if (sh.s.stun && !sh.tgt.dead) { sh.tgt.stunT = sh.s.stun * (sh.tgt.def.boss ? 0.3 : 1); SND.meow(); }
         sparkleAt(sh.to);
       }
       SND.hit();
@@ -791,7 +843,7 @@ function update(dt) {
   }
   updateFx(dt);
   // Welle vorbei?
-  if (G.waveActive && !G.spawnQ.length && !G.zombies.some((z) => !z.dead)) {
+  if (G.waveActive && !G.streams.length && !G.zombies.some((z) => !z.dead)) {
     G.waveActive = false;
     const bonus = 25 + Math.round(G.wave * 1.5);
     G.cookies += bonus;
@@ -1051,30 +1103,22 @@ function renderInfo() {
   const def = OMA_DEF[o.id];
   const up = def.ups[o.lvl - 1];
   const s0 = stats(o);
-  $('iName').textContent = OMAS[o.id].name;
-  $('iLvl').textContent = `Stufe ${o.lvl}${up ? '' : ' (max)'} · ${def.desc}`;
-  $('iStats').innerHTML = `<span>💥 ${num(s0.dmg)} Schaden</span><span>⏱ ${num(s0.rate, 2)}/s</span><span>🎯 ${num(s0.range)} m</span>`;
-  $('iKills').innerHTML = `🧟 <b>${o.kills}</b> besiegt · <b>${fmt(o.dmg)}</b> Schaden gesamt`;
-  $('iTarget').innerHTML = `ZIEL: <b>${TARGETS[o.target]}</b> ⟳`;
+  $('iName').innerHTML = `${OMAS[o.id].name} <span class="lv">${'★'.repeat(o.lvl)}${'☆'.repeat(3 - o.lvl)}</span>`;
+  $('iStats').innerHTML = `💥${num(s0.dmg)} ⏱${num(s0.rate, 2)}/s 🎯${num(s0.range)} · 🧟<b>${o.kills}</b>`;
+  $('iTarget').innerHTML = `🎯 ${TARGETS[o.target]}<small>Ziel</small>`;
   $('iTarget').classList.toggle('hidden', !!s0.aoe);
-  // Upgrade-Vergleich: was wird wie viel besser?
+  const ub = $('iUp');
   if (up) {
     const s1 = statsAt(o.id, o.lvl + 1);
-    const lines = Object.keys(up.set).map((k) => {
-      const a = s0[k], b = s1[k];
-      const pct = a ? Math.round(((b - a) / a) * 100) : 0;
-      const val = (v) => (k === 'slow' ? `${Math.round(v * 100)} %` : num(v, 2));
-      return `<div>${STAT_LABEL[k] || k}: ${val(a)} → <b>${val(b)}</b> <i>(+${pct} %)</i></div>`;
-    });
     const d0 = dps(s0), d1 = dps(s1);
-    if (d1 !== d0) lines.push(`<div class="dps">Schaden pro Sekunde: ${num(d0)} → <b>${num(d1)}</b> <i>(+${Math.round(((d1 - d0) / d0) * 100)} %)</i></div>`);
-    $('iCompare').innerHTML = `<div class="ct">⬆ ${up.label}</div>${lines.join('')}`;
-    $('iCompare').classList.remove('hidden');
-  } else $('iCompare').classList.add('hidden');
-  const ub = $('iUp');
-  if (up) { ub.innerHTML = `UPGRADE<br><span class="ck"></span>${up.cost}`; ub.disabled = G.cookies < up.cost; ub.classList.remove('hidden'); }
-  else ub.classList.add('hidden');
-  $('iSell').innerHTML = `VERKAUFEN<br><span class="ck"></span>${Math.floor(o.spent * 0.6)}`;
+    const k = Object.keys(up.set)[0];
+    const pct = d1 !== d0 ? Math.round(((d1 - d0) / d0) * 100) : Math.round(((s1[k] - s0[k]) / s0[k]) * 100);
+    const what = d1 !== d0 ? 'Schaden' : STAT_LABEL[k] || k;
+    ub.innerHTML = `⬆ <span class="ck"></span>${up.cost}<small>+${pct} % ${what}</small>`;
+    ub.disabled = G.cookies < up.cost;
+    ub.classList.remove('hidden');
+  } else ub.classList.add('hidden');
+  $('iSell').innerHTML = `💰 ${Math.floor(o.spent * 0.6)}<small>verkaufen</small>`;
 }
 $('iTarget').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -1099,7 +1143,8 @@ $('iUp').addEventListener('click', (e) => {
   const up = OMA_DEF[o.id].ups[o.lvl - 1];
   if (!up || G.cookies < up.cost) return;
   G.cookies -= up.cost; o.spent += up.cost; o.lvl++;
-  o.obj.scale.setScalar(0.92 + (o.lvl - 1) * 0.06);
+  o.obj.scale.setScalar(0.92 + (o.lvl - 1) * 0.08);
+  decorateOma(o);
   sparkleAt(new THREE.Vector3(o.x, 1.2, o.z), 0x7ddc4a);
   floatText(new THREE.Vector3(o.x, 0.6, o.z), `STUFE ${o.lvl}!`, 'up');
   SND.upgrade();
@@ -1157,7 +1202,7 @@ $('setAuto').addEventListener('click', () => { settings.auto = !settings.auto; s
 $('setClose').addEventListener('click', () => $('settings').classList.add('hidden'));
 $('tInfo').addEventListener('click', () => $('help').classList.remove('hidden'));
 // ---- Lexikon: was können die Omas, was halten die Zombies aus ----
-const SPECIAL = { erna: 'Trifft durch Schilde. Zielt auf den stärksten Zombie.', gerda: 'Keks explodiert und trifft alle in der Nähe.', helga: 'Macht alle Zombies in Reichweite langsamer.', inge: 'Schubst alle Zombies in Reichweite zurück (Bosse nur ein bisschen).', hilde: 'Schnelle Würfe auf einen Zombie.' };
+const SPECIAL = { erna: 'Trifft durch Schilde. Zielt auf den stärksten Zombie.', gerda: 'Keks explodiert und trifft alle in der Nähe.', helga: 'Macht alle Zombies in Reichweite langsamer.', inge: 'Schubst alle Zombies in Reichweite zurück (Bosse nur ein bisschen).', hilde: 'Schnelle Würfe auf einen Zombie.', ursula: 'Haut aus der Nähe mit der Handtasche zu – auch durch Schilde. 25 % Chance auf kritische Treffer.', lotte: 'Die Katze hält getroffene Zombies kurz fest (Bosse nur ganz kurz).' };
 const ZINFO = {
   gustav: ['ab Welle 1', 'Ganz normaler, langsamer Zombie.'],
   jogger: ['ab Welle 11', 'Rennt fast doppelt so schnell, hält aber wenig aus.'],
@@ -1176,7 +1221,7 @@ function renderCodex(tab) {
       const ups = def.ups.map((u) => `${u.label} (${u.cost} 🍪)`).join(' · ');
       return `<div class="cx"><img src="${portraits[id]}" alt=""><div><b>${name}</b><small>${OMAS[id].role} · ${def.cost} 🍪 · ab Welle ${def.unlock}</small>
         <div class="cxs"><span>💥 ${num(b.dmg)}${b.aoe ? ' an alle' : ''}</span><span>⏱ ${num(b.rate, 2)}/s</span><span>🎯 ${num(b.range)} m</span><span>⚡ ${num(dps(b))} DPS</span></div>
-        <p>${SPECIAL[id]}${b.slow ? ` Bremst um ${Math.round(b.slow * 100)} %.` : ''}${b.push ? ` Schubst ${num(b.push)} m zurück.` : ''}</p>
+        <p>${SPECIAL[id]}${b.slow ? ` Bremst um ${Math.round(b.slow * 100)} %.` : ''}${b.push ? ` Schubst ${num(b.push)} m zurück.` : ''}${b.stun ? ` Hält ${num(b.stun)} s fest.` : ''}</p>
         <p class="up">⬆ ${ups}<br>Voll aufgerüstet: ${num(dps(mx))} DPS (${dps(b) ? '+' + Math.round(((dps(mx) - dps(b)) / dps(b)) * 100) + ' %' : ''})</p></div></div>`;
     }).join('');
   } else {

@@ -23,6 +23,16 @@ export const OMA_DEF = {
     base: { range: 2.5, rate: 1.2, dmg: 0.5, slow: 0.45, slowDur: 1.4, aoe: true },
     ups: [{ label: 'MEHR WASSER', cost: 160, set: { slow: 0.6 } }, { label: 'GROSSE KANNE', cost: 260, set: { range: 3.3, dmg: 1.2 } }],
   },
+  ursula: {
+    cost: 225, unlock: 10, desc: 'haut mit der Handtasche zu, auch durch Schilde',
+    base: { range: 1.7, rate: 1.1, dmg: 8, melee: true, crit: 0.25 },
+    ups: [{ label: 'SCHWERERE TASCHE', cost: 200, set: { dmg: 13 } }, { label: 'DOPPELSCHLAG', cost: 300, set: { rate: 1.8 } }],
+  },
+  lotte: {
+    cost: 280, unlock: 15, desc: 'wirft ihre Katze, die Zombies festhält',
+    base: { range: 3.6, rate: 0.5, dmg: 6, stun: 1.0, proj: 'cat', projSpeed: 10 },
+    ups: [{ label: 'DICKERE KATZE', cost: 220, set: { dmg: 10, stun: 1.4 } }, { label: 'ZWEI KATZEN', cost: 320, set: { rate: 0.8 } }],
+  },
   inge: {
     cost: 350, unlock: 12, desc: 'Rollator schubst Zombies zurück',
     base: { range: 1.7, rate: 0.4, dmg: 6, push: 1.4, aoe: true },
