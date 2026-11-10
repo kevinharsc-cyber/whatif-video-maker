@@ -756,29 +756,6 @@ for (let i = 0; i < FISH; i++) {
 }
 const schools = [0, 1, 2, 3].map((i) => ({ x: (i % 2 ? 1 : -1) * (6 + Math.random() * 3), y: 2 + Math.random() * 4, z: -16 - i * 10, dir: i % 2 ? -1 : 1 }));
 scene.add(fishes);
-// Lichtmuster (Kaustik) auf dem Sand
-const causticCanvas = document.createElement('canvas');
-causticCanvas.width = causticCanvas.height = 128;
-{
-  const g = causticCanvas.getContext('2d');
-  g.strokeStyle = 'rgba(255,255,255,0.8)';
-  g.lineWidth = 2;
-  g.filter = 'blur(1.5px)';
-  for (let i = 0; i < 40; i++) {
-    g.beginPath();
-    const x = Math.random() * 128;
-    const y = Math.random() * 128;
-    g.ellipse(x, y, 8 + Math.random() * 12, 5 + Math.random() * 8, Math.random() * 3, 0, Math.PI * 2);
-    g.stroke();
-  }
-}
-const causticTex = new THREE.CanvasTexture(causticCanvas);
-causticTex.wrapS = causticTex.wrapT = THREE.RepeatWrapping;
-causticTex.repeat.set(5, 20);
-const caustic = new THREE.Mesh(new THREE.PlaneGeometry(40, 160), new THREE.MeshBasicMaterial({ map: causticTex, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false }));
-caustic.rotation.x = -Math.PI / 2;
-caustic.position.set(0, FLOOR_Y + 0.02, -60);
-scene.add(caustic);
 
 // ------------------------------------------------------------------ Ton ---
 let ac = null;
@@ -830,12 +807,23 @@ function tone(f0, f1, len, type = 'sine', vol = 0.1) {
   o.start(t);
   o.stop(t + len + 0.02);
 }
+let coinSoundAt = 0;
+let coinStep = 0;
+const COIN_NOTES = [784, 880, 988, 1047, 1175]; // G A H C D
 const sfx = {
   power: () => {
     tone(500, 1000, 0.15, 'triangle', 0.09);
     setTimeout(() => tone(800, 1600, 0.2, 'triangle', 0.09), 110);
   },
-  coin: () => tone(1100, 1700, 0.1, 'triangle', 0.08),
+  // weiches „Pling“: leise, kurz, wechselnde Töne aus einer Tonleiter, nie zu oft hintereinander
+  coin: () => {
+    const now = performance.now();
+    if (now - coinSoundAt < 90) return;
+    coinSoundAt = now;
+    coinStep = (coinStep + 1) % COIN_NOTES.length;
+    const f = COIN_NOTES[coinStep];
+    tone(f, f * 1.01, 0.12, 'sine', 0.035);
+  },
   swipe: () => tone(300, 520, 0.12, 'sine', 0.06),
   up: () => tone(260, 700, 0.25, 'sine', 0.07),
   down: () => tone(500, 180, 0.25, 'sine', 0.07),
@@ -1175,7 +1163,6 @@ function update(dt) {
     }
   } else G.y = G.baseY;
   updateFish(t, dt);
-  causticTex.offset.x = Math.sin(t * 0.3) * 0.05;
   if (G.mode === 'menu') {
     rideDolphin.visible = false;
     // Menü: Taucher schaut in die Kamera, Hai lauert dahinter
