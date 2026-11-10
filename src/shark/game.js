@@ -1,6 +1,8 @@
 // SHARK ATTACK – 3D-Endlos-Läufer unter Wasser (Three.js, läuft im Browser auf dem iPhone)
 // Erste spielbare Version: 3 Bahnen, Wischen, Hai-Verfolgung, Hindernisse, Münzen, Game Over, Menü.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import * as Q from './progress.js';
 import { savePlayer, topPlayers, searchPlayers, getPlayers, newId, newSecret, isId, NAME_RE } from './online.js';
 
 // ------------------------------------------------------------ Einstellungen ---
@@ -39,20 +41,34 @@ let bank = store.get('shark-coins', 0);
 const settings = { music: true, sfx: true, ...store.get('shark-settings', {}) };
 let top = store.get('shark-top', []);
 const today = new Date().toISOString().slice(0, 10);
-let daily = store.get('shark-daily', null);
-if (!daily || daily.day !== today) daily = { day: today, coins: 0, bestDist: 0, bestDodged: 0, powers: 0, claimed: [] };
+// Aufgaben (täglich, wöchentlich, Dauer) – siehe progress.js
+let quests = Q.ensure(store.get('shark-quests', null));
+const saveQuests = () => store.set('shark-quests', quests);
+saveQuests();
 // Profil: Name, Level, Skins, Haie, Glücksrad, Freunde
 const DIVER_SKINS = [
   { id: 'standard', name: 'Standard', price: 0, suit: 0x1d2f6b, acc: 0xffd23f },
   { id: 'black', name: 'Schwarz', price: 10000, suit: 0x17191f, acc: 0x9aa3ad },
   { id: 'red', name: 'Rot', price: 20000, suit: 0xc62828, acc: 0xffffff },
+  { id: 'green', name: 'Tarn-Grün', level: 25, suit: 0x2f5d2a, acc: 0xa3c44a },
+  { id: 'neon', name: 'Neon', level: 50, suit: 0x14112e, acc: 0x39ff14 },
+  { id: 'gold', name: 'Goldtaucher', level: 100, suit: 0xffc21a, acc: 0xfff4b0, gold: true },
+  { id: 'santa', name: 'Weihnachtsmann', event: true, suit: 0xd61f26, acc: 0xffffff, santa: true },
 ];
+// Rucksack (Pressluftflaschen) in anderer Farbe
+const TANKS = [
+  { id: 'default', name: 'Passend zum Skin', color: null },
+  { id: 'purple', name: 'Lila-Chrom', level: 60, color: 0x8e44ff },
+];
+// Diese Werte kennt die Online-Datenbank; neue Skins werden dort als „standard“ gezeigt
+const SERVER_SKINS = ['standard', 'black', 'red'];
+const SERVER_SHARKS = ['white', 'tiger', 'mega'];
 const SHARKS = [
   { id: 'white', name: 'Weißer Hai', price: 0, top: 0x3d6f9e, brow: 0x24476b, eye: 0x4a2a12, stripes: false, size: 1 },
   { id: 'tiger', name: 'Tigerhai', price: 50000, top: 0x7a8a5a, brow: 0x3e4a2a, eye: 0x6a3a12, stripes: true, size: 1.08 },
   { id: 'mega', name: 'Megalodon', price: 100000, top: 0x2d3038, brow: 0x111317, eye: 0xd61f1f, stripes: false, size: 1.28 },
 ];
-const profile = { name: '', skin: 'standard', shark: 'white', skins: ['standard'], sharks: ['white'], xp: 0, wheelAt: 0, friends: [], ...store.get('shark-profile', {}) };
+const profile = { name: '', skin: 'standard', shark: 'white', tank: 'default', tanks: ['default'], skins: ['standard'], sharks: ['white'], xp: 0, wheelAt: 0, friends: [], ...store.get('shark-profile', {}) };
 const saveProfile = () => store.set('shark-profile', profile);
 // eigene Online-ID + Geheimnis (bleibt nur auf diesem Handy)
 if (!isId(profile.id) || !profile.secret) {
@@ -60,24 +76,12 @@ if (!isId(profile.id) || !profile.secret) {
   profile.secret = newSecret();
   saveProfile();
 }
-// Level: jedes Level braucht etwas mehr XP
-const levelOf = (xp) => {
-  let lvl = 1;
-  let need = 100;
-  let rest = xp;
-  while (rest >= need) {
-    rest -= need;
-    lvl++;
-    need = 100 + (lvl - 1) * 60;
-  }
-  return { lvl, rest, need };
-};
-const MISSIONS = [
-  { id: 'coins', text: 'Sammle heute 300 Münzen', goal: 300, val: () => daily.coins, reward: 150 },
-  { id: 'dist', text: 'Schwimme 1.000 m in einem Lauf', goal: 1000, val: () => daily.bestDist, reward: 200 },
-  { id: 'dodge', text: 'Weiche 20 Hindernissen in einem Lauf aus', goal: 20, val: () => daily.bestDodged, reward: 150 },
-  { id: 'power', text: 'Sammle 2 Power-ups ein', goal: 2, val: () => daily.powers, reward: 100 },
-];
+const levelOf = Q.levelOf;
+// alte XP (früheres System, viel größere Zahlen) einmalig umrechnen
+if (profile.xpv !== 2) {
+  profile.xp = Math.floor((profile.xp || 0) / 8);
+  profile.xpv = 2;
+}
 
 // ------------------------------------------------------------------ Szene ---
 const canvas = document.getElementById('view');
@@ -134,8 +138,10 @@ function part(geo, color, { outline = true, w = 0.05, extra } = {}) {
 }
 
 // --------------------------------------------------------------- Taucher ---
-function makeDiver(skinId = 'standard') {
+function makeDiver(skinId = 'standard', tankId = 'default') {
   const sk = DIVER_SKINS.find((s) => s.id === skinId) || DIVER_SKINS[0];
+  const tankCol = (TANKS.find((x) => x.id === tankId) || TANKS[0]).color ?? sk.acc;
+  const goldExtra = sk.gold ? { emissive: 0x6a4a00 } : undefined;
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
@@ -143,7 +149,7 @@ function makeDiver(skinId = 'standard') {
   const YEL = sk.acc;
   const SKIN = 0xf2c29b;
   // Körper liegt waagerecht (schwimmt nach vorne = -z)
-  const torso = part(new THREE.CapsuleGeometry(0.34, 0.75, 6, 12), SUIT);
+  const torso = part(new THREE.CapsuleGeometry(0.34, 0.75, 6, 12), SUIT, { extra: goldExtra });
   torso.rotation.x = Math.PI / 2;
   body.add(torso);
   const stripe = part(new THREE.CapsuleGeometry(0.35, 0.2, 4, 12), YEL, { outline: false });
@@ -152,7 +158,7 @@ function makeDiver(skinId = 'standard') {
   body.add(stripe);
   // Flaschen auf dem Rücken
   for (const sx of [-0.15, 0.15]) {
-    const tank = part(new THREE.CapsuleGeometry(0.13, 0.6, 4, 10), YEL);
+    const tank = part(new THREE.CapsuleGeometry(0.13, 0.6, 4, 10), tankCol, { extra: sk.gold ? { emissive: 0x6a4a00 } : undefined });
     tank.rotation.x = Math.PI / 2;
     tank.position.set(sx, 0.36, 0.05);
     body.add(tank);
@@ -162,11 +168,41 @@ function makeDiver(skinId = 'standard') {
   head.position.set(0, 0.12, -0.78);
   body.add(head);
   head.add(part(new THREE.SphereGeometry(0.3, 16, 12), SKIN));
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < (sk.santa ? 0 : 7); i++) {
     const spike = part(new THREE.ConeGeometry(0.11, 0.32, 6), 0x7a3f1d, { w: 0.08 });
     spike.position.set(-0.18 + (i % 4) * 0.12, 0.22 + (i > 3 ? 0.04 : 0), 0.05 + (i > 3 ? 0.12 : 0));
     spike.rotation.set(-0.9 + Math.random() * 0.3, 0, -0.5 + (i % 4) * 0.33);
     head.add(spike);
+  }
+  if (sk.santa) {
+    // Weihnachtsmann: Mütze mit Bommel + weißer Bart
+    const hat = part(new THREE.ConeGeometry(0.3, 0.6, 12), 0xd61f26, { w: 0.06 });
+    hat.position.set(0, 0.42, 0.12);
+    hat.rotation.x = 0.55;
+    head.add(hat);
+    const brim = part(new THREE.TorusGeometry(0.29, 0.07, 8, 18), 0xffffff, { w: 0.08 });
+    brim.position.set(0, 0.2, 0.02);
+    brim.rotation.x = Math.PI / 2 + 0.55;
+    head.add(brim);
+    const pom = part(new THREE.SphereGeometry(0.09, 8, 6), 0xffffff, { w: 0.1 });
+    pom.position.set(0, 0.62, 0.42);
+    head.add(pom);
+    const beard = part(new THREE.SphereGeometry(0.27, 12, 10), 0xffffff, { w: 0.06 });
+    beard.scale.set(1, 0.8, 0.7);
+    beard.position.set(0, -0.2, -0.16);
+    head.add(beard);
+  }
+  if (sk.gold) {
+    // Goldtaucher: kleine Krone
+    const crown = part(new THREE.CylinderGeometry(0.2, 0.22, 0.14, 8, 1, true), 0xffd23f, { w: 0.08, extra: { emissive: 0x6a4a00, side: THREE.DoubleSide } });
+    crown.position.set(0, 0.34, 0.05);
+    head.add(crown);
+    for (let i = 0; i < 5; i++) {
+      const tip = part(new THREE.ConeGeometry(0.05, 0.14, 4), 0xffd23f, { w: 0.1, extra: { emissive: 0x6a4a00 } });
+      const a = (i / 5) * Math.PI * 2;
+      tip.position.set(Math.cos(a) * 0.19, 0.46, 0.05 + Math.sin(a) * 0.19);
+      head.add(tip);
+    }
   }
   const mask = part(new THREE.BoxGeometry(0.52, 0.2, 0.12), 0x2ec4f0);
   mask.position.set(0, 0.04, -0.27);
@@ -712,7 +748,7 @@ for (const k of Object.keys(POWER)) {
 }
 
 // --------------------------------------------------------------- Figuren ---
-let diver = makeDiver(profile.skin);
+let diver = makeDiver(profile.skin, profile.tank);
 diver.scale.setScalar(1.35);
 scene.add(diver);
 let shark = makeShark(profile.shark);
@@ -721,7 +757,7 @@ scene.add(shark);
 function setDiverSkin(id) {
   const pos = diver.position.clone();
   scene.remove(diver);
-  diver = makeDiver(id);
+  diver = makeDiver(id, profile.tank);
   diver.scale.setScalar(1.35);
   diver.position.copy(pos);
   scene.add(diver);
@@ -743,9 +779,37 @@ const RIDE_Y = 3.6;
 
 // kleine Fischschwärme im Hintergrund (eine einzige InstancedMesh = günstig)
 const FISH = 36;
-const fishGeo = new THREE.ConeGeometry(0.12, 0.42, 5);
-fishGeo.rotateX(-Math.PI / 2);
-const fishes = new THREE.InstancedMesh(fishGeo, new THREE.MeshBasicMaterial({ color: 0xffb347 }), FISH);
+// richtiger kleiner Fisch: Körper, Schwanzflosse, Rückenflosse, Augen (Kopf zeigt nach -z)
+function fishGeometry() {
+  const paint = (g, c) => {
+    const n = g.attributes.position.count;
+    const col = new Float32Array(n * 3).fill(c);
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    return g;
+  };
+  const body = new THREE.SphereGeometry(1, 10, 8);
+  body.scale(0.09, 0.15, 0.26);
+  const tail = new THREE.ConeGeometry(0.15, 0.2, 4);
+  tail.rotateX(-Math.PI / 2); // Spitze zum Körper
+  tail.scale(0.18, 1, 1);
+  tail.translate(0, 0, 0.3);
+  const fin = new THREE.ConeGeometry(0.07, 0.13, 3);
+  fin.scale(0.25, 1, 1);
+  fin.rotateX(0.5);
+  fin.translate(0, 0.16, 0.03);
+  const parts = [paint(body, 1), paint(tail, 0.8), paint(fin, 0.8)];
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.SphereGeometry(0.028, 6, 4);
+    eye.translate(sx * 0.072, 0.04, -0.17);
+    parts.push(paint(eye, 0.05));
+  }
+  return mergeGeometries(parts);
+}
+const fishes = new THREE.InstancedMesh(fishGeometry(), new THREE.MeshToonMaterial({ gradientMap: grad, vertexColors: true }), FISH);
+const fishQ = new THREE.Quaternion();
+const fishE = new THREE.Euler();
+const fishP = new THREE.Vector3();
+const fishS = new THREE.Vector3(1.4, 1.4, 1.4);
 const fishData = [];
 const fishM = new THREE.Matrix4();
 const fishCols = [0xffb347, 0xffe066, 0x7fe0ff, 0xff7b9c];
@@ -952,6 +1016,11 @@ function startRun() {
   clearWorld();
   Object.assign(G, { mode: 'play', t: 0, speed: START_SPEED, dist: 0, coins: 0, danger: 0.85, slow: 0, shake: 0, nextRow: 26, lane: 1, x: 0, y: SWIM_Y, vMode: 'swim', vT: 0, vFrom: SWIM_Y, baseY: SWIM_Y, caughtT: 0, dodged: 0, treasureMsg: '' });
   G.runStart = performance.now();
+  G.vx = 0;
+  G.vy = 0;
+  G.camX = 0;
+  G.camY = 0;
+  G.run = { dives: 0, jumps: 0, powers: 0, rides: 0, chests: 0 };
   showOnly('hud');
 }
 function take(kind) {
@@ -1023,6 +1092,7 @@ function setVertical(mode) {
   G.vFrom = G.y;
   G.vMode = mode;
   G.vT = 0;
+  if (G.run && G.mode === 'play') G.run[mode === 'up' ? 'jumps' : 'dives']++;
   (mode === 'up' ? sfx.up : sfx.down)();
 }
 function move(dir) {
@@ -1042,9 +1112,41 @@ function hitObstacle(a) {
   if (navigator.vibrate) navigator.vibrate(80);
   if (G.danger >= 1) caught();
 }
+// Erfahrung gutschreiben; bei jedem neuen Level gibt es die Belohnung aus dem Belohnungspfad
+function unlockName(u) {
+  if (u.type === 'skin') return `Skin „${DIVER_SKINS.find((x) => x.id === u.id).name}“`;
+  if (u.type === 'tank') return `Rucksack „${TANKS.find((x) => x.id === u.id).name}“`;
+  return `Hai „${SHARKS.find((x) => x.id === u.id).name}“`;
+}
+function grantUnlock(u) {
+  const list = u.type === 'skin' ? profile.skins : u.type === 'tank' ? profile.tanks : profile.sharks;
+  if (!list.includes(u.id)) list.push(u.id);
+}
+function addXp(n) {
+  const before = levelOf(profile.xp).lvl;
+  profile.xp += n;
+  const after = levelOf(profile.xp).lvl;
+  const ups = [];
+  let coins = 0;
+  const items = [];
+  for (let l = before + 1; l <= after; l++) {
+    const rw = Q.levelReward(l);
+    ups.push(l);
+    coins += rw.coins;
+    if (rw.unlock) {
+      grantUnlock(rw.unlock);
+      items.push(unlockName(rw.unlock));
+    }
+  }
+  bank += coins;
+  store.set('shark-coins', bank);
+  saveProfile();
+  const text = ups.length ? `+${fmt(coins)} C${items.length ? ` · ${items.join(', ')} freigeschaltet!` : ''}` : '';
+  return { ups, coins, items, text };
+}
 // Geheime Schatzkiste: Münzen oder ein seltener Skin
 function openTreasure() {
-  const lockedSkins = DIVER_SKINS.filter((sk) => !profile.skins.includes(sk.id));
+  const lockedSkins = DIVER_SKINS.filter((sk) => sk.price && !profile.skins.includes(sk.id));
   let msg;
   if (lockedSkins.length && Math.random() < 0.08) {
     const sk = lockedSkins[0];
@@ -1078,16 +1180,6 @@ function finish() {
   G.mode = 'over';
   showOnly('over');
   const score = Math.floor(G.dist) + G.coins * 10;
-  // Erfahrung: Strecke + Münzen; Level-Aufstieg gibt Münzen
-  const before = levelOf(profile.xp).lvl;
-  const xpGain = Math.floor(G.dist / 10) + G.coins;
-  profile.xp += xpGain;
-  const after = levelOf(profile.xp).lvl;
-  let lvlBonus = 0;
-  for (let l = before + 1; l <= after; l++) lvlBonus += 100 * l;
-  bank += lvlBonus;
-  saveProfile();
-  $('oXp').innerHTML = after > before ? `<span class="newbest">LEVEL ${after}! +${lvlBonus} C</span>` : `+${xpGain} XP · Level ${after}`;
   const isBest = score > best;
   if (isBest) {
     best = score;
@@ -1095,10 +1187,18 @@ function finish() {
   }
   bank += G.coins;
   store.set('shark-coins', bank);
-  daily.coins += G.coins;
-  daily.bestDist = Math.max(daily.bestDist, Math.floor(G.dist));
-  daily.bestDodged = Math.max(daily.bestDodged, G.dodged);
-  store.set('shark-daily', daily);
+  // Aufgaben-Fortschritt + Erfahrung
+  quests = Q.ensure(quests);
+  const doneBefore = Q.claimable(quests);
+  const r = G.run || {};
+  Q.addRun(quests, { coins: G.coins, dist: Math.floor(G.dist), runs: 1, dodged: G.dodged, powers: r.powers || 0, dives: r.dives || 0, jumps: r.jumps || 0, rides: r.rides || 0, chests: r.chests || 0, runDist: Math.floor(G.dist), runCoins: G.coins });
+  saveQuests();
+  const newDone = Q.claimable(quests) - doneBefore;
+  const xpGain = 1 + Math.floor(G.dist / 80) + Math.floor(G.coins / 15);
+  const lv = addXp(xpGain);
+  $('oXp').innerHTML =
+    (lv.ups.length ? `<span class="newbest">LEVEL ${lv.ups[lv.ups.length - 1]}! ${lv.text}</span>` : `+${xpGain} XP · Level ${levelOf(profile.xp).lvl}`) +
+    (newDone > 0 ? `<br><span class="newbest">📋 ${newDone} Aufgabe${newDone > 1 ? 'n' : ''} geschafft!</span>` : '');
   top = [...top, { score, dist: Math.floor(G.dist), coins: G.coins, day: today }].sort((a, b) => b.score - a.score).slice(0, 10);
   store.set('shark-top', top);
   syncOnline();
@@ -1125,8 +1225,11 @@ function updateFish(t, dt) {
   for (let i = 0; i < FISH; i++) {
     const f = fishData[i];
     const sc = schools[f.school];
-    fishM.makeRotationY(sc.dir > 0 ? -Math.PI / 2 : Math.PI / 2);
-    fishM.setPosition(sc.x + f.ox + Math.sin(t * 2 + f.ph) * 0.2, sc.y + f.oy + Math.sin(t * 3 + f.ph) * 0.1, sc.z + f.oz);
+    // Schwimmbewegung: leichtes Hin-und-her-Wedeln
+    fishE.set(0, (sc.dir > 0 ? -Math.PI / 2 : Math.PI / 2) + Math.sin(t * 9 + f.ph) * 0.22, Math.sin(t * 2 + f.ph) * 0.08);
+    fishQ.setFromEuler(fishE);
+    fishP.set(sc.x + f.ox + Math.sin(t * 2 + f.ph) * 0.2, sc.y + f.oy + Math.sin(t * 3 + f.ph) * 0.1, sc.z + f.oz);
+    fishM.compose(fishP, fishQ, fishS);
     fishes.setMatrixAt(i, fishM);
   }
   fishes.instanceMatrix.needsUpdate = true;
@@ -1147,7 +1250,11 @@ function update(dt) {
   if (playing) G.dist += dz;
 
   // Spieler: Bahn + Höhe
-  G.x += (LANES[G.lane] - G.x) * Math.min(1, dt * 12);
+  // Bahnwechsel mit weicher Feder (kein Ruckeln, kein Überschwingen)
+  const SPRING = 170;
+  G.vx = (G.vx || 0) + (SPRING * (LANES[G.lane] - G.x) - 2 * Math.sqrt(SPRING) * G.vx) * dt;
+  G.x += G.vx * dt;
+  const prevY = G.y;
   // Delfin-Ritt: hoch über allen Hindernissen
   G.baseY += ((G.power.ride > 0 ? RIDE_Y : SWIM_Y) - G.baseY) * Math.min(1, dt * 4);
   if (G.vMode !== 'swim') {
@@ -1162,6 +1269,7 @@ function update(dt) {
       G.y = G.baseY;
     }
   } else G.y = G.baseY;
+  G.vy = lerp(G.vy || 0, dt > 0 ? (G.y - prevY) / dt : 0, Math.min(1, dt * 10));
   updateFish(t, dt);
   if (G.mode === 'menu') {
     rideDolphin.visible = false;
@@ -1206,14 +1314,21 @@ function update(dt) {
     rideDolphin.rotation.set(Math.sin(t * 4) * 0.08, 0, -(LANES[G.lane] - G.x) * 0.25);
     rideDolphin.userData.tail.rotation.x = Math.sin(t * 9) * 0.5;
   }
-  const tilt = (LANES[G.lane] - G.x) * 0.25;
-  diver.rotation.set(G.vMode === 'up' ? -0.5 * Math.sin(Math.min(1, G.vT / 0.85) * Math.PI) : G.vMode === 'down' ? 0.5 * Math.sin(Math.min(1, G.vT / 0.85) * Math.PI) : 0, 0, -tilt);
+  // Neigung aus der echten Bewegung: in die Kurve legen, Kopf hoch/runter beim Auf- und Abtauchen
+  const roll = Math.max(-0.6, Math.min(0.6, -G.vx * 0.07));
+  const pitch = Math.max(-0.6, Math.min(0.6, -G.vy * 0.09));
+  const yaw = Math.max(-0.35, Math.min(0.35, -G.vx * 0.035));
+  diver.rotation.set(lerp(diver.rotation.x, pitch, Math.min(1, dt * 12)), lerp(diver.rotation.y, yaw, Math.min(1, dt * 12)), lerp(diver.rotation.z, roll, Math.min(1, dt * 12)));
   const ud = diver.userData;
-  const kick = Math.sin(t * (playing ? 10 : 6));
+  // Beinschlag und Armzüge laufen über eine eigene Phase (ändert sich weich mit dem Tempo)
+  G.swimPh = (G.swimPh || 0) + dt * (playing ? 7 + G.speed * 0.12 : 5);
+  const kick = Math.sin(G.swimPh);
   ud.legs[0].rotation.x = kick * 0.45;
   ud.legs[1].rotation.x = -kick * 0.45;
-  ud.arms[0].rotation.y = 0.2 + Math.sin(t * 5) * 0.25;
-  ud.arms[1].rotation.y = -0.2 - Math.sin(t * 5) * 0.25;
+  ud.arms[0].rotation.y = 0.2 + Math.sin(G.swimPh * 0.5) * 0.25;
+  ud.arms[1].rotation.y = -0.2 - Math.sin(G.swimPh * 0.5) * 0.25;
+  ud.body.rotation.z = Math.sin(G.swimPh * 0.5) * 0.06;
+  ud.head.rotation.y = Math.sin(G.swimPh * 0.5 + 1) * 0.08;
 
   // Hai: Abstand je nach Gefahr, folgt der Bahn verzögert
   const sz = 11 - G.danger * 8.6 + (G.mode === 'caught' ? -1.2 * Math.min(1, G.caughtT * 3) : 0);
@@ -1321,7 +1436,9 @@ function update(dt) {
             banner('🐬 DELFIN-RITT! Flieg über alles drüber!');
           }
         }
-        daily.powers++;
+        G.run.powers++;
+        if (p.kind === 'ride') G.run.rides++;
+        if (p.kind === 'treasure') G.run.chests++;
         p.obj.visible = false;
         G.pickup = null;
         sfx.power();
@@ -1357,11 +1474,17 @@ function update(dt) {
   G.shake = Math.max(0, G.shake - dt * 2.5);
   const warn = Math.max(0, (G.danger - 0.4) / 0.6);
   $('warn').style.boxShadow = `inset 0 0 ${80 + warn * 80}px ${warn * 50}px rgba(255,30,30,${(warn * 0.55).toFixed(2)})`;
+  // Wackeln mit weichem Rauschen statt Zufall pro Bild
   const sh = G.shake * 0.25;
+  const nx = Math.sin(t * 37) * 0.6 + Math.sin(t * 23 + 1) * 0.4;
+  const ny = Math.sin(t * 31 + 2) * 0.6 + Math.sin(t * 19) * 0.4;
   const cb = smoothstep(G.camBlend ?? 1);
   const rideLift = (G.baseY - SWIM_Y) * 0.55;
-  camera.position.set(lerp(0, CAM.x + G.x * 0.35, cb) + (Math.random() - 0.5) * sh, lerp(1.9, CAM.y + rideLift, cb) + (Math.random() - 0.5) * sh, lerp(6.2, CAM.z, cb));
-  camera.lookAt(lerp(-0.3, G.x * 0.3, cb), lerp(1.9, CAM.lookY, cb), lerp(0, CAM.lookZ, cb));
+  // Kamera folgt weich hinterher
+  G.camX = lerp(G.camX ?? G.x, G.x, Math.min(1, dt * 5));
+  G.camY = lerp(G.camY ?? 0, rideLift + (G.y - G.baseY) * 0.25, Math.min(1, dt * 4));
+  camera.position.set(lerp(0, CAM.x + G.camX * 0.35, cb) + nx * sh * 0.5, lerp(1.9, CAM.y + G.camY, cb) + ny * sh * 0.5, lerp(6.2, CAM.z, cb));
+  camera.lookAt(lerp(-0.3, G.camX * 0.3, cb), lerp(1.9, CAM.lookY + G.camY * 0.5, cb), lerp(0, CAM.lookZ, cb));
 }
 
 // --------------------------------------------------------------- Steuerung ---
@@ -1423,8 +1546,8 @@ const fmt = (n) => Number(n).toLocaleString('de-DE');
 const PANELS = ['ranking', 'skins', 'sharks', 'locker', 'missions', 'wheel', 'friends', 'settings'];
 function updateMenu() {
   $('mCoins').textContent = fmt(bank);
-  const open = MISSIONS.filter((m) => m.val() >= m.goal && !daily.claimed.includes(m.id)).length;
-  $('missionDot').classList.toggle('hidden', !open);
+  quests = Q.ensure(quests);
+  $('missionDot').classList.toggle('hidden', !Q.claimable(quests));
   $('wheelDot').classList.toggle('hidden', Date.now() - profile.wheelAt < WHEEL_COOLDOWN);
   $('musicBtn').textContent = settings.music ? 'AN' : 'AUS';
   $('sfxBtn').textContent = settings.sfx ? 'AN' : 'AUS';
@@ -1467,6 +1590,12 @@ function makeThumbs() {
     d.userData.head.rotation.x = -0.95;
     thumbs[`d-${sk.id}`] = shot(d, [0, 0.2, 4.2], [0, 0.15, 0]);
   }
+  for (const tk of TANKS) {
+    const d = makeDiver(profile.skin, tk.id);
+    d.rotation.order = 'YXZ';
+    d.rotation.set(1.15, 0.5, -0.08); // Rücken zur Kamera
+    thumbs[`t-${tk.id}`] = shot(d, [0, 0.2, 4.2], [0, 0.15, 0]);
+  }
   for (const sv of SHARKS) {
     const h = makeShark(sv.id);
     h.rotation.set(0.1, -Math.PI / 2 - 0.5, 0);
@@ -1487,10 +1616,22 @@ function itemList(kind) {
     .map((it) => {
       const has = owned.includes(it.id);
       const on = cur === it.id;
-      const btn = on ? '<em>✓</em>' : has ? `<button class="claim" data-pick="${it.id}">WÄHLEN</button>` : `<button class="claim buy" data-buy="${it.id}" ${bank >= it.price ? '' : 'disabled'}>${fmt(it.price)} C</button>`;
+      const btn = on ? '<em>✓</em>' : has ? `<button class="claim" data-pick="${it.id}">WÄHLEN</button>` : it.price ? `<button class="claim buy" data-buy="${it.id}" ${bank >= it.price ? '' : 'disabled'}>${fmt(it.price)} C</button>` : `<em class="lockinfo">${lockText(it)}</em>`;
       return `<div class="skin${on ? ' on' : ''}">${thumbImg(`${kind === 'skins' ? 'd' : 's'}-${it.id}`, !has)}<div>${it.name}<small>${on ? 'ausgewählt' : has ? 'freigeschaltet' : '🔒 gesperrt'}</small></div>${btn}</div>`;
     })
-    .join('');
+    .join('') + (kind === 'skins' ? tankList() : '');
+}
+const lockText = (it) => (it.level ? `🔒 Level ${it.level}` : it.event ? '🎄 Event' : `🔒 ${fmt(it.price)} C`);
+function tankList() {
+  return (
+    '<p class="sub">🎒 RUCKSACK</p>' +
+    TANKS.map((tk) => {
+      const has = profile.tanks.includes(tk.id);
+      const on = profile.tank === tk.id;
+      const btn = on ? '<em>✓</em>' : has ? `<button class="claim" data-tank="${tk.id}">WÄHLEN</button>` : `<em class="lockinfo">${lockText(tk)}</em>`;
+      return `<div class="skin${on ? ' on' : ''}">${thumbImg(`t-${tk.id}`, !has)}<div>${tk.name}<small>${on ? 'ausgewählt' : has ? 'freigeschaltet' : '🔒 gesperrt'}</small></div>${btn}</div>`;
+    }).join('')
+  );
 }
 function bindItems(kind) {
   const list = kind === 'skins' ? DIVER_SKINS : SHARKS;
@@ -1506,6 +1647,12 @@ function bindItems(kind) {
     sfx.power();
   }));
   box.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => pick(kind, b.dataset.pick)));
+  box.querySelectorAll('[data-tank]').forEach((b) => b.addEventListener('click', () => {
+    profile.tank = b.dataset.tank;
+    setDiverSkin(profile.skin);
+    saveProfile();
+    openPanel('skins');
+  }));
 }
 function pick(kind, id) {
   if (kind === 'skins') {
@@ -1642,7 +1789,7 @@ let lastSync = '';
 async function syncOnline() {
   if (!profile.name || !NAME_RE.test(profile.name)) return 'noname';
   try {
-    lastSync = await savePlayer({ id: profile.id, secret: profile.secret, name: profile.name, best, skin: profile.skin, shark: profile.shark, level: levelOf(profile.xp).lvl });
+    lastSync = await savePlayer({ id: profile.id, secret: profile.secret, name: profile.name, best, skin: SERVER_SKINS.includes(profile.skin) ? profile.skin : 'standard', shark: SERVER_SHARKS.includes(profile.shark) ? profile.shark : 'white', level: levelOf(profile.xp).lvl });
   } catch {
     lastSync = 'offline';
   }
@@ -1802,9 +1949,27 @@ if (pendingFriend) {
 // ---- Spind ----
 function renderLocker() {
   const lv = levelOf(profile.xp);
-  const all = [...DIVER_SKINS.map((x) => ({ ...x, key: `d-${x.id}`, has: profile.skins.includes(x.id) })), ...SHARKS.map((x) => ({ ...x, key: `s-${x.id}`, has: profile.sharks.includes(x.id) }))];
-  $('lockerTop').innerHTML = `<div class="lvl">LEVEL <b>${lv.lvl}</b></div><div class="bar"><i style="width:${(lv.rest / lv.need) * 100}%"></i></div><small>${lv.rest} / ${lv.need} XP bis Level ${lv.lvl + 1} · ${all.filter((x) => x.has).length}/${all.length} freigeschaltet</small>`;
-  $('lockerGrid').innerHTML = all.map((x) => `<div class="locker${x.has ? '' : ' off'}">${thumbImg(x.key, !x.has)}<small>${x.name}</small><em>${x.has ? '✓' : `🔒 ${fmt(x.price)} C`}</em></div>`).join('');
+  const all = [
+    ...DIVER_SKINS.map((x) => ({ ...x, key: `d-${x.id}`, has: profile.skins.includes(x.id) })),
+    ...TANKS.filter((x) => x.level).map((x) => ({ ...x, key: `t-${x.id}`, has: profile.tanks.includes(x.id) })),
+    ...SHARKS.map((x) => ({ ...x, key: `s-${x.id}`, has: profile.sharks.includes(x.id) })),
+  ];
+  $('lockerTop').innerHTML = `<div class="lvl">LEVEL <b>${lv.lvl}</b>${lv.max ? ' 👑' : ''}</div><div class="bar"><i style="width:${(lv.rest / lv.need) * 100}%"></i></div><small>${lv.max ? 'Maximales Level erreicht!' : `${fmt(lv.rest)} / ${fmt(lv.need)} XP bis Level ${lv.lvl + 1}`} · ${all.filter((x) => x.has).length}/${all.length} freigeschaltet</small>`;
+  $('lockerGrid').innerHTML = all.map((x) => `<div class="locker${x.has ? '' : ' off'}">${thumbImg(x.key, !x.has)}<small>${x.name}</small><em>${x.has ? '✓' : lockText(x)}</em></div>`).join('');
+  // Belohnungspfad: die nächsten Level + alle großen Meilensteine
+  const shown = new Set();
+  for (let l = Math.max(2, lv.lvl - 1); l <= Math.min(Q.MAX_LEVEL, lv.lvl + 8); l++) shown.add(l);
+  for (const l of Object.keys(Q.LEVEL_UNLOCKS)) shown.add(Number(l));
+  $('rewardPath').innerHTML = [...shown]
+    .sort((a, b) => a - b)
+    .map((l) => {
+      const rw = Q.levelReward(l);
+      const got = lv.lvl >= l;
+      const u = rw.unlock;
+      const img = u ? thumbImg(`${u.type === 'skin' ? 'd' : u.type === 'tank' ? 't' : 's'}-${u.id}`, !got) : '<span class="lvcoin">C</span>';
+      return `<div class="path${got ? ' got' : ''}${u ? ' big' : ''}${l === lv.lvl + 1 ? ' next' : ''}"><b>Lv ${l}</b>${img}<div>+${fmt(rw.coins)} C${u ? `<small>${unlockName(u)}</small>` : ''}</div><em>${got ? '✓' : '🔒'}</em></div>`;
+    })
+    .join('');
 }
 
 // ---- Rangliste: eigene Läufe oder weltweit ----
@@ -1836,28 +2001,75 @@ document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click
   rankTab = b.dataset.tab;
   renderRanking();
 }));
+// ---- Aufgaben: täglich, wöchentlich, 14-Tage-Event, Dauer ----
+let questTab = 'day';
+function timeLeft(ms) {
+  const d = Math.floor(ms / 86400000);
+  const h = Math.floor((ms % 86400000) / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return d ? `${d} T ${h} Std` : h ? `${h} Std ${m} Min` : `${m} Min`;
+}
+function renderQuests() {
+  quests = Q.ensure(quests);
+  saveQuests();
+  document.querySelectorAll('[data-qtab]').forEach((b) => {
+    b.classList.toggle('on', b.dataset.qtab === questTab);
+    const sc = b.dataset.qtab;
+    const n = quests[sc].tasks.filter((t) => !t.claimed && Q.isDone(quests, sc, t)).length;
+    b.querySelector('i')?.classList.toggle('hidden', !n);
+  });
+  const sc = questTab;
+  let head = '';
+  if (sc === 'day') head = `<p class="hint">Neue Aufgaben in ${timeLeft(Q.msUntil('day'))}</p>`;
+  if (sc === 'week') head = `<p class="hint">Neue Wochenaufgaben in ${timeLeft(Q.msUntil('week'))}</p>`;
+  if (sc === 'endless') head = '<p class="hint">Immer 3 Aufgaben. Geschafft = sofort eine neue, etwas schwerere.</p>';
+  if (sc === 'event') {
+    const has = profile.skins.includes('santa');
+    head = `<div class="event">${thumbImg('d-santa', !has)}<div><b>🎄 WEIHNACHTS-EVENT</b><small>Schaffe alle 5 Aufgaben in 14 Tagen und hol dir den Weihnachtsmann-Skin!${has ? ' (Hast du schon – diesmal gibt es 10.000 C + 150 XP.)' : ''}</small><small>Endet in ${timeLeft(Q.msUntil('event'))} · ${quests.event.tasks.filter((t) => t.claimed).length}/5 geschafft</small></div></div>`;
+  }
+  const rows = quests[sc].tasks
+    .map((t, i) => {
+      const v = Math.min(t.goal, Q.value(quests, sc, t));
+      const done = v >= t.goal;
+      return `<div class="mission"><div>${Q.taskText(t)}<div class="bar"><i style="width:${(v / t.goal) * 100}%"></i></div><small>${fmt(v)} / ${fmt(t.goal)} · Belohnung: ${t.xp} XP + ${fmt(t.coins)} C</small></div>${t.claimed ? '<em>✓</em>' : `<button class="claim" data-q="${i}" ${done ? '' : 'disabled'}>HOLEN</button>`}</div>`;
+    })
+    .join('');
+  const final = sc === 'event' && quests.event.final ? '<p class="row newbest" style="text-align:center">🎅 Event geschafft!</p>' : '';
+  $('missionList').innerHTML = head + rows + final;
+  $('missionList').querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => {
+    const rw = Q.claim(quests, sc, Number(b.dataset.q));
+    if (!rw) return;
+    bank += rw.coins;
+    store.set('shark-coins', bank);
+    let msg = `+${rw.xp} XP · +${fmt(rw.coins)} C`;
+    if (sc === 'event' && Q.eventComplete(quests) && !quests.event.final) {
+      quests.event.final = true;
+      if (!profile.skins.includes('santa')) {
+        profile.skins.push('santa');
+        msg = '🎅 WEIHNACHTSMANN-SKIN freigeschaltet!';
+      } else {
+        bank += 10000;
+        rw.xp += 150;
+        msg = '🎄 Event geschafft: +10.000 C + 150 XP';
+      }
+    }
+    saveQuests();
+    const lv = addXp(rw.xp);
+    if (lv.ups.length) msg += ` · ⭐ LEVEL ${lv.ups[lv.ups.length - 1]}! ${lv.text}`;
+    banner(msg);
+    sfx.power();
+    renderQuests();
+    updateMenu();
+  }));
+}
+document.querySelectorAll('[data-qtab]').forEach((b) => b.addEventListener('click', () => {
+  questTab = b.dataset.qtab;
+  renderQuests();
+}));
 function openPanel(id) {
   makeThumbs();
   if (id === 'ranking') renderRanking();
-  if (id === 'missions') {
-    $('missionList').innerHTML = MISSIONS.map((m) => {
-      const v = Math.min(m.goal, m.val());
-      const done = v >= m.goal;
-      const got = daily.claimed.includes(m.id);
-      return `<div class="mission"><div>${m.text}<div class="bar"><i style="width:${(v / m.goal) * 100}%"></i></div><small>${fmt(v)} / ${fmt(m.goal)}</small></div>${got ? '<em>✓</em>' : `<button class="claim" data-m="${m.id}" ${done ? '' : 'disabled'}>+${m.reward} C</button>`}</div>`;
-    }).join('');
-    document.querySelectorAll('[data-m]').forEach((b) => b.addEventListener('click', () => {
-      const m = MISSIONS.find((x) => x.id === b.dataset.m);
-      if (!m || daily.claimed.includes(m.id) || m.val() < m.goal) return;
-      daily.claimed.push(m.id);
-      bank += m.reward;
-      store.set('shark-coins', bank);
-      store.set('shark-daily', daily);
-      sfx.power();
-      openPanel('missions');
-      updateMenu();
-    }));
-  }
+  if (id === 'missions') renderQuests();
   if (id === 'skins' || id === 'sharks') {
     $(`${id}Coins`).textContent = fmt(bank);
     $(`${id}List`).innerHTML = itemList(id);
@@ -1948,4 +2160,4 @@ document.fonts?.load('80px "Lilita One"').then(drawCoinFace).catch(() => {});
 window.addEventListener('pointerdown', () => startMusic(), { once: true });
 
 // zum Testen
-window.__shark = { G, coinPool, move, setVertical, startRun, openPanel, profile, addFriend, shareLink, get bank() { return bank; }, set bank(v) { bank = v; } };
+window.__shark = { G, coinPool, addXp, Q, get quests() { return quests; }, move, setVertical, startRun, openPanel, profile, addFriend, shareLink, get bank() { return bank; }, set bank(v) { bank = v; } };

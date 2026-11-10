@@ -114,13 +114,29 @@
       .field { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 18px; padding: 8px 12px; border-radius: 12px; border: 3px solid #0b2233; background: #e8f6ff; color: #0b2233; margin: 4px 0 8px; }
       #shareBtn { width: 100%; font-size: 20px; padding: 10px 0; }
       #shareMsg { text-align: center; color: #7ddc4a; min-height: 20px; font-size: 15px; }
-      #banner { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 92px); transform: translateX(-50%); background: rgba(8, 30, 50, 0.9); border: 4px solid #0b2233; border-radius: 18px; padding: 8px 16px; font-size: 19px; color: #ffd23f; white-space: nowrap; z-index: 4; animation: pop 0.3s ease-out; }
+      #banner { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 92px); transform: translateX(-50%); background: rgba(8, 30, 50, 0.9); border: 4px solid #0b2233; border-radius: 18px; padding: 8px 16px; font-size: 19px; color: #ffd23f; max-width: 86vw; text-align: center; box-sizing: border-box; z-index: 8; animation: pop 0.3s ease-out; }
       @keyframes pop { from { transform: translateX(-50%) scale(0.6); } to { transform: translateX(-50%) scale(1); } }
       #oXp { font-size: 18px; color: #bfeaff; }
       .tabs { display: flex; gap: 8px; justify-content: center; margin-bottom: 8px; }
       .tabs .toggle { font-size: 15px; padding: 6px 12px; background: #2b4a6b; }
       .tabs .toggle.on { background: linear-gradient(#ffd24a, #ff9800); }
       .rank.me { background: rgba(125, 220, 74, 0.3); }
+      .qtabs { flex-wrap: wrap; }
+      .qtabs .toggle { position: relative; font-size: 13px; padding: 6px 9px; }
+      .tdot { position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; border-radius: 50%; background: #e5383b; border: 2px solid #0b2233; }
+      .lockinfo { font-size: 13px !important; color: #bfeaff; white-space: nowrap; }
+      .event { display: flex; gap: 10px; align-items: center; background: linear-gradient(90deg, rgba(214,31,38,0.45), rgba(46,125,50,0.45)); border: 3px solid #0b2233; border-radius: 14px; padding: 8px; margin-bottom: 6px; font-size: 16px; }
+      .event small { display: block; font-size: 12px; opacity: 0.9; margin-top: 2px; }
+      .path { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.22); border-radius: 12px; padding: 6px 10px; margin: 5px 0; font-size: 15px; }
+      .path b { font-weight: normal; width: 52px; color: #bfeaff; }
+      .path div { flex: 1; color: #ffd23f; }
+      .path small { display: block; color: #fff; font-size: 12px; }
+      .path em { font-style: normal; }
+      .path .thumb { width: 44px; height: 44px; }
+      .path.got { opacity: 0.55; }
+      .path.next { outline: 3px solid #7ddc4a; }
+      .path.big { background: rgba(255, 210, 63, 0.18); }
+      .lvcoin { width: 44px; height: 30px; display: flex; align-items: center; justify-content: center; color: #c98a00; background: radial-gradient(circle at 35% 30%, #fff3a6, #ffd23f 55%, #e8a400); border: 3px solid #0b2233; border-radius: 50%; box-sizing: border-box; width: 30px; margin: 0 7px; }
       .sub { font-size: 15px; color: #bfeaff; margin: 12px 0 2px; }
     </style>
   </head>
@@ -167,8 +183,10 @@
         <p class="hint">Deine Münzen: <b id="skinsCoins">0</b> C · Tipp: In seltenen Schatzkisten steckt manchmal ein Skin!</p></div></div>
       <div id="p-sharks" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>HAI-SAMMLUNG</h2><div id="sharksList"></div>
         <p class="hint">Deine Münzen: <b id="sharksCoins">0</b> C · Dein Hai jagt dich im Spiel.</p></div></div>
-      <div id="p-locker" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>SPIND</h2><div id="lockerTop"></div><div id="lockerGrid" class="lockgrid"></div>
-        <p class="hint">Jeder Lauf gibt Erfahrung. Jedes neue Level schenkt dir Münzen.</p></div></div>
+      <div id="p-locker" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>SPIND</h2><div id="lockerTop"></div>
+        <p class="sub">⭐ BELOHNUNGSPFAD (bis Level 100)</p><div id="rewardPath"></div>
+        <p class="sub">🗄️ SAMMLUNG</p><div id="lockerGrid" class="lockgrid"></div>
+        <p class="hint">Jeder Lauf und jede Aufgabe gibt Erfahrung (XP). Jedes Level braucht etwas mehr XP als das davor.</p></div></div>
       <div id="p-wheel" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>GLÜCKSRAD</h2>
         <div class="wheelWrap"><div class="pointer"></div><canvas id="wheelCanvas" width="520" height="520"></canvas><div class="hub">C</div></div>
         <button id="spinBtn" class="btn">DREHEN!</button><div id="wheelWin"></div><p class="hint">Einmal alle 24 Stunden: 100 bis 1.000 Münzen.</p></div></div>
@@ -180,7 +198,9 @@
         <p class="hint">Such Freunde nach ihrem Namen oder teile deinen Link. Den Hai des gewählten Freundes siehst du im Menü-Hintergrund.</p></div></div>
       <div id="p-addfriend" class="modal hidden"><div class="box panel"><h2 style="margin:0 0 12px">NEUER FREUND</h2><p class="row" id="addFriendText" style="text-align:center"></p>
         <div style="display:flex;gap:10px;justify-content:center"><button id="addFriendYes" class="btn small" style="background:linear-gradient(#8ee04a,#4caf2a)">HINZUFÜGEN</button><button id="addFriendNo" class="btn small">NEIN</button></div></div></div>
-      <div id="p-missions" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>TÄGLICHE MISSIONEN</h2><div id="missionList"></div><p class="hint">Neue Missionen jeden Tag.</p></div></div>
+      <div id="p-missions" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>AUFGABEN</h2>
+        <div class="tabs qtabs"><button class="toggle" data-qtab="day">TAG<i class="tdot hidden"></i></button><button class="toggle" data-qtab="week">WOCHE<i class="tdot hidden"></i></button><button class="toggle" data-qtab="event">🎄 EVENT<i class="tdot hidden"></i></button><button class="toggle" data-qtab="endless">DAUER<i class="tdot hidden"></i></button></div>
+        <div id="missionList"></div></div></div>
       <div id="p-settings" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>EINSTELLUNGEN</h2>
         <div class="set"><span>🎵 Musik</span><button id="musicBtn" class="toggle">AN</button></div>
         <div class="set"><span>🔊 Sounds</span><button id="sfxBtn" class="toggle">AN</button></div>
