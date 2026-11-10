@@ -414,46 +414,198 @@ for (let i = 0; i < 6; i++) {
   rays.push(r);
 }
 // Deko am Rand (Korallen, Seetang, Steine) – wird immer wieder nach hinten gesetzt
+// ---- lebendiges Riff: Bausteine (bunte Korallen, Anemonen, Seetang, Seesterne) ----
+const REEF_COLS = [0xff6b8b, 0xff9f1c, 0xb06bff, 0x3fd1c4, 0xffd23f, 0xff5a8a, 0x5ad1ff, 0x7ddc4a];
+const rc = () => REEF_COLS[Math.floor(Math.random() * REEF_COLS.length)];
+const lighter = (c) => new THREE.Color(c).lerp(new THREE.Color(0xffffff), 0.35).getHex();
+function addSway(g, obj, amp, axis = 'z') {
+  obj.userData.ph = Math.random() * 6;
+  obj.userData.amp = amp;
+  obj.userData.axis = axis;
+  (g.userData.sway ||= []).push(obj);
+}
+function swayAll(g, t) {
+  if (!g.userData.sway) return;
+  for (const s of g.userData.sway) s.rotation[s.userData.axis] = Math.sin(t * 1.8 + s.userData.ph) * s.userData.amp;
+}
+// Geweihkoralle: Stamm mit Ästen und hellen Spitzen
+function branchCoral(color, h = 1.2) {
+  const g = new THREE.Group();
+  const trunk = part(new THREE.CylinderGeometry(0.07, 0.13, h * 0.55, 6), color, { w: 0.1 });
+  trunk.position.y = h * 0.27;
+  g.add(trunk);
+  const tip = lighter(color);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + Math.random();
+    const br = new THREE.Group();
+    br.position.y = h * 0.5;
+    br.rotation.set(Math.sin(a) * 0.6, 0, Math.cos(a) * 0.6);
+    const arm = part(new THREE.CylinderGeometry(0.05, 0.07, h * 0.5, 5), color, { w: 0.12 });
+    arm.position.y = h * 0.25;
+    br.add(arm);
+    const ball = part(new THREE.SphereGeometry(0.09, 6, 5), tip, { w: 0.15 });
+    ball.position.y = h * 0.5;
+    br.add(ball);
+    g.add(br);
+  }
+  return g;
+}
+// Hirnkoralle: dicke, kantige Kugel
+function brainCoral(color, r = 0.45) {
+  const m = part(new THREE.IcosahedronGeometry(r, 1), color, { w: 0.06, extra: { flatShading: true } });
+  m.scale.set(1, 0.7, 1);
+  m.position.y = r * 0.45;
+  return m;
+}
+// Fächerkoralle
+function fanCoral(color, r = 0.6) {
+  const g = new THREE.Group();
+  const fan = part(new THREE.CircleGeometry(r, 12, 0, Math.PI), color, { w: 0.06, extra: { side: THREE.DoubleSide } });
+  fan.position.y = 0.25;
+  g.add(fan);
+  const rim = part(new THREE.TorusGeometry(r, 0.04, 5, 14, Math.PI), lighter(color), { outline: false });
+  rim.position.y = 0.25;
+  g.add(rim);
+  const stem = part(new THREE.CylinderGeometry(0.04, 0.06, 0.3, 5), color, { w: 0.15 });
+  stem.position.y = 0.12;
+  g.add(stem);
+  return g;
+}
+// Röhrenschwämme
+function tubeSponge(color, h = 0.8) {
+  const g = new THREE.Group();
+  for (let i = 0; i < 3; i++) {
+    const hh = h * (0.6 + i * 0.25);
+    const tube = part(new THREE.CylinderGeometry(0.13, 0.11, hh, 8, 1, true), color, { w: 0.08, extra: { side: THREE.DoubleSide } });
+    tube.position.set((i - 1) * 0.2, hh / 2, (i % 2) * 0.12);
+    g.add(tube);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.11, 8), toon(0x3a1630));
+    hole.rotation.x = -Math.PI / 2;
+    hole.position.set((i - 1) * 0.2, hh - 0.05, (i % 2) * 0.12);
+    g.add(hole);
+  }
+  return g;
+}
+// Anemone mit wehenden Tentakeln
+function anemone(owner, color) {
+  const g = new THREE.Group();
+  const base = part(new THREE.CylinderGeometry(0.22, 0.28, 0.25, 8), 0x8a3b5c, { w: 0.08 });
+  base.position.y = 0.12;
+  g.add(base);
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    const tg = new THREE.Group();
+    tg.position.set(Math.cos(a) * 0.15, 0.24, Math.sin(a) * 0.15);
+    tg.rotation.y = -a;
+    const tent = part(new THREE.CylinderGeometry(0.02, 0.045, 0.5, 4), color, { outline: false });
+    tent.position.y = 0.25;
+    tg.add(tent);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.04, 5, 4), toon(lighter(color)));
+    tip.position.y = 0.5;
+    tg.add(tip);
+    g.add(tg);
+    addSway(owner, tg, 0.35, 'z');
+  }
+  return g;
+}
+// Seetang aus 3 Gliedern (wellt sich)
+function kelp(owner, h = 3) {
+  const root = new THREE.Group();
+  let parent = root;
+  const seg = h / 3;
+  for (let i = 0; i < 3; i++) {
+    const s = new THREE.Group();
+    if (i) s.position.y = seg;
+    const stalk = part(new THREE.BoxGeometry(0.07, seg, 0.05), 0x2f8f43, { w: 0.15 });
+    stalk.position.y = seg / 2;
+    s.add(stalk);
+    const leaf = part(new THREE.BoxGeometry(0.28, seg * 0.55, 0.03), i % 2 ? 0x55b85f : 0x3fa34d, { w: 0.1 });
+    leaf.position.set(i % 2 ? 0.16 : -0.16, seg * 0.55, 0);
+    leaf.rotation.z = i % 2 ? -0.5 : 0.5;
+    s.add(leaf);
+    parent.add(s);
+    addSway(owner, s, 0.18 + i * 0.05, 'z');
+    parent = s;
+  }
+  return root;
+}
+// Seestern (flach auf dem Sand)
+function starfish(color) {
+  const sh = new THREE.Shape();
+  for (let i = 0; i <= 10; i++) {
+    const r = i % 2 ? 0.08 : 0.24;
+    const a = (i / 10) * Math.PI * 2;
+    if (!i) sh.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+    else sh.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  const m = part(new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false }), color, { w: 0.12 });
+  m.rotation.x = -Math.PI / 2;
+  m.rotation.z = Math.random() * 6;
+  m.position.y = 0.02;
+  return m;
+}
+function shellPiece() {
+  const m = part(new THREE.ConeGeometry(0.12, 0.22, 7), 0xffe0d0, { w: 0.15 });
+  m.rotation.set(Math.PI / 2, 0, Math.random() * 6);
+  m.position.y = 0.08;
+  return m;
+}
+const place = (g, obj, x, z) => {
+  obj.position.x += x;
+  obj.position.z += z;
+  g.add(obj);
+  return obj;
+};
 const decoKinds = [
+  // Korallengarten
   () => {
     const g = new THREE.Group();
-    const cols = [0xff6b8b, 0xff9f1c, 0xb06bff, 0xff5a5a];
-    for (let i = 0; i < 4; i++) {
-      const c = part(new THREE.CylinderGeometry(0.08, 0.16, 1 + Math.random(), 6), cols[i % 4], { w: 0.1 });
-      c.position.set((Math.random() - 0.5) * 0.8, 0.5, (Math.random() - 0.5) * 0.8);
-      c.rotation.z = (Math.random() - 0.5) * 0.8;
-      g.add(c);
-      const tip = part(new THREE.SphereGeometry(0.2, 8, 6), cols[(i + 1) % 4], { w: 0.1 });
-      tip.position.copy(c.position).add(new THREE.Vector3(0, 0.6, 0));
-      g.add(tip);
-    }
+    const rock = part(new THREE.DodecahedronGeometry(0.6, 0), 0x7a6f8f, { w: 0.06 });
+    rock.scale.set(1.3, 0.5, 1);
+    rock.position.y = 0.15;
+    g.add(rock);
+    place(g, branchCoral(rc(), 1 + Math.random() * 0.6), -0.3, 0);
+    place(g, brainCoral(rc(), 0.35), 0.45, 0.3);
+    place(g, Math.random() < 0.5 ? fanCoral(rc()) : tubeSponge(rc()), 0.2, -0.4);
+    if (Math.random() < 0.5) place(g, anemone(g, rc()), -0.6, 0.45);
     return g;
   },
+  // Seetang-Wald
   () => {
     const g = new THREE.Group();
-    for (let i = 0; i < 3; i++) {
-      const s = part(new THREE.BoxGeometry(0.12, 2.4 + Math.random() * 1.5, 0.05), 0x3fa34d, { w: 0.1 });
-      s.position.set(i * 0.25 - 0.25, 1.2, 0);
-      s.userData.sway = Math.random() * 6;
-      g.add(s);
-    }
-    g.userData.weed = true;
+    for (let i = 0; i < 3; i++) place(g, kelp(g, 2.4 + Math.random() * 1.6), i * 0.35 - 0.35, (i % 2) * 0.3);
     return g;
   },
+  // Sand mit Seesternen und Muscheln
   () => {
-    const r = part(new THREE.DodecahedronGeometry(0.8, 0), 0x6f7d8c, { w: 0.06 });
-    r.scale.set(1.3, 0.7, 1);
-    r.position.y = 0.3;
     const g = new THREE.Group();
+    place(g, starfish(Math.random() < 0.5 ? 0xff7a3c : 0xe5383b), 0, 0);
+    place(g, shellPiece(), 0.5, 0.3);
+    place(g, brainCoral(rc(), 0.25), -0.4, -0.3);
+    if (Math.random() < 0.6) place(g, anemone(g, rc()), 0.3, -0.5);
+    return g;
+  },
+  // großer Fels mit Korallen obendrauf
+  () => {
+    const g = new THREE.Group();
+    const r = part(new THREE.DodecahedronGeometry(0.85, 0), 0x6f7d8c, { w: 0.05 });
+    r.scale.set(1.3, 0.75, 1);
+    r.position.y = 0.35;
     g.add(r);
+    const top = place(g, Math.random() < 0.5 ? fanCoral(rc(), 0.5) : tubeSponge(rc(), 0.6), 0, 0);
+    top.position.y = 0.8;
+    const b = place(g, branchCoral(rc(), 0.9), 0.6, 0.2);
+    b.position.y = 0.3;
     return g;
   },
 ];
 const decos = [];
 for (let i = 0; i < 40; i++) {
-  const d = decoKinds[i % 3]();
+  const d = decoKinds[[0, 1, 0, 2, 3, 1, 0, 2][i % 8]]();
   const side = i % 2 ? 1 : -1;
-  d.position.set(side * (3.8 + Math.random() * 4), FLOOR_Y, -i * 2.4);
+  d.rotation.y = Math.random() * 6;
+  d.scale.setScalar(1.15 + Math.random() * 0.4);
+  d.position.set(side * (3.6 + Math.random() * 4.5), FLOOR_Y, -i * 2.4);
   scene.add(d);
   decos.push(d);
 }
@@ -514,17 +666,22 @@ const OBST = {
   coral: {
     v: 'low',
     make() {
+      // buntes Korallenriff quer über die Bahn (drüber schwimmen ↑)
       const g = new THREE.Group();
-      const cols = [0xff6b8b, 0xff9f1c, 0xff5a5a, 0xb06bff];
-      for (let i = 0; i < 6; i++) {
-        const c = part(new THREE.CylinderGeometry(0.1, 0.22, 1.6 + Math.random() * 0.8, 6), cols[i % 4], { w: 0.08 });
-        c.position.set(-0.7 + (i % 3) * 0.7, 0.9, i > 2 ? 0.3 : -0.3);
-        c.rotation.z = (Math.random() - 0.5) * 0.6;
-        g.add(c);
-        const tip = part(new THREE.SphereGeometry(0.26, 8, 6), cols[(i + 2) % 4], { w: 0.08 });
-        tip.position.set(c.position.x, 1.8 + Math.random() * 0.4, c.position.z);
-        g.add(tip);
-      }
+      const rock = part(new THREE.DodecahedronGeometry(1, 0), 0x7a6f8f, { w: 0.04 });
+      rock.scale.set(1.2, 0.5, 0.65);
+      rock.position.y = 0.3;
+      g.add(rock);
+      place(g, branchCoral(0xff6b8b, 2.2), -0.55, 0);
+      place(g, branchCoral(0xff9f1c, 1.9), 0.55, 0.1);
+      place(g, brainCoral(0xb06bff, 0.45), 0, 0.3).position.y += 0.35;
+      const fan = place(g, fanCoral(0xffd23f, 0.75), 0.05, -0.25);
+      fan.position.y = 0.55;
+      const an = place(g, anemone(g, 0x3fd1c4), -0.15, 0.35);
+      an.position.y = 0.5;
+      place(g, tubeSponge(0xff5a8a, 0.7), 0.85, -0.2);
+      place(g, branchCoral(0x3fd1c4, 2.0), 0.05, -0.1);
+      place(g, brainCoral(0xff9f1c, 0.38), -0.85, -0.25).position.y += 0.2;
       return g;
     },
   },
@@ -741,12 +898,12 @@ function texPart(geo, mat, outline = true) {
 // Ursprung = vordere Kante unten Mitte; die Plattform reicht nach hinten (-z)
 const PLAT = {
   wreck: {
-    len: 22,
-    ramp: 6, // schräge Planke vorne: man schwimmt automatisch hoch
+    len: 17,
+    ramp: 5, // schräge Planke vorne: man schwimmt automatisch hoch
     make() {
       const g = new THREE.Group();
-      const L = 22 - 6;
-      const zc = -6 - L / 2;
+      const L = 17 - 5;
+      const zc = -5 - L / 2;
       // Rumpf aus Holzplanken (mit Algen unten)
       const hull = texPart(new THREE.BoxGeometry(1.9, PLAT_H, L), WOOD.hull(L));
       hull.position.set(0, PLAT_H / 2, zc);
@@ -768,7 +925,7 @@ const PLAT = {
       for (const sx of [-1, 1]) {
         // Messing-Bullaugen
         for (let i = 0; i < 4; i++) {
-          const z = -8 - i * 3.6 + (sx > 0 ? 1.2 : 0);
+          const z = -6.5 - i * 2.7 + (sx > 0 ? 1 : 0);
           const ring = part(new THREE.TorusGeometry(0.22, 0.06, 6, 14), 0xd9a400, { w: 0.1, extra: { emissive: 0x2a1a00 } });
           ring.rotation.y = Math.PI / 2;
           ring.position.set(sx * 0.97, PLAT_H * 0.66, z);
@@ -779,7 +936,7 @@ const PLAT = {
           g.add(glass);
         }
         // großes Loch im Rumpf mit abgebrochenen Brettern
-        const hz = sx > 0 ? -16 : -11;
+        const hz = sx > 0 ? -13 : -9;
         const hole = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.95), new THREE.MeshBasicMaterial({ color: 0x140c06 }));
         hole.rotation.y = sx * Math.PI / 2;
         hole.position.set(sx * 0.962, PLAT_H * 0.32, hz);
@@ -794,13 +951,13 @@ const PLAT = {
         // Muscheln/Seepocken unten am Rumpf
         for (let k = 0; k < 7; k++) {
           const b = part(new THREE.SphereGeometry(0.07 + (k % 3) * 0.03, 6, 5), 0xd9d4c7, { w: 0.15 });
-          b.position.set(sx * 0.96, 0.45 + (k % 3) * 0.18, -7.5 - k * 2.1 - (sx > 0 ? 0.7 : 0));
+          b.position.set(sx * 0.96, 0.45 + (k % 3) * 0.18, -6.5 - k * 1.5 - (sx > 0 ? 0.6 : 0));
           g.add(b);
         }
         // Seetang hängt über die Bordwand
         for (let k = 0; k < 3; k++) {
           const weed = new THREE.Group();
-          weed.position.set(sx * 1.03, PLAT_H + 0.05, -9 - k * 4.5 - (sx > 0 ? 2 : 0));
+          weed.position.set(sx * 1.03, PLAT_H + 0.05, -7 - k * 3.4 - (sx > 0 ? 1.5 : 0));
           const strand = part(new THREE.BoxGeometry(0.05, 1.3 + k * 0.3, 0.16), 0x3fa34d, { w: 0.12 });
           strand.position.y = -(1.3 + k * 0.3) / 2;
           weed.add(strand);
@@ -814,7 +971,7 @@ const PLAT = {
         for (const sx of [-1, 1]) {
           if ((i + (sx > 0 ? 1 : 0)) % 3 === 0) continue;
           const post = part(new THREE.BoxGeometry(0.1, 0.45 + (i % 2) * 0.25, 0.1), 0x4a2e16, { w: 0.08 });
-          post.position.set(sx * 0.95, PLAT_H + 0.35, -7 - i * 2.6);
+          post.position.set(sx * 0.95, PLAT_H + 0.35, -6 - i * 2.0);
           post.rotation.z = sx * (0.1 + (i % 3) * 0.12);
           g.add(post);
         }
@@ -822,13 +979,13 @@ const PLAT = {
       // hinten: abgebrochenes Heck (seitliche Spanten ragen hoch)
       for (const sx of [-1, 1]) {
         const rib = part(new THREE.TorusGeometry(0.7, 0.07, 6, 10, Math.PI / 2), 0x4a2e16, { w: 0.08 });
-        rib.position.set(sx * 0.3, PLAT_H + 0.1, -21.6);
+        rib.position.set(sx * 0.3, PLAT_H + 0.1, -16.6);
         rib.rotation.set(0, 0, sx > 0 ? 0 : Math.PI / 2);
         g.add(rib);
       }
       // Anker vorne an der Seite
       const anchor = new THREE.Group();
-      anchor.position.set(-1.05, PLAT_H * 0.75, -6.4);
+      anchor.position.set(-1.05, PLAT_H * 0.75, -5.4);
       const shaft = part(new THREE.CylinderGeometry(0.05, 0.05, 0.9, 6), 0x5b6670, { w: 0.12 });
       anchor.add(shaft);
       const arm = part(new THREE.TorusGeometry(0.28, 0.05, 6, 12, Math.PI), 0x5b6670, { w: 0.12 });
@@ -841,20 +998,20 @@ const PLAT = {
       anchor.rotation.y = Math.PI / 2;
       g.add(anchor);
       // Rampe: kaputte Planke mit Querbrettern
-      const RL = Math.hypot(6, PLAT_H);
+      const RL = Math.hypot(5, PLAT_H);
       const ramp = texPart(new THREE.BoxGeometry(1.7, 0.18, RL), WOOD.ramp(RL));
-      ramp.position.set(0, PLAT_H / 2, -3);
-      ramp.rotation.x = Math.atan2(PLAT_H, 6);
+      ramp.position.set(0, PLAT_H / 2, -2.5);
+      ramp.rotation.x = Math.atan2(PLAT_H, 5);
       g.add(ramp);
       for (let i = 0; i < 5; i++) {
         const cross = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.06, 0.12), toon(0x4a2e16));
-        cross.position.set(0, PLAT_H * ((i + 0.55) / 5.6) + 0.11, -0.5 - i * 1.05);
-        cross.rotation.x = Math.atan2(PLAT_H, 6);
+        cross.position.set(0, PLAT_H * ((i + 0.6) / 5.9) + 0.11, -0.5 - i * 0.85);
+        cross.rotation.x = Math.atan2(PLAT_H, 5);
         g.add(cross);
       }
       // Stützbalken unter der Rampe
       const prop = part(new THREE.BoxGeometry(0.16, PLAT_H * 0.5, 0.16), 0x4a2e16, { w: 0.06 });
-      prop.position.set(0, PLAT_H * 0.25, -4);
+      prop.position.set(0, PLAT_H * 0.25, -3.3);
       g.add(prop);
       return g;
     },
@@ -1593,7 +1750,7 @@ function update(dt) {
     }
     camera.position.set(0, 1.9 + Math.sin(t * 0.5) * 0.08, 6.2);
     camera.lookAt(-0.3, 1.9, 0);
-    for (const d of decos) if (d.userData.weed) d.children.forEach((s) => (s.rotation.z = Math.sin(t * 2 + s.userData.sway) * 0.25));
+    for (const d of decos) swayAll(d, t);
     return;
   }
   G.camBlend = Math.min(1, (G.camBlend ?? 1) + dt * 1.6);
@@ -1642,9 +1799,9 @@ function update(dt) {
     d.position.z += dz;
     if (d.position.z > 12) {
       d.position.z -= 40 * 2.4;
-      d.position.x = (d.position.x > 0 ? 1 : -1) * (3.8 + Math.random() * 4);
+      d.position.x = (d.position.x > 0 ? 1 : -1) * (3.6 + Math.random() * 4.5);
     }
-    if (d.userData.weed) d.children.forEach((s) => (s.rotation.z = Math.sin(t * 2 + s.userData.sway) * 0.25));
+    swayAll(d, t);
   }
   sand.offset.y += (dz / 160) * 30;
   const bp = bubGeo.attributes.position.array;
@@ -1701,6 +1858,7 @@ function update(dt) {
       a.obj.position.z = a.z;
       if (a.obj.userData.float) a.obj.position.y = FLOOR_Y + Math.sin(t * 2 + a.z) * 0.15;
       if (a.obj.userData.blink) a.obj.userData.blink.visible = Math.sin(t * 8) > 0;
+      swayAll(a.obj, t);
       // Treffer prüfen, wenn das Hindernis auf Höhe des Tauchers ist
       if (!a.hit && !riding && Math.abs(a.z) < 0.9 && Math.abs(LANES[a.lane] - G.x) < 1.0) {
         const [b0, b1] = VBAND[OBST[a.kind].v];
@@ -2578,4 +2736,4 @@ document.fonts?.load('80px "Lilita One"').then(drawCoinFace).catch(() => {});
 window.addEventListener('pointerdown', () => startMusic(), { once: true });
 
 // zum Testen
-window.__shark = { G, coinPool, spawnPlatforms, platTopAt, placeCoin, addXp, Q, get quests() { return quests; }, move, setVertical, startRun, openPanel, profile, addFriend, shareLink, get bank() { return bank; }, set bank(v) { bank = v; } };
+window.__shark = { G, pools, coinPool, spawnPlatforms, platTopAt, placeCoin, addXp, Q, get quests() { return quests; }, move, setVertical, startRun, openPanel, profile, addFriend, shareLink, get bank() { return bank; }, set bank(v) { bank = v; } };
