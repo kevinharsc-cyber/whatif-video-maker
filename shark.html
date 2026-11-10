@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Shark Attack" />
+    <meta name="theme-color" content="#0a4f7a" />
+    <link rel="apple-touch-icon" href="./shark-icon-180.png" />
+    <title>SHARK ATTACK</title>
+    <style>
+      @font-face { font-family: 'Lilita One'; src: url('./fonts/lilita-one-latin-400-normal.woff2') format('woff2'); }
+      html, body { margin: 0; height: 100%; background: #063a5c; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; font-family: 'Lilita One', 'Arial Black', sans-serif; color: #fff; }
+      #view { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; }
+      .ui { position: fixed; inset: 0; pointer-events: none; }
+      .ui .panel, .ui button { pointer-events: auto; }
+      .hidden { display: none !important; }
+      .stroke { text-shadow: 0 4px 0 #0b2233, 3px 0 0 #0b2233, -3px 0 0 #0b2233, 0 -3px 0 #0b2233, 0 3px 0 #0b2233; }
+      #hud { padding: calc(env(safe-area-inset-top) + 10px) 14px 0; display: flex; justify-content: space-between; align-items: flex-start; }
+      .chip { background: rgba(8, 30, 50, 0.75); border: 3px solid #0b2233; border-radius: 16px; padding: 6px 14px; font-size: 22px; line-height: 1.1; }
+      .chip small { display: block; font-size: 12px; opacity: 0.75; letter-spacing: 1px; }
+      .chip.coins { color: #ffd23f; }
+      #pause { width: 52px; height: 52px; border-radius: 16px; border: 3px solid #0b2233; background: rgba(8, 30, 50, 0.75); color: #fff; font-size: 24px; font-family: inherit; }
+      #warn { position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px 40px rgba(255, 30, 30, 0.0); transition: box-shadow 0.15s; }
+      #powers { position: fixed; left: 14px; top: calc(env(safe-area-inset-top) + 86px); display: flex; gap: 8px; }
+      .center { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px; text-align: center; }
+      .logo { font-size: 64px; line-height: 0.95; color: #fff; }
+      .logo span { color: #ff5a5a; display: block; font-size: 78px; }
+      .tag { font-size: 20px; color: #bfeaff; margin-top: -4px; }
+      .btn { font-family: inherit; font-size: 30px; color: #fff; background: linear-gradient(#ff6b5a, #e5383b); border: 4px solid #0b2233; border-radius: 22px; padding: 14px 46px; box-shadow: 0 6px 0 #0b2233; }
+      .btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #0b2233; }
+      .btn.small { font-size: 20px; padding: 10px 26px; background: linear-gradient(#3fb6ff, #1d7fd1); }
+      .card { background: rgba(8, 30, 50, 0.85); border: 4px solid #0b2233; border-radius: 26px; padding: 18px 28px; min-width: 260px; }
+      .big { font-size: 64px; color: #ffd23f; line-height: 1; }
+      .row { font-size: 20px; margin: 6px 0; }
+      .row b { color: #ffd23f; font-weight: normal; }
+      .hint { font-size: 16px; color: #bfeaff; max-width: 320px; line-height: 1.35; }
+      .newbest { color: #7ddc4a; font-size: 22px; }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="warn"></div>
+    <div class="ui">
+      <div id="hud" class="hidden">
+        <div class="chip"><small>METER</small><span id="hDist">0</span></div>
+        <div class="chip"><small>PUNKTE</small><span id="hScore">0</span></div>
+        <div class="chip coins"><small>MÜNZEN</small><span id="hCoins">0</span></div>
+        <button id="pause" class="panel">II</button>
+      </div>
+      <div id="powers"></div>
+
+      <div id="menu" class="center">
+        <div class="logo stroke">SHARK<span>ATTACK</span></div>
+        <div class="tag stroke">Swim fast. Don't get eaten.</div>
+        <button id="play" class="btn">SPIELEN</button>
+        <div class="card">
+          <div class="row">Rekord: <b id="mBest">0</b></div>
+          <div class="row">Münzen: <b id="mCoins">0</b></div>
+        </div>
+        <div class="hint stroke">Wischen ← → = Bahn wechseln · ↑ = nach oben schwimmen · ↓ = abtauchen</div>
+      </div>
+
+      <div id="paused" class="center hidden">
+        <div class="logo stroke" style="font-size:52px">PAUSE</div>
+        <button id="resume" class="btn">WEITER</button>
+        <button id="quit" class="btn small">HAUPTMENÜ</button>
+      </div>
+
+      <div id="over" class="center hidden">
+        <div class="logo stroke" style="font-size:58px"><span style="font-size:58px">GEFRESSEN!</span></div>
+        <div class="card">
+          <div class="row">PUNKTE</div>
+          <div class="big" id="oScore">0</div>
+          <div class="row">Strecke: <b id="oDist">0</b> m</div>
+          <div class="row">Münzen: <b id="oCoins">0</b></div>
+          <div class="row" id="oBestRow">Rekord: <b id="oBest">0</b></div>
+        </div>
+        <button id="again" class="btn">NOCHMAL</button>
+        <button id="toMenu" class="btn small">HAUPTMENÜ</button>
+      </div>
+    </div>
+    <script type="module" src="./src/shark/game.js"></script>
+  </body>
+</html>
