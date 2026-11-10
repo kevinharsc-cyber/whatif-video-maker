@@ -81,6 +81,42 @@
       .pw span { font-size: 22px; }
       .pw b { font-weight: normal; color: var(--c); -webkit-text-stroke: 0; }
       .pw i { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--c); }
+      /* v3 */
+      .tiles { display: flex; flex-wrap: wrap; justify-content: center; }
+      .tile { width: calc(25% - 8px); }
+      .lvlpill { display: flex; align-items: center; gap: 6px; background: rgba(8, 30, 50, 0.8); border: 3px solid #0b2233; border-radius: 30px; padding: 4px 12px 4px 4px; font-family: inherit; color: #fff; font-size: 16px; }
+      .lvlpill .star { width: 36px; height: 36px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #c6f28e, #4caf2a); border: 3px solid #0b2233; display: flex; align-items: center; justify-content: center; font-size: 18px; box-sizing: border-box; }
+      .lvlpill .xp { width: 60px; height: 8px; background: rgba(0,0,0,0.4); border-radius: 5px; overflow: hidden; }
+      .lvlpill .xp i { display: block; height: 100%; background: #7ddc4a; }
+      .topbar .right { display: flex; gap: 8px; align-items: center; }
+      #friendTag { margin-top: 6px; font-size: 15px; background: rgba(8, 30, 50, 0.7); border: 3px solid #0b2233; border-radius: 14px; padding: 4px 12px; }
+      #friendTag b { color: #ffd23f; font-weight: normal; }
+      .thumb { width: 64px; height: 64px; object-fit: contain; flex: none; }
+      .thumb.locked { filter: brightness(0) invert(0.32) drop-shadow(1px 0 0 #9fd6ff) drop-shadow(-1px 0 0 #9fd6ff) drop-shadow(0 1px 0 #9fd6ff) drop-shadow(0 -1px 0 #9fd6ff); }
+      .skin > div { flex: 1; }
+      .claim.buy { background: linear-gradient(#ffd24a, #ff9800); }
+      .lockgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .locker { background: rgba(0,0,0,0.25); border-radius: 14px; padding: 6px 4px; display: flex; flex-direction: column; align-items: center; font-size: 13px; text-align: center; }
+      .locker .thumb { width: 78px; height: 78px; }
+      .locker em { font-style: normal; font-size: 12px; color: #ffd23f; }
+      .locker.off small { opacity: 0.6; }
+      .lvl { font-size: 22px; text-align: center; }
+      .lvl b { color: #7ddc4a; font-weight: normal; font-size: 30px; }
+      #lockerTop { margin-bottom: 10px; text-align: center; }
+      #lockerTop small { font-size: 13px; opacity: 0.8; }
+      .wheelWrap { position: relative; width: 260px; height: 260px; margin: 6px auto 12px; }
+      #wheelCanvas { width: 260px; height: 260px; transition: transform 4s cubic-bezier(0.15, 0.8, 0.2, 1); }
+      .pointer { position: absolute; left: 50%; top: -10px; transform: translateX(-50%); width: 0; height: 0; border-left: 16px solid transparent; border-right: 16px solid transparent; border-top: 30px solid #fff; filter: drop-shadow(0 3px 0 #0b2233); z-index: 2; }
+      .hub { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff3a6, #ffd23f 55%, #e8a400); border: 4px solid #0b2233; display: flex; align-items: center; justify-content: center; color: #c98a00; font-size: 22px; }
+      #spinBtn { display: block; margin: 0 auto; font-size: 24px; padding: 10px 30px; }
+      #spinBtn:disabled { background: #4b5170; font-size: 16px; }
+      #wheelWin { text-align: center; color: #7ddc4a; font-size: 22px; min-height: 28px; margin-top: 8px; }
+      .field { width: 100%; box-sizing: border-box; font-family: inherit; font-size: 18px; padding: 8px 12px; border-radius: 12px; border: 3px solid #0b2233; background: #e8f6ff; color: #0b2233; margin: 4px 0 8px; }
+      #shareBtn { width: 100%; font-size: 20px; padding: 10px 0; }
+      #shareMsg { text-align: center; color: #7ddc4a; min-height: 20px; font-size: 15px; }
+      #banner { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 92px); transform: translateX(-50%); background: rgba(8, 30, 50, 0.9); border: 4px solid #0b2233; border-radius: 18px; padding: 8px 16px; font-size: 19px; color: #ffd23f; white-space: nowrap; z-index: 4; animation: pop 0.3s ease-out; }
+      @keyframes pop { from { transform: translateX(-50%) scale(0.6); } to { transform: translateX(-50%) scale(1); } }
+      #oXp { font-size: 18px; color: #bfeaff; }
     </style>
   </head>
   <body>
@@ -94,44 +130,56 @@
         <button id="pause" class="panel">II</button>
       </div>
       <div id="powers"></div>
+      <div id="banner" class="hidden"></div>
 
       <div id="menu">
         <div class="topbar">
-          <button class="coinpill panel" data-open="shop"><span class="coin">C</span><b id="mCoins">0</b><span class="plus">+</span></button>
-          <button class="gear panel" data-open="settings">⚙️</button>
+          <button class="coinpill panel" data-open="wheel"><span class="coin">C</span><b id="mCoins">0</b><span class="plus">+</span></button>
+          <div class="right">
+            <button class="lvlpill panel" data-open="locker"><span class="star" id="mLevel">1</span><span class="xp"><i id="mXp"></i></span></button>
+            <button class="gear panel" data-open="settings">⚙️</button>
+          </div>
         </div>
         <div class="logo2"><span class="l1">SHARK</span><span class="l2">ATTACK</span></div>
         <div class="tag stroke">Swim fast. Don't get eaten.</div>
+        <div id="friendTag" class="hidden"></div>
         <div class="menuBottom">
           <button id="play" class="start panel">START ▶</button>
           <div class="tiles">
             <button class="tile panel" data-open="ranking"><span>👑</span>RANKING</button>
-            <button class="tile panel" data-open="skins"><span>👕</span>SKINS</button>
-            <button class="tile panel" data-open="shop"><span>🛒</span>SHOP</button>
-            <button class="tile panel" data-open="missions"><span>📋</span>MISSIONS<i id="missionDot" class="dot hidden"></i></button>
+            <button class="tile panel" data-open="skins"><span>🤿</span>SKINS</button>
+            <button class="tile panel" data-open="sharks"><span>🦈</span>HAIE</button>
+            <button class="tile panel" data-open="locker"><span>🗄️</span>SPIND</button>
+            <button class="tile panel" data-open="missions"><span>📋</span>AUFGABEN<i id="missionDot" class="dot hidden"></i></button>
+            <button class="tile panel" data-open="wheel"><span>🎡</span>GLÜCKSRAD<i id="wheelDot" class="dot hidden"></i></button>
+            <button class="tile panel" data-open="friends"><span>👥</span>FREUNDE</button>
           </div>
         </div>
       </div>
 
       <div id="p-ranking" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>RANKING</h2><div id="rankList"></div></div></div>
-      <div id="p-skins" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>SKINS</h2>
-        <div class="skin on"><span>🤿</span><div>Standard-Taucher<small>ausgewählt</small></div><em>✓</em></div>
-        <div class="skin"><span>🧑‍🚀</span><div>Profi-Taucher<small>500 C</small></div><em>🔒</em></div>
-        <div class="skin"><span>🏴‍☠️</span><div>Piraten-Taucher<small>1.000 C</small></div><em>🔒</em></div>
-        <div class="skin"><span>🔦</span><div>Tiefsee-Forscher<small>2.000 C</small></div><em>🔒</em></div>
-        <div class="skin"><span>✨</span><div>Neon-Taucher<small>5.000 C</small></div><em>🔒</em></div>
-        <p class="hint">Deine Münzen: <b id="skinsCoins">0</b> C · Kaufen kommt im nächsten Update.</p></div></div>
-      <div id="p-shop" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>SHOP</h2>
-        <p class="row">Deine Münzen: <b id="shopCoins">0</b> C</p>
-        <div class="skin"><span>🧲</span><div>Magnet länger<small>300 C</small></div><em>🔒</em></div>
-        <div class="skin"><span>🦪</span><div>Goldene Perle länger<small>400 C</small></div><em>🔒</em></div>
-        <div class="skin"><span>🛡️</span><div>Schild zum Start<small>250 C</small></div><em>🔒</em></div>
-        <p class="hint">Der Shop öffnet im nächsten Update. Sammle schon mal Münzen!</p></div></div>
+      <div id="p-skins" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>SKINS</h2><div id="skinsList"></div>
+        <p class="hint">Deine Münzen: <b id="skinsCoins">0</b> C · Tipp: In seltenen Schatzkisten steckt manchmal ein Skin!</p></div></div>
+      <div id="p-sharks" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>HAI-SAMMLUNG</h2><div id="sharksList"></div>
+        <p class="hint">Deine Münzen: <b id="sharksCoins">0</b> C · Dein Hai jagt dich im Spiel.</p></div></div>
+      <div id="p-locker" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>SPIND</h2><div id="lockerTop"></div><div id="lockerGrid" class="lockgrid"></div>
+        <p class="hint">Jeder Lauf gibt Erfahrung. Jedes neue Level schenkt dir Münzen.</p></div></div>
+      <div id="p-wheel" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>GLÜCKSRAD</h2>
+        <div class="wheelWrap"><div class="pointer"></div><canvas id="wheelCanvas" width="520" height="520"></canvas><div class="hub">C</div></div>
+        <button id="spinBtn" class="btn">DREHEN!</button><div id="wheelWin"></div><p class="hint">Einmal alle 24 Stunden: 100 bis 1.000 Münzen.</p></div></div>
+      <div id="p-friends" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>FREUNDE</h2>
+        <small class="hint">Dein Name</small><input id="nameInput" class="field" maxlength="16" placeholder="z. B. Kevin" autocomplete="off" />
+        <button id="shareBtn" class="btn small">🔗 MEINEN LINK TEILEN</button><div id="shareMsg"></div>
+        <input id="friendSearch" class="field" placeholder="🔍 Freund suchen" autocomplete="off" />
+        <div id="friendList"></div>
+        <p class="hint">Freunde kommen über deinen Link dazu. Den Hai des gewählten Freundes siehst du im Menü-Hintergrund.</p></div></div>
+      <div id="p-addfriend" class="modal hidden"><div class="box panel"><h2 style="margin:0 0 12px">NEUER FREUND</h2><p class="row" id="addFriendText" style="text-align:center"></p>
+        <div style="display:flex;gap:10px;justify-content:center"><button id="addFriendYes" class="btn small" style="background:linear-gradient(#8ee04a,#4caf2a)">HINZUFÜGEN</button><button id="addFriendNo" class="btn small">NEIN</button></div></div></div>
       <div id="p-missions" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>TÄGLICHE MISSIONEN</h2><div id="missionList"></div><p class="hint">Neue Missionen jeden Tag.</p></div></div>
       <div id="p-settings" class="modal hidden"><div class="box panel"><button class="close">✕</button><h2>EINSTELLUNGEN</h2>
         <div class="set"><span>🎵 Musik</span><button id="musicBtn" class="toggle">AN</button></div>
         <div class="set"><span>🔊 Sounds</span><button id="sfxBtn" class="toggle">AN</button></div>
-        <p class="hint">Steuerung: Wischen ← → Bahn wechseln · ↑ nach oben · ↓ abtauchen</p></div></div>
+        <p class="hint">Steuerung: Wischen ← → Bahn wechseln · ↑ nach oben · ↓ abtauchen · ↑ und gleich ↓ = sofort abtauchen</p></div></div>
 
       <div id="paused" class="center hidden">
         <div class="logo stroke" style="font-size:52px">PAUSE</div>
@@ -146,7 +194,8 @@
           <div class="big" id="oScore">0</div>
           <div class="row">Strecke: <b id="oDist">0</b> m</div>
           <div class="row">Münzen: <b id="oCoins">0</b></div>
-          <div class="row" id="oBestRow">Rekord: <b id="oBest">0</b></div>
+          <div class="row" id="oBestRow">Rekord: <b>0</b></div>
+          <div class="row" id="oXp"></div>
         </div>
         <button id="again" class="btn">NOCHMAL</button>
         <button id="toMenu" class="btn small">HAUPTMENÜ</button>
