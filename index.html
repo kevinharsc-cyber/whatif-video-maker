@@ -100,7 +100,7 @@
           <button class="icon-btn" value="close" aria-label="Schließen">✕</button>
         </div>
         <p class="small">👆 Mit dem Finger <b>im Fenster</b> nach oben wischen, um alle Einstellungen zu sehen.</p>
-        <p class="small">App-Version: <b>44 (Zombie-Apokalypse)</b></p>
+        <p class="small">App-Version: <b>61 (Resort Folge 2: Hotel, Restaurant & Team)</b></p>
         <button type="button" id="btnDeviceCheck" class="ghost wide">🔍 Gerät prüfen (Video-Encoder)</button>
         <pre id="deviceCheck" class="device-check hidden"></pre>
         <button type="button" id="btnSelfTest" class="ghost wide">🧪 Test: 2 kurze Szenen erstellen</button>
@@ -115,13 +115,27 @@
 
         <label class="lbl" for="sVisual">Video-Stil</label>
         <select id="sVisual">
-          <option value="zombie">🧟 Zombie-Apokalypse (Serie, empfohlen)</option>
+          <option value="zombie">🧟 Zombie-Apokalypse (Serie)</option>
+          <option value="resort">🏝️ Luxus-Resort (Serie)</option>
           <option value="verein">⚽ SV Kieselbach (Vereins-Serie)</option>
           <option value="animation">🎬 2D-Animation („Was wäre wenn“)</option>
           <option value="poly2d">🔷 Low-Poly-2D (Polygon-Look)</option>
           <option value="3d">🧊 Low-Poly-3D (braucht viel Speicher)</option>
           <option value="images">🖼️ KI-Bilder / Fotos</option>
         </select>
+
+        <div class="own">
+          <b>🏝️ Luxus-Resort</b>
+          <p class="small">Manager, riesiges Grundstück am Meer, Gäste, Kasse und Hotel-Abstimmung erscheinen automatisch passend zu deinen Sätzen (z. B. „Grundstück“, „88 Follower – 88 Gäste“, „10.000 Euro pro Follower“, „Option A: Hochhaus“, „Mitarbeiter“, „Stimmt ab“). Bau-Optionen: Hochhaus, Eckgebäude (L-Form), Formgebäude, Hotel, Wasserpark, Villa, Pool, Restaurant.</p>
+          <label class="lbl" for="rGuests">Gäste aktuell (deine Follower-Zahl)</label>
+          <input id="rGuests" type="text" inputmode="numeric" placeholder="0" />
+          <label class="lbl" for="rPer">Euro pro Follower (falls nicht im Skript)</label>
+          <input id="rPer" type="text" inputmode="numeric" placeholder="10000" />
+          <label class="lbl" for="rKasse">Kasse in Euro (leer = Gäste × Euro pro Follower)</label>
+          <input id="rKasse" type="text" inputmode="numeric" placeholder="" />
+          <label class="lbl" for="rStaff">Team (Name: Aufgabe, mit Komma)</label>
+          <textarea id="rStaff" rows="2" placeholder="z. B. cursedlostamb1tient: Chefkoch, Noyan: Sanitäter, maxim_cgnn: Security"></textarea>
+        </div>
 
         <div class="own">
           <b>🧟 Zombie-Apokalypse</b>
@@ -134,6 +148,8 @@
           <input id="zCount" type="text" inputmode="numeric" placeholder="10" />
           <label class="lbl" for="zGoal">Ziel: Verbündete (falls nicht im Skript)</label>
           <input id="zGoal" type="text" inputmode="numeric" placeholder="11" />
+          <label class="lbl" for="zCamp">Name des Lagers (Schild über dem Tor)</label>
+          <input id="zCamp" type="text" placeholder="z. B. Ground Zero" />
         </div>
 
         <div class="own">

@@ -326,7 +326,7 @@ export class VideoRenderer {
           g.restore();
         }
         g.strokeText(word, x, y);
-        g.fillStyle = active ? (this.series === 'zombie' ? '#ffd60a' : this.verein ? '#ef4136' : '#A6FF3B') : this.verein && t < w.start ? '#dcdcdc' : '#FFFFFF';
+        g.fillStyle = active ? (this.series === 'zombie' ? '#ffd60a' : this.series === 'resort' ? '#ffc94a' : this.verein ? '#ef4136' : '#A6FF3B') : this.verein && t < w.start ? '#dcdcdc' : '#FFFFFF';
         g.fillText(word, x, y);
         x += g.measureText(word).width + spaceW();
       }

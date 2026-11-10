@@ -130,6 +130,13 @@ function heroArms(g, pose, lw, t) {
     down(-1);
   } else if (pose === 'bat') {
     down(-1);
+  } else if (pose === 'cheer') {
+    // beide Arme jubelnd nach oben
+    const k = Math.sin(t * 10) * 2;
+    limb(g, -16, -52, -26, -76 + k, 8, HOOD, lw);
+    P(g, SK, lw, ell(-27, -79 + k, 4.6, 4.6));
+    limb(g, 16, -52, 26, -76 - k, 8, HOOD, lw);
+    P(g, SK, lw, ell(27, -79 - k, 4.6, 4.6));
   } else if (pose === 'up') {
     // Arm hoch, zeigt nach oben
     down(-1);
@@ -352,6 +359,66 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
       P(g, hc, lw, poly([[-21, -77], [-19, -92], [-10, -97], [0, -99], [10, -97], [19, -92], [21, -77], [14, -86], [4, -88], [-6, -87], [-15, -85]]));
     }
   }
+  // Kopfbedeckung / Abzeichen
+  if (!sil && o.hat === 'sheriff') {
+    P(g, '#8a5a30', lw, ell(0, -90, 30, 6));
+    P(g, '#8a5a30', lw, (q) => {
+      q.moveTo(-15, -90);
+      q.quadraticCurveTo(-16, -112, -6, -108);
+      q.quadraticCurveTo(0, -104, 6, -108);
+      q.quadraticCurveTo(16, -112, 15, -90);
+      q.closePath();
+    });
+    P(g, '#5a3a1e', 0, rr(-15, -96, 30, 4, 1));
+    // Stern auf dem Hemd
+    const st = [];
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 ? 2.4 : 5.4;
+      const ang = (i / 10) * Math.PI * 2 - Math.PI / 2;
+      st.push([-7 + Math.cos(ang) * r, -46 + Math.sin(ang) * r]);
+    }
+    P(g, '#ffd23f', 1, poly(st));
+  }
+  if (!sil && o.hat === 'chef') {
+    // Kochmütze
+    P(g, '#ffffff', lw, rr(-14, -112, 28, 18, 4));
+    P(g, '#ffffff', lw, ell(-9, -114, 9, 8));
+    P(g, '#ffffff', lw, ell(0, -118, 10, 9));
+    P(g, '#ffffff', lw, ell(9, -114, 9, 8));
+    P(g, '#ffffff', 0, rr(-13, -106, 26, 10, 2));
+    for (const by of [-48, -40, -32]) P(g, '#c9ccd1', 0, ell(-5, by, 1.4, 1.4));
+    for (const by of [-48, -40, -32]) P(g, '#c9ccd1', 0, ell(5, by, 1.4, 1.4));
+  }
+  if (!sil && o.hat === 'waiter') {
+    // Weste + Fliege
+    P(g, '#1d1f26', 1, poly([[-16, -54], [-5, -54], [-1, -24], [-16, -22]]));
+    P(g, '#1d1f26', 1, poly([[16, -54], [5, -54], [1, -24], [16, -22]]));
+    P(g, '#e5383b', 1, poly([[-6, -56], [0, -53], [6, -56], [6, -50], [0, -53], [-6, -50]]));
+  }
+  if (!sil && o.hat === 'medic') {
+    // rotes Kreuz auf dem Kittel
+    P(g, '#e5383b', 0, rr(-3, -46, 6, 16, 1));
+    P(g, '#e5383b', 0, rr(-8, -41, 16, 6, 1));
+  }
+  if (!sil && o.hat === 'security') {
+    // Sonnenbrille + Ohrstöpsel + Aufschrift
+    P(g, '#111', 1, rr(-15, -80, 13, 8, 3));
+    P(g, '#111', 1, rr(2, -80, 13, 8, 3));
+    line(g, [[-2, -77], [2, -77]], 1.4);
+    line(g, [[20, -72], [22, -60], [16, -52]], 0.8, '#bbb');
+    g.save();
+    g.font = '7px "Lilita One", sans-serif';
+    g.textAlign = 'center';
+    g.fillStyle = '#ffd23f';
+    g.fillText('SECURITY', 0, -38);
+    g.restore();
+  }
+  if (!sil && o.hat === 'smith') {
+    // Lederschürze
+    P(g, '#7a4b2a', lw, rr(-12, -50, 24, 28, 4));
+    line(g, [[-12, -50], [-9, -56]], 1.4, '#5a3a1e');
+    line(g, [[12, -50], [9, -56]], 1.4, '#5a3a1e');
+  }
   // Waffe in der rechten Hand
   const w = o.weapon;
   if (w === 'bat') {
@@ -401,6 +468,26 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
     P(g, '#d0d6dc', lw, poly([[8, -2.6], [44, -1.5], [48, 0], [44, 1.5], [8, 2.6]]));
     P(g, YEL, lw, rr(6, -6, 3, 12, 1));
     g.restore();
+  } else if (w === 'shotgun') {
+    // (Schrot-)Flinte, quer vor dem Körper; kaputt = Klebeband + Riss
+    g.save();
+    g.translate(18, -38);
+    g.rotate(-0.35);
+    P(g, '#8a5a30', lw, (q) => {
+      q.moveTo(-14, -3);
+      q.lineTo(6, -3);
+      q.lineTo(6, 3);
+      q.lineTo(-12, 7);
+      q.closePath();
+    });
+    P(g, '#59606b', lw, rr(4, -4.5, 40, 4.5, 1.5));
+    P(g, '#6c7480', lw, rr(4, -0.5, 40, 4, 1.5));
+    if (o.broken) {
+      P(g, '#c9ccd1', 1, rr(20, -5.5, 6, 10.5, 1));
+      line(g, [[-9, -2], [-6, 1], [-8, 4]], 0.8, '#3a2412');
+      line(g, [[44, -4], [46, -6]], 1, '#59606b');
+    }
+    g.restore();
   } else if (w === 'shovel') {
     g.save();
     g.translate(20, -36);
@@ -414,18 +501,136 @@ export function drawSurv(g, x, y, Hpx, o, t = 0) {
       q.closePath();
     });
     g.restore();
+  } else if (w === 'tray') {
+    // Tablett mit Gläsern
+    P(g, '#c0c6cc', lw, ell(26, -40, 14, 3.5));
+    P(g, '#ffd23f', 1, rr(19, -50, 5, 9, 1));
+    P(g, '#e5383b', 1, rr(27, -49, 5, 8, 1));
+  } else if (w === 'kit') {
+    P(g, '#ffffff', lw, rr(16, -32, 20, 16, 3));
+    P(g, '#e5383b', 0, rr(24.5, -29, 3, 10, 0.5));
+    P(g, '#e5383b', 0, rr(21, -25.5, 10, 3, 0.5));
+    line(g, [[22, -32], [22, -36], [30, -36], [30, -32]], 1.5);
+  } else if (w === 'ladle') {
+    g.save();
+    g.translate(20, -36);
+    g.rotate(-1.3);
+    P(g, '#b0b6bd', lw, rr(-2, -1.5, 28, 3, 1.5));
+    P(g, '#b0b6bd', lw, ell(30, 0, 6, 5));
+    g.restore();
+  } else if (w === 'none') {
+    // Arme verschränkt wirkt hier schon durch die Pose
+  } else if (w === 'suitcase') {
+    // Rollkoffer neben der Hand
+    P(g, '#3a86ff', lw, rr(18, -30, 16, 22, 3));
+    line(g, [[22, -30], [22, -40], [30, -40], [30, -30]], 1.6, '#555');
+    P(g, '#222', 0, ell(21, -7, 2.2, 2.2));
+    P(g, '#222', 0, ell(31, -7, 2.2, 2.2));
+    P(g, '#ffd23f', 0, rr(18, -21, 16, 3, 1));
+  } else if (w === 'sniper') {
+    // Scharfschützengewehr mit Zielfernrohr
+    g.save();
+    g.translate(12, -40);
+    g.rotate(-0.12);
+    P(g, '#4a5a3a', lw, Z_poly([[-16, -2], [4, -3], [4, 3], [-14, 7]]));
+    P(g, '#2f3540', lw, rr(2, -3, 44, 5, 1.5));
+    P(g, '#2b2f35', lw, rr(44, -2, 14, 3, 1));
+    P(g, '#1f2328', lw, rr(10, -10, 18, 6, 3));
+    P(g, '#7ec8ff', 0, ell(27, -7, 1.6, 2.2));
+    line(g, [[30, 2], [26, 12]], 1.4, '#2f3540');
+    line(g, [[30, 2], [34, 12]], 1.4, '#2f3540');
+    g.restore();
+  } else if (w === 'hammer') {
+    g.save();
+    g.translate(20, -36);
+    g.rotate(-1.1);
+    P(g, '#8a5a30', lw, rr(-2, -2, 30, 4, 2));
+    P(g, '#5f6670', lw, rr(24, -7, 10, 14, 2));
+    g.restore();
+  } else if (w === 'bow') {
+    g.save();
+    g.translate(22, -40);
+    g.beginPath();
+    g.moveTo(0, -24);
+    g.quadraticCurveTo(14, 0, 0, 24);
+    g.lineWidth = 3.2;
+    g.strokeStyle = '#8a5a30';
+    g.stroke();
+    line(g, [[0, -23], [-4, 0], [0, 23]], 0.8, '#eee');
+    line(g, [[-4, 0], [22, -2]], 1.4, '#6b4426');
+    P(g, '#c0c6cc', 0.8, poly([[22, -5], [28, -2], [22, 1]]));
+    g.restore();
+  } else if (w === 'holster') {
+    // Revolver im Holster an der Hüfte
+    P(g, '#6b4426', lw, rr(-21, -30, 9, 14, 3));
+    P(g, '#3a3f46', lw, rr(-19, -34, 5, 6, 1.5));
+    line(g, [[-16, -32], [16, -29]], 2, '#5a3a1e');
+  } else if (w === 'pistol') {
+    g.save();
+    g.translate(21, -37);
+    g.rotate(-0.5);
+    P(g, '#4a4f58', lw, rr(0, -3, 16, 5, 1.5));
+    P(g, '#6b7480', lw, ell(4, 1, 3.4, 3.4));
+    P(g, '#6b4426', lw, rr(-3, 0, 5, 9, 2));
+    g.restore();
+  } else if (w === 'knife') {
+    g.save();
+    g.translate(21, -37);
+    g.rotate(-0.9);
+    P(g, '#3a2a20', lw, rr(-2, -1.8, 8, 3.6, 1.5));
+    P(g, '#d0d6dc', lw, Z_poly([[6, -2.2], [20, -0.6], [6, 2.2]]));
+    g.restore();
+  } else if (w === 'rifle') {
+    g.save();
+    g.translate(16, -40);
+    g.rotate(-0.25);
+    P(g, '#6b4426', lw, Z_poly([[-14, -2], [2, -3], [2, 3], [-12, 6]]));
+    P(g, '#3a3f46', lw, rr(0, -3.5, 34, 6, 1.5));
+    P(g, '#3a3f46', lw, rr(8, 1.5, 4, 8, 1.5));
+    P(g, '#2b2f35', lw, rr(32, -2.5, 10, 2.5, 1));
+    g.restore();
   }
-  P(g, c(o.skin), lw, ell(20.5, -36, 4, 4));
+  if (w === 'tank') {
+    // Mini-Panzer: die Person steht in der Luke
+    g.save();
+    g.translate(0, 0);
+    P(g, '#3d4a2a', lw, rr(-40, -16, 80, 16, 8));
+    for (let k2 = -32; k2 <= 32; k2 += 13) P(g, '#6b7480', 1.2, ell(k2, -8, 4.5, 4.5));
+    P(g, '#6b7f3a', lw, rr(-36, -38, 72, 24, 6));
+    P(g, '#5a6b30', lw, ell(0, -40, 20, 9));
+    P(g, '#5a6b30', lw, rr(16, -44, 34, 6, 3));
+    P(g, '#fff', 0, rr(-30, -32, 9, 4, 2));
+    g.restore();
+  } else P(g, c(o.skin), lw, ell(20.5, -36, 4, 4));
   g.restore();
 }
+const Z_poly = (pts) => (q) => {
+  q.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) q.lineTo(pts[i][0], pts[i][1]);
+  q.closePath();
+};
 
 // Waffe aus dem Kommentar → gezeichnete Waffe
 export function weaponKind(text = '') {
   const w = String(text).toLowerCase();
+  if (/kellner|bedienung/.test(w)) return 'tray';
+  if (/sanitäter|sanität|arzt|ärztin|erste hilfe/.test(w)) return 'kit';
+  if (/security|türsteher|sicherheit|bodyguard/.test(w)) return 'none';
+  if (/koch|chef/.test(w)) return 'ladle';
+  if (/koffer|gepäck|urlaub|tourist/.test(w)) return 'suitcase';
+  if (/sniper|scharfschütze|zielfernrohr/.test(w)) return 'sniper';
+  if (/sheriff|holster/.test(w)) return 'holster';
+  if (/schmied|hammer/.test(w)) return 'hammer';
+  if (/panzer|tank/.test(w)) return 'tank';
+  if (/revolver|pistole|colt|glock/.test(w)) return 'pistol';
+  if (/\b(ak|kn|m)\s*-?\d{2}\b|sturmgewehr|maschinengewehr|\bmg\b|rifle/.test(w)) return 'rifle';
+  if (/flinte|gewehr|shotgun|knarre/.test(w)) return 'shotgun';
+  if (/messer|dolch/.test(w)) return 'knife';
   if (/pfanne|topf/.test(w)) return 'pan';
-  if (/armbrust|bogen|pfeil/.test(w)) return 'crossbow';
+  if (/armbrust/.test(w)) return 'crossbow';
+  if (/bogen|pfeil/.test(w)) return 'bow';
   if (/axt|beil/.test(w)) return 'axe';
-  if (/schwert|katana|machete|messer|säbel/.test(w)) return 'sword';
+  if (/schwert|katana|machete|säbel/.test(w)) return 'sword';
   if (/schaufel|spaten|harke|rechen/.test(w)) return 'shovel';
   return 'bat';
 }
@@ -442,7 +647,7 @@ const SHIRTS = ['#3a86ff', '#43aa8b', '#9b5de5', '#f15bb5', '#00bbf9', '#fee440'
 export function makeAlly(name, weapon = '') {
   const r = rnd(hashName(name) || 1);
   const pick = (a) => a[Math.floor(r() * a.length) % a.length];
-  return {
+  const o = {
     name: String(name).toUpperCase().slice(0, 14),
     hair: pick(HAIRS),
     hairC: pick(HAIRC),
@@ -451,7 +656,15 @@ export function makeAlly(name, weapon = '') {
     pants: pick(['#2b2d42', '#4a4e69', '#3d405b', '#34466b']),
     weapon: weaponKind(weapon),
     weaponText: String(weapon || '').trim(),
+    broken: /kaputt|schrott|rostig|alt/i.test(String(weapon || '')),
+    hat: /sheriff/i.test(String(weapon || '')) ? 'sheriff' : /schmied/i.test(String(weapon || '')) ? 'smith' : /koch|chef/i.test(String(weapon || '')) ? 'chef' : /kellner|bedienung/i.test(String(weapon || '')) ? 'waiter' : /sanitäter|sanität|arzt/i.test(String(weapon || '')) ? 'medic' : /security|türsteher|sicherheit|bodyguard/i.test(String(weapon || '')) ? 'security' : null,
   };
+  const role = { chef: '#ffffff', waiter: '#ffffff', medic: '#ffffff', security: '#1d1f26' }[o.hat];
+  if (role) {
+    o.shirt = role;
+    o.pants = o.hat === 'security' || o.hat === 'waiter' ? '#1d1f26' : o.pants;
+  }
+  return o;
 }
 export function nameTag(g, x, y, name, s = 1) {
   g.save();
@@ -497,7 +710,7 @@ export function moon(g, x, y, r) {
   P(g, '#f0dc9a', 0, ell(x + r * 0.35, y + r * 0.25, r * 0.24, r * 0.24));
   P(g, '#f0dc9a', 0, ell(x + r * 0.1, y - r * 0.45, r * 0.11, r * 0.11));
 }
-function pine(g, x, y, h, c1, c2, lw = 6) {
+export function pine(g, x, y, h, c1, c2, lw = 6) {
   const w = h * 0.4;
   P(g, '#5a3a24', lw, rr(x - w * 0.09, y - h * 0.16, w * 0.18, h * 0.17, 4));
   for (let i = 0; i < 3; i++) {
@@ -511,26 +724,52 @@ function pine(g, x, y, h, c1, c2, lw = 6) {
 const TREES_FAR = Array.from({ length: 26 }, (_, i) => [-700 + i * 105 + (i % 3) * 20, 250 + (i * 37) % 90]);
 const TREES_MID = Array.from({ length: 16 }, (_, i) => [-650 + i * 175 + ((i * 53) % 60), 430 + (i * 71) % 140]);
 // Wald (Abenddämmerung, mood 0) bis Nacht (mood 1)
-export function forest(g, t, { mood = 0, horizon = 1180, moonAt = [820, 330, 90], path = true, skipMid = null } = {}) {
-  const m = mood;
-  sky(g, m ? '#0f1030' : '#2b2350', m ? '#2a2552' : '#6b3f6e', m ? '#4a3a6a' : '#f08a5d', horizon);
-  stars(g, t, 0.4 + m * 0.6);
-  if (moonAt) moon(g, ...moonAt);
+const PAL = {
+  night: { sky: ['#0f1030', '#2a2552', '#4a3a6a'], hill: '#232647', far: ['#22344a', '#1b2a3d'], mid: ['#24533f', '#1d4434'], ground: '#3e5530', patch: '#46603a', path: '#7a6448', grass: '#2f4a2a' },
+  dusk: { sky: ['#2b2350', '#6b3f6e', '#f08a5d'], hill: '#3b3f63', far: ['#2e4a57', '#253f4a'], mid: ['#2f6b4f', '#25573f'], ground: '#5d7a3a', patch: '#6b8a44', path: '#a07f55', grass: '#3f6a2e' },
+  day: { sky: ['#5fb2ea', '#8fd0f5', '#d8f1ff'], hill: '#86c45a', far: ['#5aa04a', '#4a8a3c'], mid: ['#3f8f45', '#327a3a'], ground: '#7cb84e', patch: '#8cc85a', path: '#c9a06a', grass: '#4f9a3c' },
+};
+const CLOUDS = [[-200, 260, 1], [380, 180, 0.8], [900, 300, 1.1], [1500, 220, 0.9]];
+// day = Tag (Sonne, Wolken), sonst Dämmerung (mood 0) bzw. Nacht (mood > 0)
+export function forest(g, t, { mood = 0, day = false, horizon = 1180, moonAt = [820, 330, 90], path = true, skipMid = null } = {}) {
+  const c = day ? PAL.day : mood ? PAL.night : PAL.dusk;
+  sky(g, c.sky[0], c.sky[1], c.sky[2], horizon);
+  if (day) {
+    const [sx, sy] = moonAt || [820, 330];
+    g.save();
+    g.globalAlpha = 0.25;
+    P(g, '#fff6b0', 0, ell(sx, sy, 170, 170));
+    g.restore();
+    P(g, '#ffd23f', 7, ell(sx, sy, 105, 105));
+    for (const [cx, cy, s] of CLOUDS) {
+      const x = cx + ((t * 12) % 400);
+      P(g, '#ffffff', 6, (q) => {
+        q.ellipse(x, cy, 110 * s, 48 * s, 0, 0, TAU);
+        q.moveTo(x - 30 * s, cy - 20 * s);
+        q.ellipse(x - 30 * s, cy - 20 * s, 62 * s, 50 * s, 0, 0, TAU);
+        q.moveTo(x + 50 * s, cy - 14 * s);
+        q.ellipse(x + 50 * s, cy - 14 * s, 54 * s, 42 * s, 0, 0, TAU);
+      });
+    }
+  } else {
+    stars(g, t, 0.4 + mood * 0.6);
+    if (moonAt) moon(g, ...moonAt);
+  }
   // ferne Hügel
-  P(g, m ? '#232647' : '#3b3f63', 0, (q) => {
+  P(g, c.hill, 0, (q) => {
     q.moveTo(-1500, horizon);
     for (let x = -1500; x <= 2600; x += 120) q.lineTo(x, horizon - 170 - 60 * Math.sin(x * 0.004) - 30 * Math.sin(x * 0.011));
     q.lineTo(2600, horizon);
     q.closePath();
   });
-  for (const [x, h] of TREES_FAR) pine(g, x, horizon + 6, h, m ? '#22344a' : '#2e4a57', m ? '#1b2a3d' : '#253f4a', 5);
-  for (const [x, h] of TREES_MID) if (!skipMid || Math.abs(x - skipMid) > 260) pine(g, x, horizon + 30, h * 1.15, m ? '#24533f' : '#2f6b4f', m ? '#1d4434' : '#25573f', 6);
+  for (const [x, h] of TREES_FAR) pine(g, x, horizon + 6, h, c.far[0], c.far[1], 5);
+  for (const [x, h] of TREES_MID) if (!skipMid || Math.abs(x - skipMid) > 260) pine(g, x, horizon + 30, h * 1.15, c.mid[0], c.mid[1], 6);
   // Boden
-  P(g, m ? '#3e5530' : '#5d7a3a', 6, rr(-1500, horizon + 20, 4100, 1400, 0));
-  P(g, m ? '#46603a' : '#6b8a44', 0, ell(-200, horizon + 260, 420, 60));
-  P(g, m ? '#46603a' : '#6b8a44', 0, ell(1250, horizon + 420, 480, 70));
+  P(g, c.ground, 6, rr(-1500, horizon + 20, 4100, 1400, 0));
+  P(g, c.patch, 0, ell(-200, horizon + 260, 420, 60));
+  P(g, c.patch, 0, ell(1250, horizon + 420, 480, 70));
   if (path) {
-    P(g, m ? '#7a6448' : '#a07f55', 5, (q) => {
+    P(g, c.path, 5, (q) => {
       q.moveTo(470, horizon + 40);
       q.quadraticCurveTo(420, horizon + 300, 300, horizon + 800);
       q.lineTo(820, horizon + 800);
@@ -541,7 +780,7 @@ export function forest(g, t, { mood = 0, horizon = 1180, moonAt = [820, 330, 90]
   for (let i = 0; i < 18; i++) {
     const x = -500 + ((i * 197) % 2100);
     const y = horizon + 80 + ((i * 131) % 600);
-    line(g, [[x - 10, y], [x - 4, y - 22], [x, y], [x + 6, y - 26], [x + 10, y]], 4, m ? '#2f4a2a' : '#3f6a2e');
+    line(g, [[x - 10, y], [x - 4, y - 22], [x, y], [x + 6, y - 26], [x + 10, y]], 4, c.grass);
   }
 }
 export function hut(g, x, y, s, { lit = true, barricade = 0, peek = null, t = 0 } = {}) {
