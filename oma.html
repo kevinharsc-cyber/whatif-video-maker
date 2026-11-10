@@ -122,6 +122,9 @@
       #coffeeCd:empty { display: none; }
       #startWave { margin-left: auto; font-size: 18px; padding: 0 12px; background: linear-gradient(#ffd24a, #ff9800); -webkit-text-stroke: 2px #24192e; paint-order: stroke fill; animation: pulse 1.2s infinite; }
       #startWave small { -webkit-text-stroke: 0; color: #4a2a00; font-size: 12px; }
+      #startWave.early { background: linear-gradient(#8ee04a, #4caf2a); animation: none; }
+      #startWave.early small { color: #1f4a10; }
+      #tStart:disabled { filter: grayscale(0.9) brightness(0.8); font-size: 34px; }
       @keyframes pulse { 50% { transform: scale(1.05); } }
       #hint { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 100px); background: rgba(36, 25, 46, 0.88); border: 3px solid #24192e; border-radius: 16px; padding: 8px 14px; font-size: 16px; width: max-content; max-width: 80vw; text-align: center; }
       #info { position: absolute; background: rgba(255, 248, 230, 0.97); border: 4px solid #24192e; border-radius: 22px; padding: 10px 12px; color: #24192e; min-width: 230px; box-shadow: 0 6px 0 rgba(36, 25, 46, 0.5); }
@@ -159,9 +162,7 @@
           </div>
           <div id="mapLock"></div>
           <div class="wood selr panel">
-            <button id="lvPrev" class="arrow">◀</button>
-            <div class="mid"><div class="k">LEVEL</div><button id="tLevelBox" class="panel"><span class="v" id="tLevel">1 - 1</span></button><div class="stars" id="tStars">☆☆☆</div></div>
-            <button id="lvNext" class="arrow">▶</button>
+            <div class="mid"><div class="k">REKORD</div><div class="v" id="tBest">WELLE 0 / 60</div><div class="stars" id="tStars">☆☆☆</div></div>
           </div>
           <button id="tStart" class="wood panel">START</button>
         </div>
@@ -199,8 +200,8 @@
       <div id="paused" class="modal hidden"><div class="card panel"><h2>PAUSE</h2><div class="row"><button id="resume" class="big">WEITER</button><button id="quit" class="mid2">MENÜ</button></div></div></div>
       <div id="won" class="modal hidden"><div class="card panel"><h2>GESCHAFFT!</h2><div id="wonStars" class="stars2">★★★</div><p id="wonText"></p><p id="wonExtra" style="color:#2e8b2e"></p><div class="row"><button id="next" class="big">WEITER ▶</button><button id="wonMenu" class="mid2">MENÜ</button></div></div></div>
       <div id="lost" class="modal hidden"><div class="card panel"><h2>OH NEIN!</h2><p id="lostText"></p><div class="row"><button id="retry" class="big">NOCHMAL</button><button id="lostMenu" class="mid2">MENÜ</button></div></div></div>
-      <div id="grid" class="modal hidden"><div class="card panel"><button id="gridClose" class="x">✕</button><h2 id="gridTitle">LEVEL</h2><div id="lvlGrid"></div></div></div>
       <div id="settings" class="modal hidden"><div class="card panel"><button id="setClose" class="x">✕</button><h2>EINSTELLUNGEN</h2>
+        <div class="setrow"><span>🎵 Musik</span><button id="setMusic" class="tog">AN</button></div>
         <div class="setrow"><span>🔊 Sounds</span><button id="setSfx" class="tog">AN</button></div>
         <div class="setrow"><span>⏩ Automatik</span><button id="setAuto" class="tog">AN</button></div>
         <p>Automatik: Die nächste Welle startet von selbst. Eine laufende Welle kann man nicht stoppen.</p></div></div>
@@ -210,9 +211,10 @@
           <p>👵 Tippe rechts auf <b>OMAS</b> und <b>zieh</b> eine Oma neben den Weg. Jede Oma kostet Kekse.</p>
           <p>🍪 Besiegte Zombies bringen Kekse. Tippe eine Oma an für <b>Upgrade</b> oder <b>Verkaufen</b>.</p>
           <p>⏩ <b>AUTO</b>: Wellen starten von selbst. Aus = nach der Welle wartet das Spiel.</p>
+          <p>▶▶ <b>SCHON STARTEN</b>: Während einer Welle kannst du die nächste(n) schon vorziehen – gibt Bonus-Kekse.</p>
           <p>☕ <b>Kaffeekränzchen</b>: 10 Sekunden lang werfen alle Omas doppelt so schnell.</p>
           <p>⭐ Alle 30 Leben behalten = 3 Sterne · ab 20 = 2 Sterne · sonst 1 Stern.</p>
-          <p>🗺️ Jede Karte hat 60 Level. Ab Level 20 wird die nächste Karte frei.</p>
+          <p>🗺️ Jede Karte hat 60 Wellen am Stück. Ab Welle 20 kommen Bosse, Welle 60 ist die schwerste. Schaffst du alle 60, ist die Karte geschafft und die nächste wird frei.</p>
           <p>☝️ Mit einem Finger schieben, mit zwei Fingern zoomen.</p>
         </div></div></div>
     </div>
