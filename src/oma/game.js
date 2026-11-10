@@ -1,5 +1,5 @@
 // OMA vs ZOMBIES – Tower-Defense mit Omas gegen Zombies (Three.js, läuft im Browser auf dem iPhone)
-import { THREE, figure, M, mesh, cookie, tree, house, fence, bench, flowerBed, gnome, pond, OMAS, RoundedBoxGeometry, setSeed, rand, bake } from './models.js';
+import { THREE, figure, M, mesh, cookie, tree, house, fence, bench, flowerBed, gnome, pond, OMAS, ZOMBIES, RoundedBoxGeometry, setSeed, rand, bake } from './models.js';
 import { OMA_DEF, ZOMBIE_DEF, MAPS, mapPoints, genWaves, startCookies, starsFor, LIVES, WAVES, difficulty } from './rules.js';
 import { SONGS, createBus, scheduleStep, stepSeconds } from './music.js';
 
@@ -58,7 +58,7 @@ function resize() {
   const { hf } = halfView(1);
   const bw = (view.bounds.x1 - view.bounds.x0) / 2;
   view.maxD = (bw + 0.5) / Math.tan(hf / 2);
-  view.fitD = Math.min(view.maxD, 5.8 / Math.tan(hf / 2));
+  view.fitD = view.maxD * 0.97; // Start: ganze Breite sichtbar, nur hoch/runter etwas schieben
   if (!view.userZoom) view.dist = view.fitD;
   placeCamera();
 }
@@ -336,27 +336,55 @@ function audio() {
   try { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch { ac = null; }
   return ac;
 }
-function tone(f0, f1, len, type = 'sine', vol = 0.08) {
+// Retro-Sounds (8-Bit, leicht düster): alles läuft durch einen dunklen Filter
+let sfxOut = null;
+function sfxBus(a) {
+  if (!sfxOut) {
+    const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
+    const g = a.createGain(); g.gain.value = 0.9;
+    lp.connect(g).connect(a.destination);
+    sfxOut = lp;
+  }
+  return sfxOut;
+}
+function tone(f0, f1, len, type = 'square', vol = 0.05, delay = 0) {
   if (!settings.sfx) return;
   const a = audio(); if (!a) return;
-  const t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+  const t = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + len);
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-  o.connect(g).connect(a.destination); o.start(t); o.stop(t + len + 0.02);
+  o.connect(g).connect(sfxBus(a)); o.start(t); o.stop(t + len + 0.02);
+}
+let nbuf = null;
+function noise(len, freq, vol, type = 'lowpass', delay = 0) {
+  if (!settings.sfx) return;
+  const a = audio(); if (!a) return;
+  if (!nbuf) { nbuf = a.createBuffer(1, a.sampleRate, a.sampleRate); const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  const t = a.currentTime + delay, s2 = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+  s2.buffer = nbuf; f.type = type; f.frequency.setValueAtTime(freq, t); if (type === 'lowpass') f.frequency.exponentialRampToValueAtTime(Math.max(60, freq * 0.2), t + len);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  s2.connect(f).connect(g).connect(sfxBus(a)); s2.start(t); s2.stop(t + len + 0.02);
 }
 const lastSfx = {};
 const sfx = (name, fn, gap = 0.05) => { const n = performance.now(); if (n - (lastSfx[name] || 0) < gap * 1000) return; lastSfx[name] = n; fn(); };
+const arp = (notes, step, len, vol, type = 'square') => notes.forEach((f, i) => tone(f, f, len, type, vol, i * step));
 const SND = {
-  throw: () => sfx('throw', () => tone(700, 300, 0.08, 'triangle', 0.04), 0.06),
-  hit: () => sfx('hit', () => tone(260, 120, 0.08, 'square', 0.03), 0.05),
-  coin: () => sfx('coin', () => tone(900, 1400, 0.09, 'sine', 0.05), 0.07),
-  place: () => tone(200, 400, 0.15, 'triangle', 0.08),
-  leak: () => tone(220, 90, 0.35, 'sawtooth', 0.07),
-  wave: () => { tone(330, 660, 0.25, 'triangle', 0.07); setTimeout(() => tone(440, 880, 0.3, 'triangle', 0.07), 160); },
-  win: () => [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, f, 0.22, 'triangle', 0.08), i * 130)),
-  lose: () => [392, 330, 262].forEach((f, i) => setTimeout(() => tone(f, f * 0.98, 0.3, 'sawtooth', 0.06), i * 200)),
-  boss: () => tone(90, 50, 0.9, 'sawtooth', 0.1),
-  tick: () => tone(800, 800, 0.04, 'square', 0.03),
+  throw: () => sfx('throw', () => tone(520, 260, 0.06, 'square', 0.025), 0.07),
+  hit: () => sfx('hit', () => { noise(0.06, 900, 0.05, 'bandpass'); tone(160, 80, 0.05, 'square', 0.03); }, 0.05),
+  crit: () => sfx('crit', () => { arp([659, 784, 988], 0.04, 0.08, 0.05); noise(0.12, 2400, 0.05, 'bandpass'); }, 0.12),
+  coin: () => sfx('coin', () => { tone(988, 988, 0.05, 'square', 0.03); tone(1318, 1318, 0.09, 'square', 0.03, 0.05); }, 0.08),
+  place: () => { tone(196, 392, 0.12, 'square', 0.05); noise(0.1, 600, 0.04); },
+  upgrade: () => arp([440, 523, 659, 880, 1046], 0.06, 0.12, 0.05),
+  leak: () => { tone(110, 55, 0.45, 'sawtooth', 0.07); noise(0.3, 400, 0.05); },
+  wave: () => { tone(220, 220, 0.18, 'square', 0.05); tone(165, 165, 0.35, 'square', 0.05, 0.2); },
+  bossSpawn: () => { noise(1.2, 500, 0.12); tone(70, 38, 1.2, 'sawtooth', 0.09); tone(55, 41, 1.0, 'square', 0.05, 0.15); },
+  bossHit: () => sfx('bossHit', () => { tone(90, 55, 0.1, 'square', 0.05); noise(0.08, 300, 0.05); }, 0.14),
+  bossDeath: () => { noise(1.4, 1200, 0.14); arp([330, 262, 196, 131, 98], 0.1, 0.25, 0.05, 'sawtooth'); },
+  win: () => arp([440, 523, 659, 880, 1046, 1318], 0.11, 0.25, 0.06),
+  lose: () => arp([330, 311, 294, 262, 196], 0.22, 0.35, 0.06, 'sawtooth'),
+  tick: () => tone(660, 660, 0.03, 'square', 0.025),
+  star: () => { tone(784, 1046, 0.16, 'square', 0.06); noise(0.15, 4000, 0.04, 'highpass'); },
+  count: () => sfx('count', () => tone(1200, 1200, 0.02, 'square', 0.015), 0.04),
 };
 
 // ------------------------------------------------------------------ Musik ---
@@ -424,6 +452,7 @@ const G = {
   coffee: 0,
   coffeeCd: 0,
   t: 0,
+  stats: { kills: 0, bosses: 0, earned: 0, crits: 0, time: 0, startBest: 0 },
 };
 const HPBAR_GEO = new THREE.PlaneGeometry(1, 1);
 const HP_MATS = { bg: new THREE.MeshBasicMaterial({ color: 0x24192e, depthTest: false, transparent: true, opacity: 0.8 }), g: new THREE.MeshBasicMaterial({ color: 0x5ccf3a, depthTest: false, transparent: true }), y: new THREE.MeshBasicMaterial({ color: 0xffc23d, depthTest: false, transparent: true }), r: new THREE.MeshBasicMaterial({ color: 0xff4f4f, depthTest: false, transparent: true }) };
@@ -447,6 +476,7 @@ function startMap(mapIdx) {
   G.zombies = []; G.omas = []; G.shots = []; G.fx = [];
   G.spawnQ = []; G.waveActive = false; G.drag = null; G.selected = null;
   G.coffee = 0; G.coffeeCd = 0; G.speed = 1;
+  G.stats = { kills: 0, bosses: 0, earned: 0, crits: 0, time: 0, startBest: progress.maps[MAPS[mapIdx].id].best };
   G.nextWaveT = settings.auto ? 15 : null;
   G.mode = 'play';
   showScreen('hud');
@@ -469,8 +499,8 @@ function startWave() {
   G.waveActive = true;
   G.nextWaveT = null;
   SND.wave();
-  if (early) { const b = 5 + G.wave; G.cookies += b; hint(`Welle ${G.wave} vorgezogen: +${b} Kekse`); }
-  if (list.some((s) => s.type === 'boss')) setTimeout(() => { if (G.mode === 'play') { banner('BOSS!', 'Zombie-Boss Bruno kommt!'); SND.boss(); } }, 2500);
+  if (early) { const b = 5 + G.wave; G.cookies += b; G.stats.earned += b; hint(`Welle ${G.wave} vorgezogen: +${b} Kekse`); }
+  if (list.some((s) => s.type === 'boss')) setTimeout(() => { if (G.mode === 'play') { banner('BOSS!', 'Zombie-Boss Bruno kommt!'); SND.bossSpawn(); } }, 2500);
   // neue Omas auf Karte 1 freischalten
   if (G.map === 0) for (const [id, def] of Object.entries(OMA_DEF)) if (def.unlock === G.wave && G.wave > 1) { banner('NEUE OMA!', `${OMAS[id].name} ist jetzt dabei`); renderSidebar(); }
   updateHud();
@@ -497,20 +527,33 @@ function placeZombie(z) {
   z.obj.rotation.y = Math.atan2(tg.x, tg.z);
 }
 function onMap(x, z, m = 0) { const b = view.bounds; return x > b.x0 - m && x < b.x1 + m && z > b.z0 - m && z < b.z1 + m; }
-function damage(z, amount, kind) {
+function damage(z, amount, kind, src) {
   if (z.dead) return;
   let d = amount;
   if (z.def.armor && !['splash', 'pierce', 'aoe'].includes(kind)) d *= 1 - z.def.armor;
+  // kritischer Treffer: 10 % Chance auf doppelten Schaden (nicht bei Gießkanne/Rollator)
+  if (kind !== 'aoe' && Math.random() < 0.1) {
+    d *= 2;
+    G.stats.crits++;
+    SND.crit();
+    floatText(z.obj.position, 'KRIT!', 'crit');
+  }
+  if (z.def.boss) SND.bossHit();
+  const real = Math.min(d, Math.max(0, z.hp));
   z.hp -= d;
-  if (z.hp <= 0) kill(z);
+  if (src) src.dmg += real;
+  if (z.hp <= 0) kill(z, src);
 }
-function kill(z) {
+function kill(z, src) {
   z.dead = true;
   z.deadT = 0;
   z.bar.visible = false;
   const rew = Math.round(z.def.reward * 0.7 * (1 + difficulty(G.map, Math.max(1, G.wave)) * 0.008));
   G.cookies += rew;
-  SND.coin();
+  G.stats.earned += rew;
+  G.stats.kills++;
+  if (src) src.kills++;
+  if (z.def.boss) { G.stats.bosses++; SND.bossDeath(); banner('BOSS BESIEGT!', `+${rew} Kekse`); } else SND.coin();
   floatText(z.obj.position, `+${rew}`);
   updateHud();
 }
@@ -543,20 +586,23 @@ function placeOma(id, x, z) {
   obj.position.set(x, 0, z);
   obj.rotation.y = Math.PI;
   W.scene.add(obj);
-  const o = { id, obj, x, z, lvl: 1, cd: 0.2, spent: def.cost, anim: 0 };
+  const o = { id, obj, x, z, lvl: 1, cd: 0.2, spent: def.cost, anim: 0, kills: 0, dmg: 0, target: def.base.prefer === 'strong' ? 'strong' : 'first' };
   G.omas.push(o);
   SND.place();
   sparkleAt(new THREE.Vector3(x, 0.5, z), 0xffffff);
   updateHud();
   return o;
 }
+// Ziel-Wahl pro Oma: Erster (am weitesten vorne), Letzter, Stärkster, Nächster
+const TARGETS = { first: 'ERSTER', last: 'LETZTER', strong: 'STÄRKSTER', close: 'NÄCHSTER' };
 function targetFor(o, s) {
-  let best = null;
+  let best = null, bestV = 0;
   for (const z of G.zombies) {
     if (z.dead || !onMap(z.obj.position.x, z.obj.position.z, 0.5)) continue;
     const d = Math.hypot(z.obj.position.x - o.x, z.obj.position.z - o.z);
     if (d > s.range) continue;
-    if (!best || (s.prefer === 'strong' ? z.hp > best.hp : z.dist > best.dist)) best = z;
+    const v = o.target === 'last' ? -z.dist : o.target === 'strong' ? z.hp : o.target === 'close' ? -d : z.dist;
+    if (!best || v > bestV) { best = z; bestV = v; }
   }
   return best;
 }
@@ -581,7 +627,7 @@ function fire(o, s, tgt) {
       if (Math.hypot(z.obj.position.x - o.x, z.obj.position.z - o.z) > s.range) continue;
       if (s.slow) { z.slowT = s.slowDur; z.slowF = Math.min(z.slowF, 1 - s.slow); }
       if (s.push) { z.dist = Math.max(0, z.dist - s.push * (z.def.boss ? 0.25 : 1)); sparkleAt(z.obj.position.clone().setY(0.6), 0xffd23f); }
-      damage(z, s.dmg, 'aoe');
+      damage(z, s.dmg, 'aoe', o);
       if (s.slow && Math.random() < 0.5) {
         const m = projMesh('drop'); m.position.copy(from); W.scene.add(m);
         G.shots.push({ m, from: from.clone(), to: z.obj.position.clone().setY(0.6), t: 0, dur: 0.35, kind: 'fx' });
@@ -595,7 +641,7 @@ function fire(o, s, tgt) {
   W.scene.add(m);
   const to = tgt.obj.position.clone().setY(0.7 * tgt.def.size);
   const dur = s.arc ? 0.65 : from.distanceTo(to) / s.projSpeed;
-  G.shots.push({ m, from, to, t: 0, dur, tgt, s, arc: s.arc, kind: s.splash ? 'splash' : s.pierce ? 'pierce' : 'single' });
+  G.shots.push({ m, from, to, t: 0, dur, tgt, s, src: o, arc: s.arc, kind: s.splash ? 'splash' : s.pierce ? 'pierce' : 'single' });
   SND.throw();
 }
 // ------------------------------------------------------------- Effekte ---
@@ -609,10 +655,10 @@ function sparkleAt(pos, color = 0xfff2a0) {
   G.fx.push({ g, mat, t: 0 });
 }
 const floats = [];
-function floatText(pos, text) {
+function floatText(pos, text, cls = '') {
   if (floats.length > 12) return;
   const el = document.createElement('div');
-  el.className = 'float';
+  el.className = `float ${cls}`;
   el.textContent = text;
   $('floats').appendChild(el);
   floats.push({ el, pos: pos.clone().setY(1.6), t: 0 });
@@ -657,6 +703,7 @@ function update(dt) {
   const t = G.t;
   G.coffee = Math.max(0, G.coffee - dt);
   G.coffeeCd = Math.max(0, G.coffeeCd - dt);
+  G.stats.time += dt;
   // Automatik: nächste Welle startet von selbst
   if (!G.waveActive && G.nextWaveT !== null && G.wave < G.waves.length) {
     const before = Math.ceil(G.nextWaveT);
@@ -732,11 +779,11 @@ function update(dt) {
       if (sh.kind === 'fx') continue;
       if (sh.kind === 'splash') {
         const c = sh.to.clone().setY(0);
-        for (const z of G.zombies) if (!z.dead && z.obj.position.distanceTo(c) < sh.s.splash) damage(z, sh.s.dmg, 'splash');
+        for (const z of G.zombies) if (!z.dead && z.obj.position.distanceTo(c) < sh.s.splash) damage(z, sh.s.dmg, 'splash', sh.src);
         sparkleAt(sh.to.clone().setY(0.3), 0xffc66a);
         G.fx.push({ ring: true, x: sh.to.x, z: sh.to.z, r: sh.s.splash, t: 0 });
       } else if (sh.tgt && !sh.tgt.dead) {
-        damage(sh.tgt, sh.s.dmg, sh.kind);
+        damage(sh.tgt, sh.s.dmg, sh.kind, sh.src);
         sparkleAt(sh.to);
       }
       SND.hit();
@@ -746,13 +793,15 @@ function update(dt) {
   // Welle vorbei?
   if (G.waveActive && !G.spawnQ.length && !G.zombies.some((z) => !z.dead)) {
     G.waveActive = false;
-    const bonus = 10 + G.wave;
+    const bonus = 25 + Math.round(G.wave * 1.5);
     G.cookies += bonus;
+    G.stats.earned += bonus;
     const p = progress.maps[MAPS[G.map].id];
     if (G.wave > p.best) { p.best = G.wave; saveProgress(); }
     if (G.wave >= G.waves.length) { win(); return; }
     banner(`WELLE ${G.wave} GESCHAFFT!`, `+${bonus} Kekse Bonus`);
-    G.nextWaveT = settings.auto ? 4 : null;
+    // AUTO an: es geht einfach weiter · AUTO aus: keine neue Welle von selbst
+    G.nextWaveT = settings.auto ? 1.5 : null;
     updateHud();
   }
   updateHud(true);
@@ -767,19 +816,57 @@ function win() {
   p.done = true;
   p.best = WAVES;
   saveProgress();
-  SND.win();
-  $('wonStars').textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-  $('wonText').textContent = `${MAPS[G.map].name} geschafft! Alle ${WAVES} Wellen überstanden – ${G.lives} von ${LIVES} Leben übrig.`;
-  $('wonExtra').textContent = first && MAPS[G.map + 1] ? `Neue Karte freigeschaltet: ${MAPS[G.map + 1].name}!` : '';
-  $('next').textContent = MAPS[G.map + 1] ? 'NÄCHSTE KARTE ▶' : 'MENÜ';
-  showScreen('won');
+  showResult(true, stars, first);
 }
 function lose() {
   G.mode = 'lost';
-  SND.lose();
+  showResult(false, 0, false);
+}
+// ---------------------------------------------------- Ergebnis-Bildschirm ---
+function showResult(won, stars, firstWin) {
   const p = progress.maps[MAPS[G.map].id];
-  $('lostText').textContent = `Du hast Welle ${G.wave} von ${WAVES} erreicht. Rekord: Welle ${Math.max(p.best, G.wave - 1)}.`;
-  showScreen('lost');
+  const reached = won ? WAVES : Math.max(0, G.wave - 1);
+  const record = !won && reached > (G.stats.startBest || 0);
+  won ? SND.win() : SND.lose();
+  $('rTitle').textContent = won ? 'KARTE GESCHAFFT!' : 'OH NEIN!';
+  $('rTitle').className = won ? 'win' : 'lose';
+  $('rMap').textContent = MAPS[G.map].name;
+  $('rRibbon').textContent = won ? (firstWin && MAPS[G.map + 1] ? `NEUE KARTE FREI: ${MAPS[G.map + 1].name}!` : 'ALLE 60 WELLEN ÜBERSTANDEN') : record ? 'NEUER REKORD!' : `REKORD: WELLE ${p.best}`;
+  $('rRibbon').classList.toggle('gold', won || record);
+  // Sterne nacheinander
+  const st = $('rStars');
+  st.innerHTML = [0, 1, 2].map(() => '<i>★</i>').join('');
+  st.classList.toggle('hidden', !won);
+  if (won) [...st.children].forEach((el, i) => { if (i < stars) setTimeout(() => { el.classList.add('on'); SND.star(); }, 700 + i * 450); });
+  // beste Oma
+  const mvp = G.omas.slice().sort((a, b) => b.kills - a.kills || b.dmg - a.dmg)[0];
+  if (mvp) {
+    $('rMvp').innerHTML = `<img src="${portraits[mvp.id]}" alt=""><div><small>BESTE OMA</small><b>${OMAS[mvp.id].name}</b><span>${mvp.kills} Zombies · ${fmt(mvp.dmg)} Schaden · Stufe ${mvp.lvl}</span></div>`;
+    $('rMvp').classList.remove('hidden');
+  } else $('rMvp').classList.add('hidden');
+  const mins = Math.floor(G.stats.time / 60), secs = Math.floor(G.stats.time % 60);
+  const rows = [
+    ['🌊', 'Wellen', reached, `/ ${WAVES}`],
+    ['❤️', 'Leben übrig', G.lives, `/ ${LIVES}`],
+    ['🧟', 'Zombies besiegt', G.stats.kills, ''],
+    ['👑', 'Bosse besiegt', G.stats.bosses, ''],
+    ['🍪', 'Kekse verdient', G.stats.earned, ''],
+    ['💥', 'Kritische Treffer', G.stats.crits, ''],
+  ];
+  $('rStats').innerHTML = rows.map(([ic, l, v, suf], i) => `<div class="rs"><span>${ic} ${l}</span><b data-v="${v}" data-i="${i}">0</b><em>${suf}</em></div>`).join('') + `<div class="rs"><span>⏱ Spielzeit</span><b>${mins}:${String(secs).padStart(2, '0')}</b><em></em></div>`;
+  // Zahlen hochzählen
+  const t0 = performance.now();
+  const els = [...$('rStats').querySelectorAll('b[data-v]')];
+  const count = () => {
+    const k = Math.min(1, (performance.now() - t0) / 1200);
+    for (const el of els) el.textContent = fmt(Number(el.dataset.v) * (1 - Math.pow(1 - k, 3)));
+    if (k < 1) { SND.count(); requestAnimationFrame(count); }
+  };
+  requestAnimationFrame(count);
+  $('rNext').classList.toggle('hidden', !(won && MAPS[G.map + 1]));
+  $('rRetry').textContent = won ? 'NOCHMAL' : 'NOCHMAL VERSUCHEN';
+  $('confetti').innerHTML = won ? Array.from({ length: 40 }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${['#ffd23f', '#ff6b8b', '#7ddc4a', '#5fc8ff', '#b06bff'][i % 5]};animation-delay:${Math.random() * 1.5}s;animation-duration:${2 + Math.random() * 2}s"></i>`).join('') : '';
+  showScreen('result');
 }
 
 // ------------------------------------------------------------------- UI ---
@@ -803,7 +890,8 @@ function updateHud(light = false) {
   sw.classList.toggle('early', G.waveActive);
   if (!more) sw.innerHTML = '';
   else if (G.waveActive) sw.innerHTML = `WELLE ${G.wave + 1} ▶▶<small>SCHON STARTEN</small>`;
-  else sw.innerHTML = G.nextWaveT !== null ? `WELLE ${G.wave + 1} IN ${Math.max(1, Math.ceil(G.nextWaveT))}<small>JETZT STARTEN</small>` : `WELLE ${G.wave + 1}<small>STARTEN</small>`;
+  else if (G.nextWaveT !== null && G.wave > 0) sw.classList.add('hidden'); // Automatik läuft einfach weiter
+  else sw.innerHTML = G.nextWaveT !== null ? `WELLE 1 IN ${Math.max(1, Math.ceil(G.nextWaveT))}<small>JETZT STARTEN</small>` : `WELLE ${G.wave + 1}<small>STARTEN</small>`;
   document.querySelectorAll('.ocard[data-id]').forEach((el) => el.classList.toggle('poor', G.cookies < OMA_DEF[el.dataset.id].cost));
   if (G.selected) renderInfo();
 }
@@ -816,7 +904,7 @@ $('auto').addEventListener('click', (e) => {
   settings.auto = !settings.auto;
   saveSettings();
   // laufende Welle läuft weiter – ab der nächsten zählt die neue Einstellung
-  if (!G.waveActive) G.nextWaveT = settings.auto ? 4 : null;
+  if (!G.waveActive) G.nextWaveT = settings.auto ? (G.wave === 0 ? 15 : 1.5) : null;
   updateAuto();
   updateHud();
 });
@@ -824,6 +912,15 @@ const portraits = {};
 function renderPortraits() {
   const r = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
   r.setSize(160, 160); r.setPixelRatio(1); r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 0.85;
+  for (const zid of Object.keys(ZOMBIE_DEF)) {
+    const def = ZOMBIE_DEF[zid];
+    const sc = new THREE.Scene(); sc.background = new THREE.Color(0xc8e6a0);
+    sc.add(new THREE.HemisphereLight(0xffffff, 0xb8c8a8, 1.6)); const l = new THREE.DirectionalLight(0xffffff, 2.2); l.position.set(2, 3, 4); sc.add(l);
+    sc.add(figure('zombie', def.model));
+    const cam = new THREE.PerspectiveCamera(32, 1, 0.1, 50); cam.position.set(0.3, 1.1, def.boss ? 2.8 : def.fat ? 2.7 : 2.4); cam.lookAt(0, 0.85, 0);
+    r.render(sc, cam);
+    portraits['z-' + zid] = r.domElement.toDataURL('image/jpeg', 0.85);
+  }
   for (const id of Object.keys(OMAS)) {
     const sc = new THREE.Scene(); sc.background = new THREE.Color(0xffd9a0);
     sc.add(new THREE.HemisphereLight(0xffffff, 0xd8c8a8, 1.6)); const l = new THREE.DirectionalLight(0xffffff, 2.2); l.position.set(2, 3, 4); sc.add(l);
@@ -940,17 +1037,53 @@ function closeInfo() {
   $('info').classList.add('hidden');
   if (!G.drag && W.range) W.range.visible = false;
 }
+const num = (v, d = 1) => Number(v).toLocaleString('de-DE', { maximumFractionDigits: d });
+const dps = (s) => s.dmg * s.rate;
+const STAT_LABEL = { dmg: 'Schaden', rate: 'Würfe/Sek', range: 'Reichweite', splash: 'Fläche', slow: 'Bremse', push: 'Schubs' };
+function statsAt(id, lvl) {
+  const def = OMA_DEF[id];
+  const s2 = { ...def.base };
+  for (let i = 0; i < lvl - 1; i++) Object.assign(s2, def.ups[i].set);
+  return s2;
+}
 function renderInfo() {
   const o = G.selected;
   const def = OMA_DEF[o.id];
   const up = def.ups[o.lvl - 1];
+  const s0 = stats(o);
   $('iName').textContent = OMAS[o.id].name;
   $('iLvl').textContent = `Stufe ${o.lvl}${up ? '' : ' (max)'} · ${def.desc}`;
+  $('iStats').innerHTML = `<span>💥 ${num(s0.dmg)} Schaden</span><span>⏱ ${num(s0.rate, 2)}/s</span><span>🎯 ${num(s0.range)} m</span>`;
+  $('iKills').innerHTML = `🧟 <b>${o.kills}</b> besiegt · <b>${fmt(o.dmg)}</b> Schaden gesamt`;
+  $('iTarget').innerHTML = `ZIEL: <b>${TARGETS[o.target]}</b> ⟳`;
+  $('iTarget').classList.toggle('hidden', !!s0.aoe);
+  // Upgrade-Vergleich: was wird wie viel besser?
+  if (up) {
+    const s1 = statsAt(o.id, o.lvl + 1);
+    const lines = Object.keys(up.set).map((k) => {
+      const a = s0[k], b = s1[k];
+      const pct = a ? Math.round(((b - a) / a) * 100) : 0;
+      const val = (v) => (k === 'slow' ? `${Math.round(v * 100)} %` : num(v, 2));
+      return `<div>${STAT_LABEL[k] || k}: ${val(a)} → <b>${val(b)}</b> <i>(+${pct} %)</i></div>`;
+    });
+    const d0 = dps(s0), d1 = dps(s1);
+    if (d1 !== d0) lines.push(`<div class="dps">Schaden pro Sekunde: ${num(d0)} → <b>${num(d1)}</b> <i>(+${Math.round(((d1 - d0) / d0) * 100)} %)</i></div>`);
+    $('iCompare').innerHTML = `<div class="ct">⬆ ${up.label}</div>${lines.join('')}`;
+    $('iCompare').classList.remove('hidden');
+  } else $('iCompare').classList.add('hidden');
   const ub = $('iUp');
-  if (up) { ub.innerHTML = `${up.label}<br><span class="ck"></span>${up.cost}`; ub.disabled = G.cookies < up.cost; ub.classList.remove('hidden'); }
+  if (up) { ub.innerHTML = `UPGRADE<br><span class="ck"></span>${up.cost}`; ub.disabled = G.cookies < up.cost; ub.classList.remove('hidden'); }
   else ub.classList.add('hidden');
   $('iSell').innerHTML = `VERKAUFEN<br><span class="ck"></span>${Math.floor(o.spent * 0.6)}`;
 }
+$('iTarget').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const o = G.selected; if (!o) return;
+  const keys = Object.keys(TARGETS);
+  o.target = keys[(keys.indexOf(o.target) + 1) % keys.length];
+  tone(500, 700, 0.05, 'square', 0.03);
+  renderInfo();
+});
 function positionInfo() {
   const o = G.selected;
   if (!o) return;
@@ -968,7 +1101,8 @@ $('iUp').addEventListener('click', (e) => {
   G.cookies -= up.cost; o.spent += up.cost; o.lvl++;
   o.obj.scale.setScalar(0.92 + (o.lvl - 1) * 0.06);
   sparkleAt(new THREE.Vector3(o.x, 1.2, o.z), 0x7ddc4a);
-  SND.place();
+  floatText(new THREE.Vector3(o.x, 0.6, o.z), `STUFE ${o.lvl}!`, 'up');
+  SND.upgrade();
   W.range.scale.setScalar(stats(o).range);
   updateHud();
 });
@@ -993,7 +1127,7 @@ function banner(title, sub = '') {
   bannerT = setTimeout(() => b.classList.add('hidden'), 2400);
 }
 function showScreen(id) {
-  for (const s of ['title', 'hud', 'won', 'lost', 'paused']) $(s).classList.toggle('hidden', !(s === id || (s === 'hud' && ['won', 'lost', 'paused'].includes(id))));
+  for (const s of ['title', 'hud', 'result', 'paused']) $(s).classList.toggle('hidden', !(s === id || (s === 'hud' && ['result', 'paused'].includes(id))));
 }
 // ------------------------------------------------------------ Titel-Menü ---
 const sel = { map: 0 };
@@ -1022,6 +1156,41 @@ $('setMusic').addEventListener('click', () => { settings.music = !settings.music
 $('setAuto').addEventListener('click', () => { settings.auto = !settings.auto; saveSettings(); setLbl(); updateAuto(); });
 $('setClose').addEventListener('click', () => $('settings').classList.add('hidden'));
 $('tInfo').addEventListener('click', () => $('help').classList.remove('hidden'));
+// ---- Lexikon: was können die Omas, was halten die Zombies aus ----
+const SPECIAL = { erna: 'Trifft durch Schilde. Zielt auf den stärksten Zombie.', gerda: 'Keks explodiert und trifft alle in der Nähe.', helga: 'Macht alle Zombies in Reichweite langsamer.', inge: 'Schubst alle Zombies in Reichweite zurück (Bosse nur ein bisschen).', hilde: 'Schnelle Würfe auf einen Zombie.' };
+const ZINFO = {
+  gustav: ['ab Welle 1', 'Ganz normaler, langsamer Zombie.'],
+  jogger: ['ab Welle 11', 'Rennt fast doppelt so schnell, hält aber wenig aus.'],
+  schild: ['ab Welle 16', 'Mülltonnendeckel: Nadeln machen nur 40 % Schaden. Erna, Gerda, Helga und Inge treffen voll.'],
+  dieter: ['ab Welle 21', 'Langsam, aber dreimal so viel Leben. Kostet 2 Leben, wenn er durchkommt.'],
+  boss: ['Welle 20, 30, 40, 50, 60', 'Riesig, 20-mal so viel Leben. Kostet 8 Leben, wenn er durchkommt!'],
+};
+function renderCodex(tab) {
+  document.querySelectorAll('[data-ctab]').forEach((b) => b.classList.toggle('on', b.dataset.ctab === tab));
+  if (tab === 'omas') {
+    $('codexList').innerHTML = Object.keys(OMAS).map((id) => {
+      const def = OMA_DEF[id];
+      const name = OMAS[id].name;
+      if (!def) return `<div class="cx soon"><img src="${portraits[id]}" alt=""><div><b>${name}</b><small>${OMAS[id].role}</small><p>Kommt in einem späteren Update.</p></div></div>`;
+      const b = def.base, mx = statsAt(id, 3);
+      const ups = def.ups.map((u) => `${u.label} (${u.cost} 🍪)`).join(' · ');
+      return `<div class="cx"><img src="${portraits[id]}" alt=""><div><b>${name}</b><small>${OMAS[id].role} · ${def.cost} 🍪 · ab Welle ${def.unlock}</small>
+        <div class="cxs"><span>💥 ${num(b.dmg)}${b.aoe ? ' an alle' : ''}</span><span>⏱ ${num(b.rate, 2)}/s</span><span>🎯 ${num(b.range)} m</span><span>⚡ ${num(dps(b))} DPS</span></div>
+        <p>${SPECIAL[id]}${b.slow ? ` Bremst um ${Math.round(b.slow * 100)} %.` : ''}${b.push ? ` Schubst ${num(b.push)} m zurück.` : ''}</p>
+        <p class="up">⬆ ${ups}<br>Voll aufgerüstet: ${num(dps(mx))} DPS (${dps(b) ? '+' + Math.round(((dps(mx) - dps(b)) / dps(b)) * 100) + ' %' : ''})</p></div></div>`;
+    }).join('');
+  } else {
+    $('codexList').innerHTML = Object.keys(ZOMBIE_DEF).map((zid) => {
+      const d = ZOMBIE_DEF[zid];
+      return `<div class="cx z"><img src="${portraits['z-' + zid]}" alt=""><div><b>${ZOMBIES[d.model].name}</b><small>${ZINFO[zid][0]}</small>
+        <div class="cxs"><span>❤️ ${d.hp} Leben</span><span>👟 Tempo ${num(d.speed)}</span><span>🍪 ${d.reward}</span><span>💔 −${d.lives}</span></div>
+        <p>${ZINFO[zid][1]}</p></div></div>`;
+    }).join('') + '<p class="note">Mit jeder Welle bekommen die Zombies mehr Leben.</p>';
+  }
+}
+$('tCodex').addEventListener('click', () => { renderCodex('omas'); $('codex').classList.remove('hidden'); });
+document.querySelectorAll('[data-ctab]').forEach((b) => b.addEventListener('click', () => renderCodex(b.dataset.ctab)));
+$('codexClose').addEventListener('click', () => $('codex').classList.add('hidden'));
 $('helpClose').addEventListener('click', () => $('help').classList.add('hidden'));
 function toTitle() {
   G.mode = 'title';
@@ -1045,10 +1214,9 @@ $('coffee').addEventListener('click', (e) => {
 $('pause').addEventListener('click', (e) => { e.stopPropagation(); if (G.mode === 'play') { G.mode = 'paused'; showScreen('paused'); } });
 $('resume').addEventListener('click', () => { G.mode = 'play'; showScreen('hud'); });
 $('quit').addEventListener('click', toTitle);
-$('next').addEventListener('click', () => { if (MAPS[G.map + 1]) startMap(G.map + 1); else toTitle(); });
-$('wonMenu').addEventListener('click', toTitle);
-$('retry').addEventListener('click', () => startMap(G.map));
-$('lostMenu').addEventListener('click', toTitle);
+$('rNext').addEventListener('click', () => { if (MAPS[G.map + 1]) startMap(G.map + 1); else toTitle(); });
+$('rRetry').addEventListener('click', () => startMap(G.map));
+$('rMenu').addEventListener('click', toTitle);
 
 // -------------------------------------------------------------- Steuerung ---
 const ray = new THREE.Raycaster();
@@ -1150,4 +1318,4 @@ function frame(now) {
 })();
 
 // zum Testen
-window.__oma = { G, W, renderer, sim: (sec) => { for (let i = 0; i < sec * 30 && G.mode === 'play'; i++) update(1 / 30); }, startMap, startWave, placeOma, canPlace, view, OMA_DEF, progress, MAPS, placeCamera, project: (x, z) => { const v = new THREE.Vector3(x, 0, z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight }; } };
+window.__oma = { G, W, renderer, selectOma, showResult, sim: (sec) => { for (let i = 0; i < sec * 30 && G.mode === 'play'; i++) update(1 / 30); }, startMap, startWave, placeOma, canPlace, view, OMA_DEF, progress, MAPS, placeCamera, project: (x, z) => { const v = new THREE.Vector3(x, 0, z).project(camera); return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight }; } };
