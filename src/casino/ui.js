@@ -7,9 +7,8 @@ const fmt = (n) => Math.round(n).toLocaleString('de-DE');
 
 export class UIManager {
   constructor(game) {
-    this.g = game; this.tab = 'inv'; this.confirmCb = null;
+    this.g = game; this.confirmCb = null;
     $('shopX').onclick = () => this.closeShop();
-    document.querySelectorAll('#shop .tabs button').forEach((b) => (b.onclick = () => { SFX.click(); this.tab = b.dataset.tab; this.renderShop(); }));
     $('cNo').onclick = () => { SFX.click(); $('confirm').classList.add('hidden'); };
     $('cYes').onclick = () => { SFX.click(); $('confirm').classList.add('hidden'); this.confirmCb?.(); };
   }
@@ -23,6 +22,7 @@ export class UIManager {
     $('qText').textContent = q ? q.text + this.g.quests.progressText() : 'Alle Aufgaben erledigt! 🎉';
     $('qHint').textContent = q ? q.hint : 'Phase 2 bringt Pokertische, Mitarbeiter & neue Räume.';
     if (!$('shop').classList.contains('hidden')) $('shopMoney').textContent = fmt(s.money);
+    if (this.g.building) this.renderHotbar();
   }
   toast(text, big = false) {
     const el = document.createElement('div'); el.className = 'toast' + (big ? ' big' : ''); el.textContent = text;
@@ -41,42 +41,50 @@ export class UIManager {
     b.classList.remove('hidden'); b.classList.toggle('bad', bad);
     $('actTxt').textContent = label; $('actIc').textContent = icon;
   }
-  // -------------------------------------------------------------- Bau-Menü
-  openShop(tab) { if (tab) this.tab = tab; this.show('shop'); this.renderShop(); }
+  // ----------------------------------------------------------- Bau-Leiste
+  renderHotbar() {
+    const g = this.g, s = g.state, eco = g.eco, bar = $('hotbar');
+    const sel = g.placement.active && !g.placement.active.src ? g.placement.active.type : null;
+    bar.innerHTML = '';
+    const tile = (ic, name, price, cls, onClick) => {
+      const b = document.createElement('button'); b.className = 'slotx ' + cls;
+      b.innerHTML = `<span class="i">${ic}</span><span class="n"></span><span class="p"></span>`;
+      b.querySelector('.n').textContent = name; const p = b.querySelector('.p'); p.textContent = price;
+      if (price.startsWith('GRATIS') || price.startsWith('×')) p.classList.add('free');
+      b.onclick = () => { SFX.click(); onClick(); };
+      bar.appendChild(b);
+    };
+    for (const t of Object.keys(CATALOG)) {
+      const c = CATALOG[t], inv = s.inv[t] || 0, u = eco.unlockInfo(t), price = eco.price(t);
+      const short = c.name.replace('Spielautomat „Lucky 7“', 'Lucky 7').replace('Automat „Diamond“', 'Diamond').replace('Goldmünzen-Statue', 'Statue');
+      const usable = inv > 0 || u.ok;
+      let label = inv > 0 ? (t === 'slot' && !s.objects.some((o) => o.type === 'slot') ? 'GRATIS 🎁' : `× ${inv}`) : `${fmt(price)} $`;
+      let cls = (sel === t ? 'sel ' : '') + (!usable ? 'lock ' : '') + (usable && inv === 0 && s.money < price ? 'poor' : '');
+      tile(c.icon, short, label, cls, () => {
+        if (!usable) { SFX.error(); this.toast(`🔒 ${u.why}`); return; }
+        if (sel === t) { g.placement.cancel(); this.renderHotbar(); return; }
+        g.selectBuild(t);
+      });
+    }
+    tile('🧰', 'Renovieren', '', '', () => this.openShop());
+  }
+  // -------------------------------------------------------- Renovieren
+  openShop() { this.show('shop'); this.renderShop(); }
   closeShop() { SFX.click(); this.show('shop', false); }
   renderShop() {
     const g = this.g, s = g.state, eco = g.eco;
     $('shopMoney').textContent = fmt(s.money);
-    document.querySelectorAll('#shop .tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === this.tab));
     const grid = $('shopGrid'); grid.innerHTML = '';
-    const card = (ic, name, desc, btn, onClick, cls = '', disabled = false) => {
-      const c = document.createElement('div'); c.className = 'card ' + cls;
-      c.innerHTML = `<div class="ic">${ic}</div><div class="nm"></div><div class="ds"></div>`;
-      c.querySelector('.nm').textContent = name; c.querySelector('.ds').textContent = desc;
-      const b = document.createElement('button'); b.className = cls.includes('locked') ? 'glass' : 'gold'; b.textContent = btn; b.disabled = disabled;
-      b.onclick = () => { SFX.click(); onClick(); };
+    for (const id of Object.keys(REPAIRS)) {
+      const r = REPAIRS[id], u = eco.repairInfo(id);
+      const c = document.createElement('div'); c.className = 'card' + (u.ok ? '' : ' locked');
+      c.innerHTML = `<div class="ic">${r.icon}</div><div class="nm"></div><div class="ds"></div>`;
+      c.querySelector('.nm').textContent = r.name;
+      c.querySelector('.ds').textContent = u.ok ? `Macht das Casino schöner. +${r.attract} Beliebtheit.` : s.repairs[id] ? '✅ Erledigt' : `🔒 ${u.why}`;
+      const b = document.createElement('button'); b.className = u.ok ? 'gold' : 'glass';
+      b.textContent = s.repairs[id] ? 'FERTIG' : `${fmt(r.price)} $`; b.disabled = !u.ok || s.money < r.price;
+      b.onclick = () => { SFX.click(); g.repair(id); };
       c.appendChild(b); grid.appendChild(c);
-    };
-    if (this.tab === 'inv') {
-      const types = Object.keys(s.inv).filter((k) => s.inv[k] > 0);
-      if (!types.length) { const e = document.createElement('div'); e.className = 'ds'; e.style.cssText = 'grid-column:1/-1;opacity:.7;font-family:system-ui;font-size:13px;padding:10px'; e.textContent = 'Dein Inventar ist leer. Kaufe neue Sachen im Reiter „Kaufen“.'; grid.appendChild(e); }
-      for (const t of types) {
-        const c = CATALOG[t];
-        const gift = t === 'slot' && s.objects.filter((o) => o.type === 'slot').length === 0;
-        card(c.icon, `${c.name} ×${s.inv[t]}`, gift ? '🎁 Geschenk von Opa! Stell ihn im Casino auf.' : c.desc, 'AUFSTELLEN', () => g.beginPlace(t), gift ? 'gift' : '');
-      }
-    } else if (this.tab === 'buy') {
-      for (const t of Object.keys(CATALOG)) {
-        const c = CATALOG[t], u = eco.unlockInfo(t), p = eco.price(t);
-        if (!u.ok) { card(c.icon, c.name, `🔒 ${u.why}`, `${fmt(p)} $`, () => {}, 'locked', true); continue; }
-        card(c.icon, c.name, c.desc, `${fmt(p)} $`, () => g.buy(t), '', s.money < p);
-      }
-    } else {
-      for (const id of Object.keys(REPAIRS)) {
-        const r = REPAIRS[id], u = eco.repairInfo(id);
-        if (!u.ok) { card(r.icon, r.name, s.repairs[id] ? '✅ Erledigt' : `🔒 ${u.why}`, s.repairs[id] ? 'FERTIG' : `${fmt(r.price)} $`, () => {}, 'locked', true); continue; }
-        card(r.icon, r.name, `Macht das Casino schöner. +${r.attract} Beliebtheit.`, `${fmt(r.price)} $`, () => g.repair(id), '', s.money < r.price);
-      }
     }
   }
 }

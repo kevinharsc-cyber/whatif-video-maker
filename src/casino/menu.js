@@ -17,13 +17,14 @@ export class MainMenuManager {
     $('mLoad').onclick = () => { unlockAudio(); SFX.click(); this.g.loadGame(); };
     $('mSet').onclick = () => { unlockAudio(); SFX.click(); this.openSettings(); };
     $('sClose').onclick = () => { SFX.click(); $('settings').classList.add('hidden'); };
+    $('sMusic').onclick = () => { this.g.settings.music = !this.g.settings.music; this.g.musicReady = true; this.g.applySettings(); this.syncSettings(); SFX.click(); };
     $('sSound').onclick = () => { this.g.settings.sound = !this.g.settings.sound; this.g.applySettings(); this.syncSettings(); SFX.click(); };
     $('sQual').onclick = () => { this.g.settings.quality = this.g.settings.quality === 'low' ? 'high' : 'low'; this.g.applySettings(); this.syncSettings(); SFX.click(); };
     $('sSens').oninput = (e) => { this.g.settings.sens = +e.target.value; this.g.applySettings(); };
     $('sDel').onclick = () => { SFX.click(); this.g.ui.confirm('Spielstand löschen?', 'Das kann nicht rückgängig gemacht werden.', () => { SaveSystem.clear(); this.refresh(); if (this.g.mode !== 'menu') this.g.toMenu(); this.g.ui.toast('Spielstand gelöscht'); }); };
   }
   refresh() { $('mLoad').disabled = !SaveSystem.has(); }
-  syncSettings() { const s = this.g.settings; $('sSound').textContent = s.sound ? 'AN' : 'AUS'; $('sQual').textContent = s.quality === 'low' ? 'NIEDRIG' : 'HOCH'; $('sSens').value = s.sens; }
+  syncSettings() { const s = this.g.settings; $('sSound').textContent = s.sound ? 'AN' : 'AUS'; $('sMusic').textContent = s.music ? 'AN' : 'AUS'; $('sQual').textContent = s.quality === 'low' ? 'NIEDRIG' : 'HOCH'; $('sSens').value = s.sens; }
   openSettings() { this.syncSettings(); $('settings').classList.remove('hidden'); }
   show() { this.refresh(); $('menu').classList.remove('hidden'); }
   hide() { $('menu').classList.add('hidden'); }

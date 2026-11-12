@@ -13,6 +13,7 @@ import { SaveSystem, newState } from './save.js';
 import { UIManager, $ } from './ui.js';
 import { MainMenuManager } from './menu.js';
 import { SFX, setSound, unlockAudio } from './audio.js';
+import { Music } from './music.js';
 
 class Game {
   constructor() {
@@ -44,6 +45,8 @@ class Game {
     this.bindHud();
     this.applySettings();
     window.addEventListener('resize', () => this.resize());
+    const kick = () => { this.musicReady = true; if (this.settings.music && !document.hidden) Music.start(unlockAudio()); };
+    document.addEventListener('touchend', kick, { once: true }); document.addEventListener('click', kick, { once: true });
     this.resize();
     this.mode = 'menu'; this.t = 0; this.saveT = 0;
     this.toMenu();
@@ -78,6 +81,7 @@ class Game {
   applySettings() {
     const s = this.settings;
     setSound(s.sound);
+    if (this.musicReady) { if (s.music) Music.start(unlockAudio()); else Music.stop(); }
     this.input.sens = s.sens;
     const low = s.quality === 'low';
     this.renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio, 2));
@@ -89,7 +93,7 @@ class Game {
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h; this.camera.fov = w / h < 0.8 ? 62 : 50; this.camera.updateProjectionMatrix();
+    this.camera.aspect = w / h; this.camera.fov = w / h < 0.8 ? 72 : 60; this.camera.updateProjectionMatrix();
   }
 
   // ---------------------------------------------------------- Modi
@@ -118,15 +122,16 @@ class Game {
     this.world.applyRepairs(s.repairs, s.open);
     this.world.doorTarget = s.open ? 1.75 : 0; this.world.doorAngle = this.world.doorTarget;
     this.player.place(s.player.x, s.player.z, s.player.yaw);
-    this.player.obj.visible = !menuOnly;
+    this.player.obj.visible = false; void menuOnly;
+    this.setBuild(false);
   }
   beginPlay(intro) {
     this.mode = 'play';
     this.setNight(false);
     this.menu.hide(); this.ui.show('hud');
-    this.cam.snapBehind(this.player);
+    this.cam.snapBehind(this.player); this.world.setCutaway(null);
     if (intro) { // Kamerafahrt aus der Luft
-      this.cam.cin = { from: { p: new THREE.Vector3(-8, 14, -14), l: new THREE.Vector3(8, 0, 0) }, t: 0, dur: this.fast ? 0.1 : 3.2 };
+      this.cam.cin = { from: { p: new THREE.Vector3(-6, 12, -12), l: new THREE.Vector3(6, 1, 0) }, t: 0, dur: this.fast ? 0.1 : 3.2 };
       setTimeout(() => this.ui.toast('Willkommen in der Opas Straße!', true), this.fast ? 0 : 1600);
       this.save();
     }
@@ -146,20 +151,24 @@ class Game {
     $('pSet').onclick = () => { SFX.click(); this.menu.openSettings(); };
     $('pMenu').onclick = () => { SFX.click(); this.toMenu(); };
     $('act').onclick = () => this.pressAct();
-    $('build').onclick = () => { unlockAudio(); SFX.click(); this.ui.openShop(this.state.inv.slot && !this.state.objects.length ? 'inv' : undefined); };
+    $('build').onclick = () => { unlockAudio(); SFX.click(); this.setBuild(!this.building); };
+    $('bStore').onclick = () => { SFX.click(); if (this.buildTarget) this.storeObject(this.buildTarget.obj); };
     $('pRotate').onclick = () => { SFX.click(); this.placement.rotate(); };
-    $('pCancel').onclick = () => { SFX.click(); this.cancelPlace(); };
+    $('pCancel').onclick = () => { SFX.click(); this.cancelPlace(); this.ui.renderHotbar(); };
     $('opClose').onclick = () => { SFX.click(); this.closePanel(); };
     $('opCollect').onclick = () => this.collect(this.panelItem);
     $('opSpin').onclick = () => this.testSpin(this.panelItem);
-    $('opMove').onclick = () => { SFX.click(); const it = this.panelItem; this.closePanel(); this.startMove(it); };
+    $('opMove').onclick = () => { SFX.click(); const it = this.panelItem; this.closePanel(); this.setBuild(true); this.startMove(it); };
     // Spiel pausiert, wenn die App in den Hintergrund geht
-    document.addEventListener('visibilitychange', () => { if (document.hidden && this.mode === 'play') { this.save(); this.pause(true); } });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { Music.stop(); if (this.mode === 'play') { this.save(); this.pause(true); } } else if (this.settings.music && this.musicReady) Music.start(unlockAudio());
+    });
   }
   pressAct() {
     if (this.mode !== 'play') return;
     unlockAudio();
     if (this.placement.active) return this.confirmPlace();
+    if (this.building) { if (this.buildTarget) { SFX.click(); this.startMove(this.buildTarget.obj); } return; }
     this.interact.trigger();
   }
 
@@ -167,7 +176,7 @@ class Game {
   registerInteractions() {
     const W = this.world;
     this.interact.register({
-      id: 'door', radius: 1.9,
+      id: 'door', radius: 2.4, y: 1.2,
       pos: () => new THREE.Vector3(CASINO.x0 + 0.1, 0, 0),
       enabled: () => !this.state.open,
       label: () => (!this.state.doorUnlocked ? ['Aufschließen', '🔑'] : W.doorTarget > 0 ? ['Tür schließen', '🚪'] : ['Tür öffnen', '🚪']),
@@ -177,7 +186,7 @@ class Game {
       },
     });
     this.interact.register({
-      id: 'lever', radius: 1.7,
+      id: 'lever', radius: 2.2, y: 1.3,
       pos: () => LEVER_POS.clone().setY(0),
       enabled: () => !this.state.open && this.state.doorUnlocked,
       label: () => (this.objects.machines().length ? ['Casino eröffnen', '🎉'] : ['Hebel (noch zu)', '🔴']),
@@ -193,26 +202,35 @@ class Game {
     });
   }
   registerObject(it) {
+    const game = this;
     const type = it.data.type, machine = type === 'slot' || type === 'deluxe';
+    const H = { slot: 1.2, deluxe: 1.2, counter: 0.9, chair: 0.5, lamp: 1.0, plant: 0.6, rug: 0.02, statue: 0.8 };
     this.interact.register({
-      id: 'obj' + it.data.id, radius: type === 'counter' ? 1.9 : 1.5,
-      pos: () => (type === 'rug' ? new THREE.Vector3(it.data.x, 0, it.data.z) : this.objects.front(it, type === 'counter' ? 0.9 : 0.6)),
+      id: 'obj' + it.data.id, kind: 'obj', obj: it, y: H[type],
+      get radius() { return game.building ? 5 : type === 'counter' ? 2.6 : 2.4; },
+      pos: () => new THREE.Vector3(it.data.x, 0, it.data.z),
       enabled: () => !this.placement.active,
       label: () => (machine ? [it.data.cash > 0 ? `Interagieren · ${Math.round(it.data.cash)} $` : 'Interagieren', '🎰'] : type === 'counter' ? ['Kasse ansehen', '💰'] : ['Aufheben', '✋']),
       act: () => (machine || type === 'counter' ? this.openPanel(it) : this.startMove(it)),
     });
   }
 
-  // ---------------------------------------------------------- Bauen
-  beginPlace(type) {
-    if (!this.player.inside) { SFX.error(); this.ui.toast('Geh dafür ins Casino!'); return; }
-    this.ui.show('shop', false);
+  // ---------------------------------------------------------- Bauen (Bau-Modus mit Leiste)
+  setBuild(on) {
+    if (on && !this.player.inside) { SFX.error(); this.ui.toast('Geh dafür ins Casino!'); return; }
+    this.building = on;
+    if (!on) { this.placement.cancel(true); this.buildTarget = null; }
+    $('build').classList.toggle('on', on); $('build').textContent = on ? '✓ FERTIG' : '🔨 BAUEN';
+    this.ui.show('buildBar', on);
+    if (on) this.ui.renderHotbar();
+  }
+  selectBuild(type) {
     this.placement.start(type);
     if (type === 'slot') this.quests.check({ selectedGift: true });
-    this.ui.toast('Lauf an eine freie Stelle und tippe PLATZIEREN');
-    this.ui.hud();
+    this.ui.renderHotbar(); this.ui.hud();
   }
-  startMove(it) { this.placement.start(it.data.type, it); }
+  canUse(type) { const s = this.state; return (s.inv[type] || 0) > 0 || (this.eco.unlockInfo(type).ok && s.money >= this.eco.price(type)); }
+  startMove(it) { this.placement.start(it.data.type, it); this.ui.renderHotbar(); }
   cancelPlace() { this.placement.cancel(); }
   confirmPlace() {
     const a = this.placement.active;
@@ -221,27 +239,43 @@ class Game {
       Object.assign(a.src.data, { x: a.x, z: a.z, rot: a.rot });
       a.src.obj.position.set(a.x, 0, a.z); a.src.obj.rotation.y = (a.rot * Math.PI) / 2;
       this.placement.cancel(true);
-    } else {
-      const s = this.state; if (!s.inv[a.type]) return;
-      s.inv[a.type]--;
-      const data = { id: s.nextId++, type: a.type, x: a.x, z: a.z, rot: a.rot, cash: 0 };
-      s.objects.push(data);
-      this.registerObject(this.objects.add(data));
-      this.placement.cancel(true);
-      this.eco.addXp(10) && this.levelUp();
-      if (s.inv[a.type] > 0) this.ui.toast(`Noch ${s.inv[a.type]}× im Inventar`);
+      SFX.place(); this.save(); this.ui.renderHotbar();
+      return;
     }
+    const s = this.state, type = a.type;
+    if ((s.inv[type] || 0) > 0) s.inv[type]--;
+    else {
+      const p = this.eco.price(type);
+      if (!this.eco.unlockInfo(type).ok) { SFX.error(); this.ui.toast(`🔒 ${this.eco.unlockInfo(type).why}`); return; }
+      if (!this.eco.spend(p)) { SFX.error(); this.ui.toast('Nicht genug Geld!'); return; }
+      SFX.buy(); this.eco.addXp(Math.round(p / 10)) && this.levelUp();
+      this.floatText(a.x, a.z, `−${p.toLocaleString('de-DE')} $`);
+    }
+    const data = { id: s.nextId++, type, x: a.x, z: a.z, rot: a.rot, cash: 0 };
+    s.objects.push(data);
+    this.registerObject(this.objects.add(data));
+    this.eco.addXp(10) && this.levelUp();
     SFX.place();
-    this.quests.check(); this.save(); this.ui.hud();
+    // gleich weiterbauen, wenn möglich (gleiches Objekt, gleiche Drehung)
+    const off = a.rotOff;
+    this.placement.cancel(true);
+    if (this.canUse(type) && !CATALOG[type].max) { this.placement.start(type); this.placement.active.rotOff = off; }
+    this.quests.check(); this.save(); this.ui.hud(); this.ui.renderHotbar();
   }
-  buy(type) {
-    const p = this.eco.price(type);
-    if (!this.eco.unlockInfo(type).ok || !this.eco.spend(p)) { SFX.error(); return; }
-    this.state.inv[type] = (this.state.inv[type] || 0) + 1;
-    SFX.buy(); this.ui.toast(`${CATALOG[type].icon} ${CATALOG[type].name} gekauft!`);
-    this.eco.addXp(Math.round(p / 10)) && this.levelUp();
-    this.quests.check(); this.save(); this.ui.hud();
-    this.beginPlace(type);
+  storeObject(it) { // zurück ins Inventar (Geld in der Kasse wird gutgeschrieben)
+    const s = this.state;
+    if (it.data.cash > 0) { this.eco.earn(it.data.cash); this.ui.toast(`+${Math.round(it.data.cash)} $ aus der Kasse`); }
+    if (it.user) it.user.machine = null;
+    s.objects = s.objects.filter((o) => o !== it.data);
+    s.inv[it.data.type] = (s.inv[it.data.type] || 0) + 1;
+    this.objects.remove(it); this.interact.unregister('obj' + it.data.id);
+    SFX.place(); this.ui.toast(`📦 ${CATALOG[it.data.type].name} eingelagert`);
+    this.buildTarget = null; this.save(); this.ui.hud(); this.ui.renderHotbar();
+  }
+  floatText(x, z, text) {
+    const v = new THREE.Vector3(x, 1.2, z).project(this.camera);
+    if (v.z > 1) return;
+    this.ui.floatAt((v.x * 0.5 + 0.5) * window.innerWidth, (-v.y * 0.5 + 0.5) * window.innerHeight, text);
   }
   repair(id) {
     const r = REPAIRS[id];
@@ -250,7 +284,7 @@ class Game {
     this.world.applyRepairs(this.state.repairs, this.state.open);
     SFX.level(); this.ui.toast(`${r.icon} ${r.name} – fertig!`, true);
     this.eco.addXp(Math.round(r.price / 8)) && this.levelUp();
-    this.quests.check(); this.save(); this.ui.hud(); this.ui.renderShop();
+    this.quests.check(); this.save(); this.ui.hud(); this.ui.renderShop(); if (this.building) this.ui.renderHotbar();
   }
 
   // ---------------------------------------------------------- Automaten
@@ -334,14 +368,11 @@ class Game {
     const wasInside = this.player.inside;
     const boxes = this.world.statics.concat(this.objects.boxes(), [this.world.doorBox()]);
     this.player.update(dt, this.input.move(), this.cam.yaw, boxes, t);
-    const look = this.input.takeLook();
-    this.cam.update(dt, this.player, look, !this.input.looking());
-    // Sonne folgt dem Spieler (scharfe Schatten in der Nähe)
+    this.cam.update(dt, this.player, this.input.takeLook());
     const p = this.player.pos;
     this.sun.position.set(p.x - 9, 18, p.z + 7); this.sun.target.position.set(p.x, 0, p.z);
-    // drinnen: Dach/Decke weg, Wände zur Kamera hin ausblenden
-    this.world.setCutaway(this.player.inside ? this.camera.position : null);
     if (this.player.inside && !wasInside) this.quests.check({ enteredCasino: true });
+    if (!this.player.inside && this.building) { this.setBuild(false); this.ui.toast('Bau-Modus beendet (draußen)'); }
     // Erkunden
     const q = this.quests.current;
     const exploring = q && q.id === 'explore';
@@ -350,19 +381,32 @@ class Game {
       if (m.visible && Math.hypot(p.x - this.world.explorePts[i].x, p.z - this.world.explorePts[i].z) < 0.9) { s.explored.push(i); SFX.coin(); this.ui.toast(`Erkundet ${s.explored.length}/3`); this.quests.check(); this.ui.hud(); }
     });
     this.guests.update(dt, t, s.open, boxes);
-    // Bauen / Interaktion
+    // Bauen / Interaktion (was man anschaut)
+    const eye = this.cam.eye(this.player), dir = this.cam.lookDir().clone();
+    let hot = false;
     if (this.placement.active) {
-      this.placement.update(this.player);
-      this.ui.setAction('Platzieren', '📦', !this.placement.active.ok);
-      this.ui.show('placeRow'); this.ui.show('build', false);
-    } else {
+      const a = this.placement.active;
+      this.placement.update(eye, dir, this.cam.yaw, this.player);
+      const inv = (s.inv[a.type] || 0) > 0, price = this.eco.price(a.type);
+      const label = a.src ? 'Hier abstellen' : inv ? 'Platzieren' : `Kaufen · ${price.toLocaleString('de-DE')} $`;
+      this.ui.setAction(label, a.src ? '📍' : inv ? '📦' : '🛒', !a.ok || (!a.src && !inv && s.money < price));
+      this.ui.show('placeRow'); this.ui.show('objRow', false);
+      $('bHint').textContent = a.ok ? 'Schau, wohin es soll · ⟳ dreht · Vorderseite zeigt zu dir' : 'Hier passt es nicht – schau auf eine freie Stelle';
+    } else if (this.building) {
       this.ui.show('placeRow', false);
-      this.ui.show('build', this.player.inside && s.doorUnlocked);
-      const it = this.interact.update(this.player);
+      const it = this.interact.update(eye, dir, (i) => i.kind === 'obj');
+      this.buildTarget = it; hot = !!it;
+      if (it) this.ui.setAction('Verschieben', '✋'); else this.ui.setAction(null);
+      this.ui.show('objRow', !!it);
+      $('bHint').textContent = it ? `${CATALOG[it.obj.data.type].name}: verschieben oder einlagern` : 'Wähle unten etwas aus – oder schau ein Möbelstück an';
+    } else {
+      this.ui.show('placeRow', false); this.ui.show('objRow', false);
+      const it = this.interact.update(eye, dir, (i) => i.kind !== 'obj' || ['slot', 'deluxe', 'counter'].includes(i.obj.data.type));
+      hot = !!it;
       if (it) { const [l, ic] = it.label(); this.ui.setAction(l, ic); } else this.ui.setAction(null);
     }
-    // nicht im Casino platzieren? -> abbrechen, wenn man rausgeht
-    if (this.placement.active && !insideCasino(p.x, p.z)) { this.placement.cancel(); this.ui.toast('Aufstellen abgebrochen (draußen)'); }
+    $('cross').classList.toggle('hot', hot || (!!this.placement.active && this.placement.active.ok));
+    this.ui.show('build', this.player.inside && s.doorUnlocked);
     this.saveT += dt; if (this.saveT > 15) { this.saveT = 0; this.save(); }
     if (this.panelItem && Math.floor(t * 2) !== Math.floor((t - dt) * 2)) this.refreshPanel();
   }

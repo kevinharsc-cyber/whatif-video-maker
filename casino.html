@@ -78,6 +78,23 @@
       .float { position: absolute; font-size: 18px; color: #ffe08a; -webkit-text-stroke: 3px #3a2208; paint-order: stroke fill; pointer-events: none !important; animation: fl 1.4s forwards; }
       @keyframes fl { 0% { opacity: 0; transform: translate(-50%, 0); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50px); } }
 
+      #cross { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35); pointer-events: none !important; transition: all 0.15s; }
+      #cross.hot { width: 26px; height: 26px; margin: -13px 0 0 -13px; background: transparent; border: 3px solid var(--gold); box-shadow: 0 0 10px rgba(246, 196, 83, 0.8); }
+      #buildBar { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 250px); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+      #bHint { font-family: system-ui, sans-serif; font-size: 12.5px; background: var(--panel); padding: 5px 12px; border-radius: 12px; max-width: 86vw; text-align: center; }
+      #hotbar { display: flex; gap: 8px; overflow-x: auto; max-width: 100vw; padding: 4px 12px; box-sizing: border-box; touch-action: pan-x; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+      #hotbar::-webkit-scrollbar { display: none; }
+      .slotx { flex: none; width: 74px; height: 84px; border-radius: 16px; background: var(--panel); border: 2px solid rgba(255, 255, 255, 0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; position: relative; padding: 0; }
+      .slotx .i { font-size: 28px; line-height: 1; }
+      .slotx .n { font-size: 10px; line-height: 1.05; text-align: center; padding: 0 3px; opacity: 0.9; }
+      .slotx .p { font-size: 12px; color: #ffe08a; }
+      .slotx .p.free { color: #7dffa0; }
+      .slotx.sel { border-color: var(--gold); background: linear-gradient(rgba(246, 196, 83, 0.35), var(--panel)); transform: translateY(-4px); }
+      .slotx.lock { opacity: 0.45; }
+      .slotx.lock::after { content: '🔒'; position: absolute; top: 3px; right: 5px; font-size: 13px; }
+      .slotx.poor .p { color: #ff8a8a; }
+      #build.on { background: linear-gradient(#9dffb9, #3fd17a); color: #0b3a1a; box-shadow: 0 4px 0 #1e7a40; }
+
       /* ---------- Sheets / Modals ---------- */
       .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 62vh; background: linear-gradient(#2a1a48, #1b1030); border-radius: 22px 22px 0 0; border-top: 3px solid var(--gold); padding: 12px 14px calc(env(safe-area-inset-bottom) + 14px); box-sizing: border-box; display: flex; flex-direction: column; z-index: 20; box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5); }
       .sheet .hd { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -146,9 +163,12 @@
         <div class="pill" id="lvl"><span class="ic">★</span><span id="lvlTxt">Lv 1</span><div class="xpbar"><i id="xp"></i></div></div>
       </div>
       <div id="quest"><div class="h">AUFGABE</div><div id="qText"></div><div class="s" id="qHint"></div></div>
+      <div id="cross"></div>
+      <div id="buildBar" class="hidden"><div id="bHint">Wähle etwas aus und schau auf den Boden</div><div id="hotbar"></div></div>
       <div id="joy"><div id="knob"></div></div>
       <div class="br">
-        <div class="row hidden" id="placeRow"><button id="pCancel" class="pbtn wine">✕ Abbrechen</button><button id="pRotate" class="pbtn glass">⟳ Drehen</button></div>
+        <div class="row hidden" id="placeRow"><button id="pCancel" class="pbtn wine">✕</button><button id="pRotate" class="pbtn glass">⟳ Drehen</button></div>
+        <div class="row hidden" id="objRow"><button id="bStore" class="pbtn wine">📦 Einlagern</button></div>
         <button id="build" class="gold hidden">🔨 BAUEN</button>
         <button id="act" class="gold hidden"><i id="actIc">✋</i><span id="actTxt">Interagieren</span></button>
       </div>
@@ -158,8 +178,7 @@
 
     <!-- Bau-Menü -->
     <div id="shop" class="sheet hidden">
-      <div class="hd"><h2>🔨 Bauen</h2><div class="pill"><span class="ic">$</span><span id="shopMoney"></span></div><button class="x" id="shopX">✕</button></div>
-      <div class="tabs"><button data-tab="inv" class="on">Inventar</button><button data-tab="buy">Kaufen</button><button data-tab="rep">Renovieren</button></div>
+      <div class="hd"><h2>🧰 Renovieren</h2><div class="pill"><span class="ic">$</span><span id="shopMoney"></span></div><button class="x" id="shopX">✕</button></div>
       <div class="grid" id="shopGrid"></div>
     </div>
 
@@ -171,7 +190,7 @@
         <div id="opStats" style="width: 100%"></div>
         <button id="opCollect" class="big gold">EINNAHMEN EINSAMMELN</button>
         <button id="opSpin" class="big wine">PROBESPIEL (GRATIS)</button>
-        <button id="opMove" class="big glass">AUFHEBEN &amp; VERSCHIEBEN</button>
+        <button id="opMove" class="big glass">VERSCHIEBEN</button>
         <button id="opClose" class="big glass">SCHLIESSEN</button>
       </div>
     </div>
@@ -191,6 +210,7 @@
     <div id="settings" class="modal hidden">
       <div class="box">
         <h2>Einstellungen</h2>
+        <div class="opt">Musik <button id="sMusic" class="glass">AN</button></div>
         <div class="opt">Sound <button id="sSound" class="glass">AN</button></div>
         <div class="opt">Grafik <button id="sQual" class="glass">HOCH</button></div>
         <div class="opt">Kamera <input id="sSens" type="range" min="0.4" max="2" step="0.1" /></div>

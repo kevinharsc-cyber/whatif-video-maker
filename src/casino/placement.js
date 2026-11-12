@@ -60,10 +60,11 @@ export class ObjectPlacementSystem {
     const ghost = MAKERS[type]();
     ghost.traverse((o) => { if (o.isMesh) { o.material = okMat; o.castShadow = false; } });
     this.scene.add(ghost);
-    this.active = { type, ghost, rot: src ? src.data.rot : 0, x: 0, z: 0, ok: false, src };
+    // rotOff: zusätzliche Drehung durch den Spieler (Standard: Vorderseite schaut zu dir)
+    this.active = { type, ghost, rot: 0, rotOff: 0, x: 0, z: 0, ok: false, src };
     if (src) src.obj.visible = false;
   }
-  rotate() { if (this.active) this.active.rot = (this.active.rot + 1) % 4; }
+  rotate() { if (this.active) this.active.rotOff = (this.active.rotOff + 1) % 4; }
   cancel(silent) {
     if (!this.active) return null;
     const a = this.active;
@@ -72,14 +73,19 @@ export class ObjectPlacementSystem {
     this.active = null; this.ring.visible = false;
     return silent ? null : a;
   }
-  update(player) {
+  // Ego-Sicht: Objekt erscheint dort, wo das Fadenkreuz den Boden trifft
+  update(eye, dir, camYaw, player) {
     const a = this.active; if (!a) return;
-    const f = player.forward();
+    let dist = 4.5;
+    if (dir.y < -0.05) dist = Math.min(4.5, ((eye.y - 0.02) / -dir.y) * Math.hypot(dir.x, dir.z));
     const [w, d] = CATALOG[a.type].size;
-    const reach = 0.6 + Math.max(w, d) / 2 + 0.3;
+    dist = Math.max(0.55 + Math.max(w, d) / 2, dist);
+    const h = Math.max(1e-6, Math.hypot(dir.x, dir.z));
+    const x = eye.x + (dir.x / h) * dist, z = eye.z + (dir.z / h) * dist;
     // auf 0,25-m-Raster einrasten
-    a.x = Math.round((player.pos.x + f.x * reach) * 4) / 4;
-    a.z = Math.round((player.pos.z + f.z * reach) * 4) / 4;
+    a.x = Math.round(x * 4) / 4; a.z = Math.round(z * 4) / 4;
+    const auto = ((Math.round(camYaw / (Math.PI / 2)) % 4) + 4) % 4; // Vorderseite zeigt zum Spieler
+    a.rot = (auto + a.rotOff) % 4;
     a.ghost.position.set(a.x, 0.02, a.z); a.ghost.rotation.y = ROT(a.rot);
     a.ok = this.valid(a.type, a.x, a.z, a.rot, a.src, player);
     const mat = a.ok ? okMat : badMat;
@@ -94,10 +100,10 @@ export class ObjectPlacementSystem {
     if (fp.x0 < I.x0 + m || fp.x1 > I.x1 - m || fp.z0 < I.z0 + m || fp.z1 > I.z1 - m) return false; // nur im Gebäude
     if (overlap(fp, DOOR_ZONE)) return false; // Eingang frei lassen
     if (overlap(fp, { x0: LEVER_POS.x, x1: LEVER_POS.x + 0.9, z0: LEVER_POS.z - 0.5, z1: LEVER_POS.z + 0.5 })) return false;
-    const walk = CATALOG[type].walkable;
+    const walk = !!CATALOG[type].walkable;
     for (const it of this.objects.items) {
       if (it === src) continue;
-      if (walk !== !!CATALOG[it.data.type].walkable && (walk || CATALOG[it.data.type].walkable)) continue; // Teppich darf unter Möbel
+      if (walk !== !!CATALOG[it.data.type].walkable) continue; // Teppich darf unter Möbel
       if (overlap(fp, footprint(it.data.type, it.data.x, it.data.z, it.data.rot), 0.05)) return false;
     }
     if (!walk && player) { const p = player.pos; if (p.x > fp.x0 - 0.3 && p.x < fp.x1 + 0.3 && p.z > fp.z0 - 0.3 && p.z < fp.z1 + 0.3) return false; }

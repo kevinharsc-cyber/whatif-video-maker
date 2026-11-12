@@ -12,10 +12,10 @@ src/casino/
   main.js        Spielablauf: verbindet alle Systeme, Spielmodi (Menü / Intro / Spiel / Pause)
   models.js      alle 3D-Modelle prozedural (Figuren, Häuser, Automaten, Möbel, Texturen)
   world.js       BuildingSystem: Stadt (1 Straße, 10 Häuser), Casino außen/innen, Kollision, Renovierungen, Diorama-Schnitt
-  player.js      PlayerController (Laufen, Animation ohne Rutschen) + CameraController (Third-Person, Wischen, Kamera-Kollision)
+  player.js      PlayerController (Laufen) + CameraController (Ego-Perspektive, Wischen, leichtes Kopfwippen)
   input.js       MobileJoystick (links unten) + Kamera-Wischen (rechts) + Tastatur/Maus zum Testen am PC
-  interact.js    InteractionSystem (kontextabhängiger Knopf rechts unten)
-  placement.js   ObjectPlacementSystem (Aufstellen, Drehen, Verschieben, nur im Gebäude) + platzierte Objekte
+  interact.js    InteractionSystem (benutzt wird, was im Fadenkreuz ist)
+  placement.js   ObjectPlacementSystem (Objekt erscheint, wo man hinschaut; zeigt automatisch zum Spieler) + platzierte Objekte
   economy.js     EconomyManager – ALLE Preise/Werte zentral (Automaten, Möbel, Renovierungen, Level)
   quests.js      QuestManager – Aufgaben mit Belohnung
   save.js        SaveSystem – Spielstand + Einstellungen im Gerät (localStorage)
@@ -23,6 +23,7 @@ src/casino/
   menu.js        MainMenuManager – Hauptmenü, Einstellungen, Intro (Opas Brief)
   guests.js      Gäste, die kommen, an freien Automaten spielen, zahlen und gehen
   audio.js       Soundeffekte (WebAudio, ohne Dateien)
+  music.js       entspannte Lounge-Musik (Endlosschleife, WebAudio)
 ```
 
 ## Starten (am PC)
@@ -39,7 +40,9 @@ Dann `http://localhost:5173/casino.html` öffnen. Steuerung am PC: **WASD** lauf
 - Im gleichen WLAN: `npm run dev -- --host` und die angezeigte Netzwerk-Adresse + `/casino.html` am Handy öffnen.
 - Als App: Safari → Teilen → „Zum Home-Bildschirm“.
 
-Steuerung: Joystick links unten, rechts wischen = Kamera drehen, runder Knopf rechts unten = Interagieren (erscheint nur, wenn etwas in der Nähe ist), 🔨 BAUEN im Casino.
+Steuerung (Ego-Perspektive): Joystick links unten = laufen, rechts wischen = umschauen, Punkt in der Mitte = Fadenkreuz, runder Knopf rechts unten = benutzen, was man anschaut.
+
+Bauen: im Casino 🔨 BAUEN → unten ein Objekt antippen → auf den Boden schauen → PLATZIEREN (kostet direkt, wenn nicht im Inventar; man kann gleich weiterbauen). ⟳ dreht. Im Bau-Modus ein Objekt anschauen → VERSCHIEBEN oder 📦 Einlagern. 🧰 = Renovieren.
 
 ## Spielablauf Phase 1
 
