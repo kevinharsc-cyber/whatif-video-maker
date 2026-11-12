@@ -11,7 +11,7 @@ export function newState() {
     objects: [], // { id, type, x, z, rot, cash }
     repairs: {}, explored: [],
     doorUnlocked: false, open: false,
-    player: { x: 0.6, z: -1.6, yaw: Math.PI / 2 },
+    player: { x: -3.4, z: -0.6, yaw: Math.PI / 2 },
     nextId: 1, playTime: 0, stats: { guests: 0, earned: 0 },
   };
 }
@@ -20,6 +20,6 @@ export const SaveSystem = {
   load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 1) return { ...newState(), ...s }; } catch { /* leer */ } return null; },
   save(state) { try { localStorage.setItem(KEY, JSON.stringify(state)); return true; } catch { return false; } },
   clear() { try { localStorage.removeItem(KEY); } catch { /* egal */ } },
-  settings() { try { return { sound: true, quality: 'auto', sens: 1, ...JSON.parse(localStorage.getItem(SKEY) || '{}') }; } catch { return { sound: true, quality: 'auto', sens: 1 }; } },
+  settings() { try { return { sound: true, music: true, quality: 'auto', sens: 1, ...JSON.parse(localStorage.getItem(SKEY) || '{}') }; } catch { return { sound: true, music: true, quality: 'auto', sens: 1 }; } },
   saveSettings(s) { try { localStorage.setItem(SKEY, JSON.stringify(s)); } catch { /* egal */ } },
 };
