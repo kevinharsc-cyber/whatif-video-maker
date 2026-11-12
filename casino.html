@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Grandpa's Casino" />
+    <meta name="theme-color" content="#1b1030" />
+    <link rel="apple-touch-icon" href="./casino-icon-180.png" />
+    <title>GRANDPA'S CASINO</title>
+    <style>
+      @font-face { font-family: 'Lilita One'; src: url('./fonts/lilita-one-latin-400-normal.woff2') format('woff2'); }
+      :root { --gold: #f6c453; --gold2: #d99a1e; --ink: #1b1030; --wine: #7a1424; --panel: rgba(27, 16, 48, 0.88); }
+      html, body { margin: 0; height: 100%; background: var(--ink); overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; font-family: 'Lilita One', 'Arial Black', sans-serif; color: #fff; }
+      #view { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; }
+      .hidden { display: none !important; }
+      button { font-family: inherit; color: #fff; cursor: pointer; -webkit-tap-highlight-color: transparent; border: none; }
+      button:disabled { opacity: 0.45; }
+      #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--ink); font-size: 24px; z-index: 60; color: var(--gold); }
+      .gold { background: linear-gradient(#ffe08a, var(--gold) 45%, var(--gold2)); color: #3a2208; box-shadow: 0 4px 0 #8a5a12, 0 8px 16px rgba(0, 0, 0, 0.35); }
+      .wine { background: linear-gradient(#a3263a, var(--wine)); box-shadow: 0 4px 0 #3e0812, 0 8px 16px rgba(0, 0, 0, 0.35); }
+      .glass { background: rgba(255, 255, 255, 0.14); border: 2px solid rgba(255, 255, 255, 0.25); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+      .big { border-radius: 18px; font-size: 22px; padding: 14px 18px; width: min(300px, 78vw); letter-spacing: 1px; }
+      .big:active, .rb:active { transform: translateY(3px); }
+
+      /* ---------- Hauptmenü ---------- */
+      #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; padding: calc(env(safe-area-inset-top) + 40px) 16px calc(env(safe-area-inset-bottom) + 28px); box-sizing: border-box; background: linear-gradient(rgba(10, 5, 25, 0.55), rgba(10, 5, 25, 0) 40%, rgba(10, 5, 25, 0) 55%, rgba(10, 5, 25, 0.8)); }
+      .logo { text-align: center; line-height: 0.9; transform: rotate(-2deg); }
+      .logo .a { font-size: 30px; color: #ffd9e0; letter-spacing: 6px; text-shadow: 0 0 10px #ff4d8d, 0 0 22px #ff4d8d; }
+      .logo .b { font-size: 76px; color: #fff3c4; -webkit-text-stroke: 3px #7a4a08; paint-order: stroke fill; text-shadow: 0 0 14px #ffb347, 0 0 34px #ff8c1a, 0 6px 0 #5a3206; letter-spacing: 3px; }
+      .logo .c { margin-top: 6px; font-size: 15px; color: #e8d9ff; letter-spacing: 2px; opacity: 0.85; }
+      #menu .btns { margin-top: auto; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+      .ver { margin-top: 12px; font-size: 11px; opacity: 0.5; letter-spacing: 1px; }
+
+      /* ---------- Intro / Brief ---------- */
+      #intro { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10, 5, 25, 0.72); padding: 16px; box-sizing: border-box; z-index: 30; }
+      .letter { width: min(380px, 92vw); background: linear-gradient(#fff8e6, #f2e3c0); color: #3a2a1a; border-radius: 6px; padding: 24px 22px 20px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5); transform: rotate(-1deg); font-family: Georgia, 'Times New Roman', serif; font-size: 16px; line-height: 1.5; position: relative; }
+      .letter h3 { margin: 0 0 10px; font-family: 'Lilita One'; font-weight: normal; color: var(--wine); font-size: 20px; letter-spacing: 1px; }
+      .letter .sig { text-align: right; font-style: italic; margin-top: 10px; }
+      .letter .stamp { position: absolute; top: 14px; right: 16px; width: 54px; height: 54px; border-radius: 50%; border: 3px solid rgba(122, 20, 36, 0.5); color: rgba(122, 20, 36, 0.6); font: 10px 'Lilita One'; display: flex; align-items: center; justify-content: center; text-align: center; transform: rotate(14deg); }
+      .letter button { margin-top: 14px; width: 100%; font-family: 'Lilita One', sans-serif; }
+      .gifts { display: flex; gap: 10px; justify-content: center; margin: 12px 0 4px; }
+      .gft { flex: 1; background: #fff; border-radius: 12px; padding: 10px 4px; text-align: center; font-family: 'Lilita One'; color: #3a2a1a; font-size: 13px; box-shadow: 0 4px 0 #d8c8a0; opacity: 0; transform: translateY(10px) scale(0.9); transition: all 0.4s; }
+      .gft.on { opacity: 1; transform: none; }
+      .gft i { display: block; font-style: normal; font-size: 34px; margin-bottom: 4px; }
+
+      /* ---------- HUD ---------- */
+      #hud { position: fixed; inset: 0; pointer-events: none; }
+      #hud > * { pointer-events: auto; }
+      .top { position: absolute; top: calc(env(safe-area-inset-top) + 10px); left: 10px; right: 10px; display: flex; align-items: center; gap: 8px; }
+      .rb { width: 44px; height: 44px; border-radius: 14px; font-size: 22px; display: flex; align-items: center; justify-content: center; flex: none; }
+      .pill { height: 36px; border-radius: 18px; display: flex; align-items: center; padding: 0 12px 0 6px; font-size: 18px; gap: 6px; background: var(--panel); border: 2px solid rgba(246, 196, 83, 0.6); }
+      .pill .ic { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; background: linear-gradient(#ffe08a, var(--gold2)); color: #3a2208; }
+      #money { color: #ffe9a8; }
+      #lvl { margin-left: auto; }
+      .xpbar { width: 54px; height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.18); overflow: hidden; }
+      .xpbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7dffa0, #3fd17a); transition: width 0.4s; }
+      #quest { position: absolute; top: calc(env(safe-area-inset-top) + 62px); left: 10px; max-width: min(300px, 72vw); background: var(--panel); border-radius: 14px; padding: 8px 12px 8px 10px; border-left: 4px solid var(--gold); font-size: 14px; line-height: 1.25; }
+      #quest .h { font-size: 10px; color: var(--gold); letter-spacing: 1.5px; }
+      #quest .s { font-family: system-ui, sans-serif; font-size: 11.5px; opacity: 0.8; margin-top: 2px; }
+      #quest.done { border-left-color: #7dffa0; }
+      #joy { position: absolute; left: calc(env(safe-area-inset-left) + 22px); bottom: calc(env(safe-area-inset-bottom) + 26px); width: 124px; height: 124px; border-radius: 50%; background: radial-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.16)); border: 2px solid rgba(255, 255, 255, 0.35); pointer-events: none; }
+      #joy.on { background: radial-gradient(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.24)); }
+      #knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #d6d6e6); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35); }
+      .br { position: absolute; right: calc(env(safe-area-inset-right) + 18px); bottom: calc(env(safe-area-inset-bottom) + 30px); display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+      #act { min-width: 96px; height: 96px; border-radius: 48px; font-size: 15px; padding: 0 16px; line-height: 1.1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; max-width: 150px; }
+      #act i { font-style: normal; font-size: 26px; display: block; }
+      #act.bad { filter: grayscale(0.9); opacity: 0.7; }
+      .row { display: flex; gap: 8px; }
+      #build { height: 46px; border-radius: 23px; padding: 0 16px; font-size: 16px; }
+      .pbtn { height: 46px; border-radius: 23px; padding: 0 14px; font-size: 15px; }
+      #toasts { position: absolute; top: 36%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none !important; }
+      .toast { background: var(--panel); border: 2px solid var(--gold); border-radius: 14px; padding: 8px 14px; font-size: 16px; animation: tin 2.6s forwards; text-align: center; max-width: 82vw; }
+      .toast.big { font-size: 22px; padding: 12px 20px; border-color: #7dffa0; }
+      @keyframes tin { 0% { opacity: 0; transform: translateY(12px) scale(0.9); } 10% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
+      .float { position: absolute; font-size: 18px; color: #ffe08a; -webkit-text-stroke: 3px #3a2208; paint-order: stroke fill; pointer-events: none !important; animation: fl 1.4s forwards; }
+      @keyframes fl { 0% { opacity: 0; transform: translate(-50%, 0); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50px); } }
+
+      /* ---------- Sheets / Modals ---------- */
+      .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-height: 62vh; background: linear-gradient(#2a1a48, #1b1030); border-radius: 22px 22px 0 0; border-top: 3px solid var(--gold); padding: 12px 14px calc(env(safe-area-inset-bottom) + 14px); box-sizing: border-box; display: flex; flex-direction: column; z-index: 20; box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5); }
+      .sheet .hd { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+      .sheet .hd h2 { margin: 0; font-weight: normal; font-size: 22px; color: var(--gold); flex: 1; }
+      .x { width: 36px; height: 36px; border-radius: 12px; background: rgba(255, 255, 255, 0.12); font-size: 18px; }
+      .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+      .tabs button { flex: 1; height: 36px; border-radius: 12px; background: rgba(255, 255, 255, 0.1); font-size: 14px; }
+      .tabs button.on { background: var(--gold); color: #3a2208; }
+      .grid { overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-bottom: 4px; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+      .card { background: rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 4px; border: 2px solid transparent; }
+      .card .ic { font-size: 30px; }
+      .card .nm { font-size: 14px; line-height: 1.1; }
+      .card .ds { font-family: system-ui, sans-serif; font-size: 11px; opacity: 0.7; line-height: 1.25; flex: 1; }
+      .card button { height: 34px; border-radius: 10px; font-size: 14px; margin-top: 4px; }
+      .card.locked { opacity: 0.55; }
+      .card.gift { border-color: var(--gold); }
+      .modal { position: fixed; inset: 0; background: rgba(10, 5, 25, 0.7); display: flex; align-items: center; justify-content: center; z-index: 40; }
+      .box { width: min(340px, 88vw); background: linear-gradient(#2a1a48, #1b1030); border: 3px solid var(--gold); border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+      .box h2 { margin: 0; font-weight: normal; color: var(--gold); font-size: 26px; }
+      .box p { margin: 0; font-family: system-ui, sans-serif; font-size: 14px; opacity: 0.85; text-align: center; }
+      .box .big { width: 100%; font-size: 19px; padding: 12px; }
+      .opt { width: 100%; display: flex; align-items: center; justify-content: space-between; font-size: 17px; }
+      .opt button { min-width: 92px; height: 38px; border-radius: 12px; font-size: 15px; }
+      input[type=range] { width: 130px; accent-color: var(--gold); }
+      .stat { width: 100%; display: flex; justify-content: space-between; font-size: 16px; padding: 6px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+      .stat b { color: var(--gold); font-weight: normal; }
+      .reels { font-size: 40px; letter-spacing: 8px; background: #fffaf0; color: #000; border-radius: 12px; padding: 6px 14px; border: 4px solid var(--gold2); }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="loading">Opa schließt auf…</div>
+
+    <!-- Hauptmenü -->
+    <div id="menu" class="hidden">
+      <div class="logo"><div class="a">GRANDPA'S</div><div class="b">CASINO</div><div class="c">Erbe · Renoviere · Eröffne</div></div>
+      <div class="btns">
+        <button id="mStart" class="big gold">SPIEL STARTEN</button>
+        <button id="mLoad" class="big wine">SPIEL LADEN</button>
+        <button id="mSet" class="big glass">EINSTELLUNGEN</button>
+        <div class="ver">Prototyp · Phase 1 · nur Spielgeld</div>
+      </div>
+    </div>
+
+    <!-- Intro: Brief vom Opa -->
+    <div id="intro" class="hidden">
+      <div class="letter" id="letter">
+        <div class="stamp">PER<br />EIL-<br />BOTE</div>
+        <h3>Ein Brief von Opa</h3>
+        <div id="letterTxt"></div>
+        <div class="sig" id="letterSig">– Dein Opa</div>
+        <div class="gifts hidden" id="gifts">
+          <div class="gft"><i>🔑</i>Schlüssel</div>
+          <div class="gft"><i>💵</i>1.000 $</div>
+          <div class="gft"><i>🎰</i>Spielautomat</div>
+        </div>
+        <button id="letterBtn" class="big wine">WEITER</button>
+      </div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div class="top">
+        <button id="btnMenu" class="rb glass">☰</button>
+        <div class="pill"><span class="ic">$</span><span id="money">1.000</span></div>
+        <div class="pill" id="lvl"><span class="ic">★</span><span id="lvlTxt">Lv 1</span><div class="xpbar"><i id="xp"></i></div></div>
+      </div>
+      <div id="quest"><div class="h">AUFGABE</div><div id="qText"></div><div class="s" id="qHint"></div></div>
+      <div id="joy"><div id="knob"></div></div>
+      <div class="br">
+        <div class="row hidden" id="placeRow"><button id="pCancel" class="pbtn wine">✕ Abbrechen</button><button id="pRotate" class="pbtn glass">⟳ Drehen</button></div>
+        <button id="build" class="gold hidden">🔨 BAUEN</button>
+        <button id="act" class="gold hidden"><i id="actIc">✋</i><span id="actTxt">Interagieren</span></button>
+      </div>
+      <div id="toasts"></div>
+      <div id="floats"></div>
+    </div>
+
+    <!-- Bau-Menü -->
+    <div id="shop" class="sheet hidden">
+      <div class="hd"><h2>🔨 Bauen</h2><div class="pill"><span class="ic">$</span><span id="shopMoney"></span></div><button class="x" id="shopX">✕</button></div>
+      <div class="tabs"><button data-tab="inv" class="on">Inventar</button><button data-tab="buy">Kaufen</button><button data-tab="rep">Renovieren</button></div>
+      <div class="grid" id="shopGrid"></div>
+    </div>
+
+    <!-- Automat / Objekt -->
+    <div id="objPanel" class="modal hidden">
+      <div class="box">
+        <h2 id="opTitle">Spielautomat</h2>
+        <div class="reels hidden" id="opReels">🍒🔔7</div>
+        <div id="opStats" style="width: 100%"></div>
+        <button id="opCollect" class="big gold">EINNAHMEN EINSAMMELN</button>
+        <button id="opSpin" class="big wine">PROBESPIEL (GRATIS)</button>
+        <button id="opMove" class="big glass">AUFHEBEN &amp; VERSCHIEBEN</button>
+        <button id="opClose" class="big glass">SCHLIESSEN</button>
+      </div>
+    </div>
+
+    <!-- Pause -->
+    <div id="pause" class="modal hidden">
+      <div class="box">
+        <h2>Pause</h2>
+        <button id="pResume" class="big gold">WEITERSPIELEN</button>
+        <button id="pSave" class="big wine">SPEICHERN</button>
+        <button id="pSet" class="big glass">EINSTELLUNGEN</button>
+        <button id="pMenu" class="big glass">HAUPTMENÜ</button>
+      </div>
+    </div>
+
+    <!-- Einstellungen -->
+    <div id="settings" class="modal hidden">
+      <div class="box">
+        <h2>Einstellungen</h2>
+        <div class="opt">Sound <button id="sSound" class="glass">AN</button></div>
+        <div class="opt">Grafik <button id="sQual" class="glass">HOCH</button></div>
+        <div class="opt">Kamera <input id="sSens" type="range" min="0.4" max="2" step="0.1" /></div>
+        <button id="sDel" class="big wine">SPIELSTAND LÖSCHEN</button>
+        <button id="sClose" class="big gold">FERTIG</button>
+      </div>
+    </div>
+
+    <!-- Bestätigung -->
+    <div id="confirm" class="modal hidden">
+      <div class="box"><h2 id="cTitle">Sicher?</h2><p id="cText"></p><button id="cYes" class="big wine">JA</button><button id="cNo" class="big glass">NEIN</button></div>
+    </div>
+
+    <script type="module" src="./src/casino/main.js"></script>
+  </body>
+</html>
